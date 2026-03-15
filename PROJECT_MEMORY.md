@@ -118,6 +118,18 @@ Current renderer shape in [index.html](/workspaces/Test/index.html):
 - Reference scenes/images are stored separately from painted layers
 - Scene opacity, visibility, ordering, and future transforms should remain outside the tile paint model
 - Scene transforms and transform handles should live in overlay/scene interaction logic, not in the paint tile model
+- Active scene transform rules:
+  - rotation remains free, but soft-snaps near `90°` increments
+  - corner scaling keeps the original image aspect ratio locked
+- Scenes can also be `locked`:
+  - locked scenes can still be selected
+  - locked scenes do not show transform controls
+  - locked scenes do not allow move / scale / rotate
+  - active locked scenes show a continuous red outline as the lock indicator
+- Scene scale calibration is a separate workflow from transform:
+  - user picks two points on the active scene
+  - enters the real-world distance in meters
+  - the scene rescales against the canvas world units without touching the paint tile model
 
 ## Renderer Scheduling Rules
 
