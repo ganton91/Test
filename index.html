@@ -1453,15 +1453,24 @@
               </section>
               <section class="view-pane">
                 <div class="view-pane-title">Bottom to Top</div>
-                <div class="view-pane-surface">Back view placeholder</div>
+                <div class="view-pane-surface view-pane-render-surface" id="viewBackSurface">
+                  <canvas class="view-pane-canvas hidden" id="viewBackCanvas"></canvas>
+                  <div class="view-pane-empty" id="viewBackEmpty">Bottom to Top view placeholder</div>
+                </div>
               </section>
               <section class="view-pane">
                 <div class="view-pane-title">Left to Right</div>
-                <div class="view-pane-surface">Left view placeholder</div>
+                <div class="view-pane-surface view-pane-render-surface" id="viewLeftSurface">
+                  <canvas class="view-pane-canvas hidden" id="viewLeftCanvas"></canvas>
+                  <div class="view-pane-empty" id="viewLeftEmpty">Left to Right view placeholder</div>
+                </div>
               </section>
               <section class="view-pane">
                 <div class="view-pane-title">Right to Left</div>
-                <div class="view-pane-surface">Right view placeholder</div>
+                <div class="view-pane-surface view-pane-render-surface" id="viewRightSurface">
+                  <canvas class="view-pane-canvas hidden" id="viewRightCanvas"></canvas>
+                  <div class="view-pane-empty" id="viewRightEmpty">Right to Left view placeholder</div>
+                </div>
               </section>
             </div>
           </div>
@@ -1566,6 +1575,12 @@
         overlayCanvas: document.getElementById("overlayCanvas"),
         viewFrontCanvas: document.getElementById("viewFrontCanvas"),
         viewFrontEmpty: document.getElementById("viewFrontEmpty"),
+        viewBackCanvas: document.getElementById("viewBackCanvas"),
+        viewBackEmpty: document.getElementById("viewBackEmpty"),
+        viewLeftCanvas: document.getElementById("viewLeftCanvas"),
+        viewLeftEmpty: document.getElementById("viewLeftEmpty"),
+        viewRightCanvas: document.getElementById("viewRightCanvas"),
+        viewRightEmpty: document.getElementById("viewRightEmpty"),
         rulerTop: document.getElementById("rulerTop"),
         rulerLeft: document.getElementById("rulerLeft"),
         rulerBottom: document.getElementById("rulerBottom"),
@@ -1933,9 +1948,64 @@
         context.imageSmoothingEnabled = false;
       }
 
-      function collectLayerFrontColumns(layer, bounds) {
+      function applyViewDepthShading(color, depth, nearestDepth, farthestDepth) {
+        if (!Number.isFinite(depth) || !Number.isFinite(nearestDepth) || !Number.isFinite(farthestDepth) || farthestDepth <= nearestDepth) {
+          return color;
+        }
+        const relativeDepth = Math.max(0, Math.min(1, (depth - nearestDepth) / (farthestDepth - nearestDepth)));
+        const hsv = hexToHsv(color);
+        const nextSaturation = hsv.s * (1 - relativeDepth * 0.22);
+        const nextBrightness = hsv.v * (1 - relativeDepth * 0.82);
+        return hsvToHex(hsv.h, nextSaturation, nextBrightness);
+      }
+
+      function directionalViewConfig(direction) {
+        switch (direction) {
+          case "bottomToTop":
+            return {
+              primaryAxis: "x",
+              primaryMinKey: "minX",
+              primaryMaxKey: "maxX",
+              depthAxis: "y",
+              frontBoundary: "max",
+              mirrorColumns: false,
+            };
+          case "leftToRight":
+            return {
+              primaryAxis: "y",
+              primaryMinKey: "minY",
+              primaryMaxKey: "maxY",
+              depthAxis: "x",
+              frontBoundary: "min",
+              mirrorColumns: false,
+            };
+          case "rightToLeft":
+            return {
+              primaryAxis: "y",
+              primaryMinKey: "minY",
+              primaryMaxKey: "maxY",
+              depthAxis: "x",
+              frontBoundary: "max",
+              mirrorColumns: true,
+            };
+          case "topToBottom":
+          default:
+            return {
+              primaryAxis: "x",
+              primaryMinKey: "minX",
+              primaryMaxKey: "maxX",
+              depthAxis: "y",
+              frontBoundary: "min",
+              mirrorColumns: true,
+            };
+        }
+      }
+
+      function collectLayerProjectedColumns(layer, bounds, direction) {
+        const config = directionalViewConfig(direction);
         const columns = new Map();
         if (!layer || !bounds) return columns;
+        const frontBoundaryValue = bounds[config.depthAxis === "y" ? (config.frontBoundary === "min" ? "minY" : "maxY") : config.frontBoundary === "min" ? "minX" : "maxX"];
         for (const tile of Object.values(layer.tiles)) {
           const tileMinX = tile.tileX * TILE_SIZE;
           const tileMinY = tile.tileY * TILE_SIZE;
@@ -1947,13 +2017,26 @@
             const cellX = tileMinX + localX;
             const cellY = tileMinY + localY;
             if (cellX < bounds.minX || cellX > bounds.maxX || cellY < bounds.minY || cellY > bounds.maxY) continue;
-            const relativeX = cellX - bounds.minX;
-            const existing = columns.get(relativeX);
-            if (!existing || cellY < existing.depth) {
-              columns.set(relativeX, {
+            const primaryValue = config.primaryAxis === "x" ? cellX : cellY;
+            const relativePrimary = primaryValue - bounds[config.primaryMinKey];
+            const depthValue = config.depthAxis === "y" ? cellY : cellX;
+            const existing = columns.get(relativePrimary);
+            const isCloser =
+              !existing ||
+              (config.frontBoundary === "min" ? depthValue < existing.depth : depthValue > existing.depth);
+            if (isCloser) {
+              const outsideDepth = config.frontBoundary === "min" ? depthValue - 1 : depthValue + 1;
+              const isCut =
+                depthValue === frontBoundaryValue &&
+                !!getCellColor(
+                  layer,
+                  config.depthAxis === "x" ? outsideDepth : cellX,
+                  config.depthAxis === "y" ? outsideDepth : cellY
+                );
+              columns.set(relativePrimary, {
                 color,
-                depth: cellY,
-                isCut: cellY === bounds.minY && !!getCellColor(layer, cellX, cellY - 1),
+                depth: depthValue,
+                isCut,
               });
             }
           }
@@ -1961,45 +2044,35 @@
         return columns;
       }
 
-      function applyFrontDepthShading(color, depth, nearestDepth, farthestDepth) {
-        if (!Number.isFinite(depth) || !Number.isFinite(nearestDepth) || !Number.isFinite(farthestDepth) || farthestDepth <= nearestDepth) {
-          return color;
-        }
-        const relativeDepth = Math.max(0, Math.min(1, (depth - nearestDepth) / (farthestDepth - nearestDepth)));
-        const hsv = hexToHsv(color);
-        const nextSaturation = hsv.s * (1 - relativeDepth * 0.22);
-        const nextBrightness = hsv.v * (1 - relativeDepth * 0.82);
-        return hsvToHex(hsv.h, nextSaturation, nextBrightness);
-      }
-
-      function renderFrontViewOutput() {
-        if (!ui.viewFrontCanvas || !ui.viewFrontEmpty) return;
+      function renderDirectionalViewOutput(canvas, emptyState, direction, placeholder) {
+        if (!canvas || !emptyState) return;
         const view = activeCanvasView();
         if (!view) {
-          ui.viewFrontCanvas.classList.add("hidden");
-          ui.viewFrontEmpty.classList.remove("hidden");
-          ui.viewFrontEmpty.textContent = "Front view placeholder";
+          canvas.classList.add("hidden");
+          emptyState.classList.remove("hidden");
+          emptyState.textContent = placeholder;
           return;
         }
 
         const bounds = viewCellBounds(view.bounds);
         if (!bounds || bounds.maxX < bounds.minX || bounds.maxY < bounds.minY) {
-          ui.viewFrontCanvas.classList.add("hidden");
-          ui.viewFrontEmpty.classList.remove("hidden");
-          ui.viewFrontEmpty.textContent = "Draw a valid view box in Main View";
+          canvas.classList.add("hidden");
+          emptyState.classList.remove("hidden");
+          emptyState.textContent = "Draw a valid view box in Main View";
           return;
         }
 
         const configuredLayers = orderedConfiguredLayersForView(view);
         if (!configuredLayers.length) {
-          ui.viewFrontCanvas.classList.add("hidden");
-          ui.viewFrontEmpty.classList.remove("hidden");
-          ui.viewFrontEmpty.textContent = "No painted layers intersect this view";
+          canvas.classList.add("hidden");
+          emptyState.classList.remove("hidden");
+          emptyState.textContent = "No painted layers intersect this view";
           return;
         }
 
+        const directionConfig = directionalViewConfig(direction);
         const columnsByLayer = configuredLayers.map(({ layer, config }, orderIndex) => ({
-          colorByColumn: collectLayerFrontColumns(layer, bounds),
+          colorByColumn: collectLayerProjectedColumns(layer, bounds, direction),
           opacity: Math.max(0, Math.min(1, layer.opacity)),
           baseCells: Math.round(config.baseElevation * CELLS_PER_METER),
           heightCells: Math.max(0, Math.round(config.height * CELLS_PER_METER)),
@@ -2009,9 +2082,7 @@
         const occupiedColumns = [];
         columnsByLayer.forEach((entry) => {
           if (!entry.heightCells || !entry.colorByColumn.size) return;
-          entry.colorByColumn.forEach((_, columnIndex) => {
-            occupiedColumns.push(columnIndex);
-          });
+          entry.colorByColumn.forEach((_, columnIndex) => occupiedColumns.push(columnIndex));
         });
 
         const minOccupiedColumn = occupiedColumns.length ? Math.min(...occupiedColumns) : 0;
@@ -2027,18 +2098,18 @@
         }, 0);
         const totalRows = maxTopCells - minBaseCells;
         if (!totalColumns || !totalRows || !columnsByLayer.some((entry) => entry.heightCells > 0 && entry.colorByColumn.size > 0)) {
-          ui.viewFrontCanvas.classList.add("hidden");
-          ui.viewFrontEmpty.classList.remove("hidden");
-          ui.viewFrontEmpty.textContent = "Set layer heights in Edit Layers to build the front view";
+          canvas.classList.add("hidden");
+          emptyState.classList.remove("hidden");
+          emptyState.textContent = "Set layer heights in Edit Layers to build this view";
           return;
         }
 
-        ui.viewFrontCanvas.classList.remove("hidden");
-        ui.viewFrontEmpty.classList.add("hidden");
-        const frontCtx = ui.viewFrontCanvas.getContext("2d");
-        resizeViewPaneCanvas(ui.viewFrontCanvas, frontCtx);
-        const surfaceWidth = ui.viewFrontCanvas.clientWidth;
-        const surfaceHeight = ui.viewFrontCanvas.clientHeight;
+        canvas.classList.remove("hidden");
+        emptyState.classList.add("hidden");
+        const context = canvas.getContext("2d");
+        resizeViewPaneCanvas(canvas, context);
+        const surfaceWidth = canvas.clientWidth;
+        const surfaceHeight = canvas.clientHeight;
         const padding = 18;
         const cellPixelSize = Math.max(1, Math.floor(Math.min((surfaceWidth - padding * 2) / totalColumns, (surfaceHeight - padding * 2) / totalRows)));
         const drawWidth = totalColumns * cellPixelSize;
@@ -2047,15 +2118,15 @@
         const offsetY = Math.floor((surfaceHeight - drawHeight) / 2);
         const zeroLineY = offsetY + (maxTopCells - 0) * cellPixelSize + 0.5;
 
-        frontCtx.clearRect(0, 0, surfaceWidth, surfaceHeight);
-        frontCtx.fillStyle = getCssVar("--surface");
-        frontCtx.fillRect(0, 0, surfaceWidth, surfaceHeight);
+        context.clearRect(0, 0, surfaceWidth, surfaceHeight);
+        context.fillStyle = getCssVar("--surface");
+        context.fillRect(0, 0, surfaceWidth, surfaceHeight);
 
         const grid = Array.from({ length: totalRows }, () => Array(totalColumns).fill(null));
         for (const entry of columnsByLayer) {
           if (!entry.heightCells || !entry.colorByColumn.size) continue;
           entry.colorByColumn.forEach((column, columnIndex) => {
-            const projectedColumnIndex = maxOccupiedColumn - columnIndex;
+            const projectedColumnIndex = directionConfig.mirrorColumns ? maxOccupiedColumn - columnIndex : columnIndex - minOccupiedColumn;
             for (let z = entry.baseCells; z < entry.baseCells + entry.heightCells; z += 1) {
               if (z < minBaseCells || z >= maxTopCells) continue;
               const rowIndex = totalRows - 1 - (z - minBaseCells);
@@ -2069,7 +2140,7 @@
               };
               if (
                 !existing ||
-                candidate.depth < existing.depth ||
+                (directionConfig.frontBoundary === "min" ? candidate.depth < existing.depth : candidate.depth > existing.depth) ||
                 (candidate.depth === existing.depth && candidate.orderIndex < existing.orderIndex)
               ) {
                 grid[rowIndex][projectedColumnIndex] = candidate;
@@ -2078,14 +2149,19 @@
           });
         }
 
-        let nearestVisibleDepth = Infinity;
-        let farthestVisibleDepth = -Infinity;
+        let nearestVisibleDepth = directionConfig.frontBoundary === "min" ? Infinity : -Infinity;
+        let farthestVisibleDepth = directionConfig.frontBoundary === "min" ? -Infinity : Infinity;
         for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
           for (let columnIndex = 0; columnIndex < totalColumns; columnIndex += 1) {
             const cell = grid[rowIndex][columnIndex];
             if (!cell) continue;
-            nearestVisibleDepth = Math.min(nearestVisibleDepth, cell.depth);
-            farthestVisibleDepth = Math.max(farthestVisibleDepth, cell.depth);
+            if (directionConfig.frontBoundary === "min") {
+              nearestVisibleDepth = Math.min(nearestVisibleDepth, cell.depth);
+              farthestVisibleDepth = Math.max(farthestVisibleDepth, cell.depth);
+            } else {
+              nearestVisibleDepth = Math.max(nearestVisibleDepth, cell.depth);
+              farthestVisibleDepth = Math.min(farthestVisibleDepth, cell.depth);
+            }
           }
         }
 
@@ -2093,25 +2169,34 @@
           for (let columnIndex = 0; columnIndex < totalColumns; columnIndex += 1) {
             const cell = grid[rowIndex][columnIndex];
             if (!cell) continue;
-            frontCtx.fillStyle = cell.isCut
-              ? hexToRgba("#000000", cell.opacity)
-              : hexToRgba(applyFrontDepthShading(cell.color, cell.depth, nearestVisibleDepth, farthestVisibleDepth), cell.opacity);
-            frontCtx.fillRect(offsetX + columnIndex * cellPixelSize, offsetY + rowIndex * cellPixelSize, cellPixelSize, cellPixelSize);
+            const shadedColor = directionConfig.frontBoundary === "min"
+              ? applyViewDepthShading(cell.color, cell.depth, nearestVisibleDepth, farthestVisibleDepth)
+              : applyViewDepthShading(cell.color, -cell.depth, -nearestVisibleDepth, -farthestVisibleDepth);
+            context.fillStyle = cell.isCut
+              ? hexToRgba(getCssVar("--text"), cell.opacity)
+              : hexToRgba(shadedColor, cell.opacity);
+            context.fillRect(offsetX + columnIndex * cellPixelSize, offsetY + rowIndex * cellPixelSize, cellPixelSize, cellPixelSize);
           }
         }
 
         if (zeroLineY < surfaceHeight) {
-          frontCtx.fillStyle = "rgba(0, 0, 0, 0.3)";
-          frontCtx.fillRect(0, Math.max(0, zeroLineY), surfaceWidth, surfaceHeight - Math.max(0, zeroLineY));
+          context.fillStyle = "rgba(0, 0, 0, 0.3)";
+          context.fillRect(0, Math.max(0, zeroLineY), surfaceWidth, surfaceHeight - Math.max(0, zeroLineY));
         }
 
-        frontCtx.strokeStyle = getCssVar("--text");
-        frontCtx.lineWidth = 2.5;
-        frontCtx.beginPath();
-        frontCtx.moveTo(0, zeroLineY);
-        frontCtx.lineTo(surfaceWidth, zeroLineY);
-        frontCtx.stroke();
+        context.strokeStyle = getCssVar("--text");
+        context.lineWidth = 2.5;
+        context.beginPath();
+        context.moveTo(0, zeroLineY);
+        context.lineTo(surfaceWidth, zeroLineY);
+        context.stroke();
+      }
 
+      function renderViewOutputs() {
+        renderDirectionalViewOutput(ui.viewFrontCanvas, ui.viewFrontEmpty, "topToBottom", "Top to Bottom view placeholder");
+        renderDirectionalViewOutput(ui.viewBackCanvas, ui.viewBackEmpty, "bottomToTop", "Bottom to Top view placeholder");
+        renderDirectionalViewOutput(ui.viewLeftCanvas, ui.viewLeftEmpty, "leftToRight", "Left to Right view placeholder");
+        renderDirectionalViewOutput(ui.viewRightCanvas, ui.viewRightEmpty, "rightToLeft", "Right to Left view placeholder");
       }
 
       function closeViewEditModal() {
@@ -2944,7 +3029,7 @@
           ui.overlayCanvas.style.zIndex = "4";
           ui.brushWidth.value = cellsToCentimeters(state.brush.width);
           ui.brushHeight.value = cellsToCentimeters(state.brush.height);
-          renderFrontViewOutput();
+          renderViewOutputs();
           state.renderState.uiDirty = false;
         }
 
@@ -2960,7 +3045,7 @@
 
         if (state.renderState.contentDirty) {
           drawContentScene();
-          renderFrontViewOutput();
+          renderViewOutputs();
           state.renderState.contentDirty = false;
         }
 
