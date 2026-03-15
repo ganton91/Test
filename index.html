@@ -2796,17 +2796,17 @@
 
       function beginSelection(clientX, clientY) {
         const pointer = worldFromClient(clientX, clientY);
-        const scene = topSceneAt(pointer.worldX, pointer.worldY);
-        if (scene) {
-          setActiveSceneById(scene.id);
-          setStatus(scene.locked ? "Locked scene selected." : "Transform active on selected scene.");
-          render({ ui: true, overlay: true });
-          return;
-        }
         const layer = topPaintedLayerAt(pointer.worldX, pointer.worldY);
         if (layer) {
           setActiveLayerById(layer.id);
           setStatus("Brush active on selected layer.");
+          render({ ui: true, overlay: true });
+          return;
+        }
+        const scene = topSceneAt(pointer.worldX, pointer.worldY);
+        if (scene) {
+          setActiveSceneById(scene.id);
+          setStatus(scene.locked ? "Locked scene selected." : "Transform active on selected scene.");
           render({ ui: true, overlay: true });
           return;
         }
