@@ -309,6 +309,7 @@
 
       .panel-section.collapsed .scene-list,
       .panel-section.collapsed .measurement-list,
+      .panel-section.collapsed .view-list,
       .panel-section.collapsed .layer-list,
       .panel-section.collapsed .empty-state {
         display: none;
@@ -320,6 +321,7 @@
 
       .scene-list,
       .measurement-list,
+      .view-list,
       .layer-list {
         display: flex;
         flex-direction: column;
@@ -354,6 +356,11 @@
       }
 
       .scene-card {
+        grid-template-columns: 16px minmax(0, 1fr);
+        align-items: start;
+      }
+
+      .view-card {
         grid-template-columns: 16px minmax(0, 1fr);
         align-items: start;
       }
@@ -492,6 +499,15 @@
       }
 
       .scene-card .layer-actions .layer-icon {
+        width: auto;
+        min-width: 0;
+        height: 24px;
+        padding: 0 8px;
+        border-radius: 8px;
+        font-size: 11px;
+      }
+
+      .view-card .layer-actions .layer-icon {
         width: auto;
         min-width: 0;
         height: 24px;
@@ -1131,6 +1147,18 @@
               </div>
               <div class="measurement-list" id="measurementList"></div>
             </div>
+            <div class="panel-section" id="viewSection">
+              <div class="section-header">
+                <div class="section-header-left">
+                  <button class="section-toggle" id="viewSectionToggle" type="button" aria-expanded="true">
+                    <span class="section-toggle-arrow" aria-hidden="true"></span>
+                    <span class="section-header-title">Views</span>
+                  </button>
+                </div>
+                <button class="section-header-action" id="addViewButton" aria-label="Add view"></button>
+              </div>
+              <div class="view-list" id="viewList"></div>
+            </div>
           </div>
         </aside>
         <input id="sceneImportInput" type="file" accept="image/*" hidden />
@@ -1297,9 +1325,11 @@
         sceneSection: document.getElementById("sceneSection"),
         layerSection: document.getElementById("layerSection"),
         measurementSection: document.getElementById("measurementSection"),
+        viewSection: document.getElementById("viewSection"),
         sceneSectionToggle: document.getElementById("sceneSectionToggle"),
         layerSectionToggle: document.getElementById("layerSectionToggle"),
         measurementSectionToggle: document.getElementById("measurementSectionToggle"),
+        viewSectionToggle: document.getElementById("viewSectionToggle"),
         colorPanel: document.getElementById("colorPanel"),
         colorPanelToggle: document.getElementById("colorPanelToggle"),
         brushPanelToggle: document.getElementById("brushPanelToggle"),
@@ -1310,6 +1340,8 @@
         addLayerButton: document.getElementById("addLayerButton"),
         measurementList: document.getElementById("measurementList"),
         addMeasurementButton: document.getElementById("addMeasurementButton"),
+        viewList: document.getElementById("viewList"),
+        addViewButton: document.getElementById("addViewButton"),
         settingsButton: document.getElementById("settingsButton"),
         settingsMenu: document.getElementById("settingsMenu"),
         sceneScaleModal: document.getElementById("sceneScaleModal"),
@@ -1383,6 +1415,12 @@
         editingMeasurementId: null,
         dragMeasurementId: null,
         measurementSectionCollapsed: false,
+        nextViewNumber: 1,
+        views: [],
+        activeViewId: null,
+        editingViewId: null,
+        dragViewId: null,
+        viewSectionCollapsed: false,
         colorPanelCollapsed: false,
         brushPanelCollapsed: false,
         measurementDraft: null,
@@ -1435,6 +1473,17 @@
         };
       }
 
+      function createView(name) {
+        return {
+          id: "view-" + Math.random().toString(36).slice(2, 10),
+          name,
+          visible: true,
+          opacity: 1,
+          pending: true,
+          bounds: null,
+        };
+      }
+
       function measurementAnnotationColor(entry, measurement) {
         return (entry && entry.color) || (measurement && measurement.defaultColor) || state.color.active;
       }
@@ -1476,6 +1525,10 @@
 
       function activeMeasurement() {
         return state.measurements.find((measurement) => measurement.id === state.activeMeasurementId) || null;
+      }
+
+      function activeView() {
+        return state.views.find((view) => view.id === state.activeViewId) || null;
       }
 
       function getTileCoords(cellX, cellY) {
@@ -1579,6 +1632,7 @@
         state.activeLayerId = layer.id;
         state.activeSceneId = null;
         state.activeMeasurementId = null;
+        state.activeViewId = null;
         state.activeTool = "brush";
         return true;
       }
@@ -1590,6 +1644,7 @@
         state.activeSceneId = scene.id;
         state.activeLayerId = null;
         state.activeMeasurementId = null;
+        state.activeViewId = null;
         state.color.eyedropper = false;
         state.activeTool = "transform";
         return true;
@@ -1603,8 +1658,23 @@
         state.activeMeasurementId = measurement.id;
         state.activeLayerId = null;
         state.activeSceneId = null;
+        state.activeViewId = null;
         state.color.eyedropper = false;
         state.activeTool = "measure";
+        return true;
+      }
+
+      function setActiveViewById(viewId, options = {}) {
+        const view = state.views.find((entry) => entry.id === viewId);
+        if (!view) return false;
+        cancelSceneCalibration();
+        cancelMeasurementDraft();
+        state.activeViewId = view.id;
+        state.activeLayerId = null;
+        state.activeSceneId = null;
+        state.activeMeasurementId = null;
+        state.color.eyedropper = false;
+        state.activeTool = options.drawing ? "viewbox" : "view";
         return true;
       }
 
@@ -1614,18 +1684,21 @@
         state.activeLayerId = null;
         state.activeSceneId = null;
         state.activeMeasurementId = null;
+        state.activeViewId = null;
         state.editingLayerId = null;
         state.editingSceneId = null;
         state.editingMeasurementId = null;
+        state.editingViewId = null;
         state.color.eyedropper = false;
         state.activeTool = "select";
       }
 
       function toggleLayerActivation(layerId) {
-        if (state.activeLayerId === layerId && !state.activeSceneId && !state.activeMeasurementId) {
+        if (state.activeLayerId === layerId && !state.activeSceneId && !state.activeMeasurementId && !state.activeViewId) {
           state.editingLayerId = null;
           state.editingSceneId = null;
           state.editingMeasurementId = null;
+          state.editingViewId = null;
           clearActiveTarget();
           setStatus("Selection tool active.");
           render({ ui: true, overlay: true });
@@ -1635,6 +1708,7 @@
           state.editingLayerId = null;
           state.editingSceneId = null;
           state.editingMeasurementId = null;
+          state.editingViewId = null;
           setStatus("Brush active on selected layer.");
           render({ ui: true, overlay: true });
         }
@@ -1652,10 +1726,11 @@
       }
 
       function toggleSceneActivation(sceneId) {
-        if (state.activeSceneId === sceneId && !state.activeLayerId && !state.activeMeasurementId) {
+        if (state.activeSceneId === sceneId && !state.activeLayerId && !state.activeMeasurementId && !state.activeViewId) {
           state.editingSceneId = null;
           state.editingLayerId = null;
           state.editingMeasurementId = null;
+          state.editingViewId = null;
           clearActiveTarget();
           setStatus("Selection tool active.");
           render({ ui: true, overlay: true });
@@ -1665,16 +1740,18 @@
           state.editingSceneId = null;
           state.editingLayerId = null;
           state.editingMeasurementId = null;
+          state.editingViewId = null;
           setStatus("Transform active on selected scene.");
           render({ ui: true, overlay: true });
         }
       }
 
       function toggleMeasurementActivation(measurementId) {
-        if (state.activeMeasurementId === measurementId && !state.activeLayerId && !state.activeSceneId) {
+        if (state.activeMeasurementId === measurementId && !state.activeLayerId && !state.activeSceneId && !state.activeViewId) {
           state.editingMeasurementId = null;
           state.editingLayerId = null;
           state.editingSceneId = null;
+          state.editingViewId = null;
           clearActiveTarget();
           setStatus("Selection tool active.");
           render({ ui: true, overlay: true });
@@ -1684,6 +1761,7 @@
           state.editingMeasurementId = null;
           state.editingLayerId = null;
           state.editingSceneId = null;
+          state.editingViewId = null;
           setStatus("Measurement active.");
           render({ ui: true, overlay: true });
         }
@@ -1705,6 +1783,7 @@
         state.editingMeasurementId = measurementId;
         state.editingLayerId = null;
         state.editingSceneId = null;
+        state.editingViewId = null;
         render({ ui: true });
       }
 
@@ -1713,8 +1792,21 @@
         render({ ui: true });
       }
 
+      function beginRenameView(viewId) {
+        state.editingViewId = viewId;
+        state.editingLayerId = null;
+        state.editingSceneId = null;
+        state.editingMeasurementId = null;
+        render({ ui: true });
+      }
+
+      function endRenameView() {
+        state.editingViewId = null;
+        render({ ui: true });
+      }
+
       function isEditingName() {
-        return !!(state.editingLayerId || state.editingSceneId || state.editingMeasurementId);
+        return !!(state.editingLayerId || state.editingSceneId || state.editingMeasurementId || state.editingViewId);
       }
 
       function cancelRenameMode() {
@@ -1722,6 +1814,7 @@
         state.editingLayerId = null;
         state.editingSceneId = null;
         state.editingMeasurementId = null;
+        state.editingViewId = null;
         render({ ui: true });
         return true;
       }
@@ -1796,6 +1889,21 @@
         return hadDraft;
       }
 
+      function cancelPendingView() {
+        const view = activeView();
+        if (!view || !view.pending) return false;
+        const index = state.views.findIndex((entry) => entry.id === view.id);
+        if (index === -1) return false;
+        state.views.splice(index, 1);
+        if (state.interaction && String(state.interaction.type || "").startsWith("viewbox-")) {
+          state.interaction = null;
+        }
+        state.activeViewId = null;
+        state.editingViewId = null;
+        state.activeTool = "select";
+        return true;
+      }
+
       function startSceneCalibration(sceneId) {
         if (!setActiveSceneById(sceneId)) return;
         state.sceneCalibration = {
@@ -1807,6 +1915,34 @@
         }
         setStatus("Pick the first point on the active scene.");
         render({ ui: true, overlay: true });
+      }
+
+      function toggleViewActivation(viewId) {
+        const view = state.views.find((entry) => entry.id === viewId);
+        if (view && view.pending && state.activeViewId === viewId) {
+          cancelPendingView();
+          setStatus("Empty view cancelled.");
+          render({ ui: true, overlay: true });
+          return;
+        }
+        if (state.activeViewId === viewId && !state.activeLayerId && !state.activeSceneId && !state.activeMeasurementId) {
+          state.editingViewId = null;
+          state.editingLayerId = null;
+          state.editingSceneId = null;
+          state.editingMeasurementId = null;
+          clearActiveTarget();
+          setStatus("Selection tool active.");
+          render({ ui: true, overlay: true });
+          return;
+        }
+        if (setActiveViewById(viewId)) {
+          state.editingViewId = null;
+          state.editingLayerId = null;
+          state.editingSceneId = null;
+          state.editingMeasurementId = null;
+          setStatus("View active.");
+          render({ ui: true, overlay: true });
+        }
       }
 
       function applySceneCalibration() {
@@ -2001,11 +2137,35 @@
         return null;
       }
 
+      function pointInViewBounds(bounds, worldX, worldY) {
+        return worldX >= bounds.minX && worldX <= bounds.maxX && worldY >= bounds.minY && worldY <= bounds.maxY;
+      }
+
+      function viewTransformHit(view, worldX, worldY) {
+        if (!view || !view.bounds || view.pending) return null;
+        const handles = viewHandleWorldPositions(view);
+        const radius = 10 / state.viewport.zoom;
+        for (const key of ["nw", "ne", "se", "sw"]) {
+          const handle = handles[key];
+          if (Math.hypot(worldX - handle.x, worldY - handle.y) <= radius) {
+            return { type: "resize", handle: key };
+          }
+        }
+        if (pointInViewBounds(view.bounds, worldX, worldY)) return { type: "move", handle: null };
+        return null;
+      }
+
       function cursorForSceneHit(hit) {
         if (!hit) return "default";
         if (hit.type === "rotate") return "grab";
         if (hit.type === "move") return "move";
         return "nwse-resize";
+      }
+
+      function cursorForViewHit(hit) {
+        if (!hit) return "default";
+        if (hit.type === "move") return "move";
+        return hit.handle === "ne" || hit.handle === "sw" ? "nesw-resize" : "nwse-resize";
       }
 
       function setStatus(message) {
@@ -2097,6 +2257,7 @@
           renderSelectionPicker();
           renderScenes();
           renderMeasurements();
+          renderViews();
           renderLayers();
           ui.staticCanvas.style.zIndex = state.gridPosition === "above" ? "3" : "0";
           ui.sceneCanvas.style.zIndex = "1";
@@ -2169,6 +2330,10 @@
               : "crosshair"
             : state.activeTool === "measure"
             ? "crosshair"
+            : state.activeTool === "viewbox"
+            ? "crosshair"
+            : state.activeTool === "view"
+            ? "move"
             : state.activeTool === "transform"
             ? "move"
             : "default";
@@ -2188,9 +2353,10 @@
         ui.selectionPicker.appendChild(title);
 
         const kinds = [
-          { key: "measurement", label: "Measurements" },
-          { key: "layer", label: "Layers" },
           { key: "scene", label: "Scenes" },
+          { key: "layer", label: "Layers" },
+          { key: "measurement", label: "Measurements" },
+          { key: "view", label: "Views" },
         ];
 
         kinds.forEach((group) => {
@@ -2246,14 +2412,159 @@
       function renderSectionState() {
         ui.sceneSection.classList.toggle("collapsed", state.sceneSectionCollapsed);
         ui.measurementSection.classList.toggle("collapsed", state.measurementSectionCollapsed);
+        ui.viewSection.classList.toggle("collapsed", state.viewSectionCollapsed);
         ui.layerSection.classList.toggle("collapsed", state.layerSectionCollapsed);
         ui.colorPanel.classList.toggle("collapsed", state.colorPanelCollapsed);
         ui.brushPanel.classList.toggle("collapsed", state.brushPanelCollapsed);
         ui.sceneSectionToggle.setAttribute("aria-expanded", String(!state.sceneSectionCollapsed));
         ui.measurementSectionToggle.setAttribute("aria-expanded", String(!state.measurementSectionCollapsed));
+        ui.viewSectionToggle.setAttribute("aria-expanded", String(!state.viewSectionCollapsed));
         ui.layerSectionToggle.setAttribute("aria-expanded", String(!state.layerSectionCollapsed));
         ui.colorPanelToggle.setAttribute("aria-expanded", String(!state.colorPanelCollapsed));
         ui.brushPanelToggle.setAttribute("aria-expanded", String(!state.brushPanelCollapsed));
+      }
+
+      function renderViews() {
+        ui.viewList.innerHTML = "";
+        state.views.forEach((view) => {
+          const card = document.createElement("div");
+          card.className = "layer-card view-card" + (view.id === state.activeViewId ? " active" : "");
+          if (view.id !== state.activeViewId) card.classList.add("inactive-collapsed");
+          if (view.id === state.dragViewId) card.classList.add("dragging");
+
+          const grip = document.createElement("div");
+          grip.className = "drag-handle";
+          grip.textContent = "⋮⋮";
+          grip.draggable = true;
+          grip.addEventListener("dragstart", (event) => {
+            state.dragViewId = view.id;
+            event.dataTransfer.effectAllowed = "move";
+            setCardDragPreview(event, card);
+            render({ ui: true });
+          });
+          grip.addEventListener("dragend", () => {
+            state.dragViewId = null;
+            render({ ui: true });
+          });
+
+          const main = document.createElement("div");
+          main.className = "layer-main";
+          main.addEventListener("click", () => {
+            toggleViewActivation(view.id);
+          });
+
+          let nameField;
+          if (state.editingViewId === view.id) {
+            const input = document.createElement("input");
+            input.className = "layer-name";
+            input.value = view.name;
+            input.size = Math.max(1, view.name.length);
+            input.addEventListener("click", (event) => event.stopPropagation());
+            input.addEventListener("pointerdown", (event) => event.stopPropagation());
+            input.addEventListener("input", () => {
+              view.name = input.value || view.name;
+              input.size = Math.max(1, input.value.length);
+            });
+            input.addEventListener("blur", endRenameView);
+            input.addEventListener("keydown", (event) => {
+              if (event.key === "Enter" || event.key === "Escape") input.blur();
+            });
+            queueMicrotask(() => {
+              input.focus();
+              input.select();
+            });
+            nameField = input;
+          } else {
+            const label = document.createElement("div");
+            label.className = "layer-name-label";
+            label.textContent = view.name;
+            label.addEventListener("click", (event) => {
+              if (state.activeViewId !== view.id || state.activeLayerId || state.activeSceneId || state.activeMeasurementId) return;
+              event.stopPropagation();
+              beginRenameView(view.id);
+            });
+            nameField = label;
+          }
+
+          const header = document.createElement("div");
+          header.className = "card-header";
+
+          const titleWrap = document.createElement("div");
+          titleWrap.className = "card-header-title";
+          titleWrap.appendChild(nameField);
+
+          const inlineControls = document.createElement("div");
+          inlineControls.className = "inline-controls";
+
+          const visibilityInline = document.createElement("button");
+          visibilityInline.className = "inline-icon visibility-dot";
+          visibilityInline.textContent = view.visible ? "●" : "○";
+          visibilityInline.title = view.visible ? "Hide view box" : "Show view box";
+          visibilityInline.addEventListener("click", (event) => {
+            event.stopPropagation();
+            view.visible = !view.visible;
+            render({ ui: true, overlay: true });
+          });
+          inlineControls.appendChild(visibilityInline);
+
+          const removeInline = document.createElement("button");
+          removeInline.className = "inline-icon delete-mark";
+          removeInline.textContent = "×";
+          removeInline.title = "Delete view";
+          removeInline.addEventListener("click", (event) => {
+            event.stopPropagation();
+            if (view.pending && state.activeViewId === view.id) {
+              cancelPendingView();
+              render({ ui: true, overlay: true });
+              return;
+            }
+            const index = state.views.findIndex((entry) => entry.id === view.id);
+            if (index === -1) return;
+            state.views.splice(index, 1);
+            if (state.activeViewId === view.id) clearActiveTarget();
+            render({ ui: true, overlay: true });
+          });
+          inlineControls.appendChild(removeInline);
+
+          header.appendChild(titleWrap);
+          header.appendChild(inlineControls);
+          main.appendChild(header);
+
+          const actions = document.createElement("div");
+          actions.className = "layer-actions";
+          const editButton = document.createElement("button");
+          editButton.className = "layer-icon";
+          editButton.textContent = "Edit Layers";
+          editButton.title = "Edit view";
+          editButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            setStatus("View edit modal comes next.");
+            render({ overlay: true });
+          });
+          actions.appendChild(editButton);
+          main.appendChild(actions);
+
+          card.appendChild(grip);
+          card.appendChild(main);
+
+          card.addEventListener("dragover", (event) => {
+            if (!state.dragViewId || state.dragViewId === view.id) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+          });
+          card.addEventListener("drop", (event) => {
+            event.preventDefault();
+            if (!state.dragViewId || state.dragViewId === view.id) return;
+            const from = state.views.findIndex((entry) => entry.id === state.dragViewId);
+            const to = state.views.findIndex((entry) => entry.id === view.id);
+            const [moved] = state.views.splice(from, 1);
+            state.views.splice(to, 0, moved);
+            state.dragViewId = null;
+            render({ ui: true, overlay: true });
+          });
+
+          ui.viewList.appendChild(card);
+        });
       }
 
       function renderMeasurements() {
@@ -3056,6 +3367,55 @@
         };
       }
 
+      function viewBoxBoundaryFromWorld(value) {
+        return Math.round(value / CELL_SIZE) * CELL_SIZE;
+      }
+
+      function normalizeViewBounds(a, b) {
+        return {
+          minX: Math.min(a.x, b.x),
+          minY: Math.min(a.y, b.y),
+          maxX: Math.max(a.x, b.x),
+          maxY: Math.max(a.y, b.y),
+        };
+      }
+
+      function viewBoundsScreenRect(bounds) {
+        const topLeft = worldToScreen(bounds.minX, bounds.minY);
+        const bottomRight = worldToScreen(bounds.maxX, bounds.maxY);
+        return {
+          x: Math.min(topLeft.x, bottomRight.x),
+          y: Math.min(topLeft.y, bottomRight.y),
+          width: Math.abs(bottomRight.x - topLeft.x),
+          height: Math.abs(bottomRight.y - topLeft.y),
+        };
+      }
+
+      function viewLabelScreenRect(view) {
+        if (!view || !view.bounds) return null;
+        const rect = viewBoundsScreenRect(view.bounds);
+        overlayCtx.save();
+        overlayCtx.font = "600 11px IBM Plex Sans, Segoe UI, sans-serif";
+        const textWidth = Math.ceil(overlayCtx.measureText(view.name).width);
+        overlayCtx.restore();
+        return {
+          left: rect.x + 2,
+          top: rect.y - 20,
+          right: rect.x + 10 + textWidth,
+          bottom: rect.y - 2,
+        };
+      }
+
+      function viewHandleWorldPositions(view) {
+        if (!view || !view.bounds) return null;
+        return {
+          nw: { x: view.bounds.minX, y: view.bounds.minY },
+          ne: { x: view.bounds.maxX, y: view.bounds.minY },
+          se: { x: view.bounds.maxX, y: view.bounds.maxY },
+          sw: { x: view.bounds.minX, y: view.bounds.maxY },
+        };
+      }
+
       function worldRectCorners(rect) {
         return [
           { x: rect.left, y: rect.top },
@@ -3166,13 +3526,60 @@
       }
 
       function selectionCandidateLabel(kind, entity) {
+        if (kind === "view") return "View: " + entity.name;
         if (kind === "measurement") return "Measurement: " + entity.name;
         if (kind === "layer") return "Layer: " + entity.name;
         return "Scene: " + entity.name;
       }
 
+      function viewMatchesRect(view, rect, containment) {
+        if (!view.visible || !view.bounds || view.pending) return false;
+        const viewRect = {
+          left: view.bounds.minX,
+          top: view.bounds.minY,
+          right: view.bounds.maxX,
+          bottom: view.bounds.maxY,
+        };
+        return containment ? rectContainsRect(rect, viewRect) : rectsIntersect(viewRect, rect);
+      }
+
+      function viewHitAt(clientX, clientY, worldX, worldY) {
+        for (const view of state.views) {
+          if (!view.visible || !view.bounds || view.pending) continue;
+          const labelRect = viewLabelScreenRect(view);
+          if (
+            labelRect &&
+            clientX >= labelRect.left &&
+            clientX <= labelRect.right &&
+            clientY >= labelRect.top &&
+            clientY <= labelRect.bottom
+          ) {
+            return view;
+          }
+          const bounds = view.bounds;
+          const tolerance = Math.max(CELL_SIZE * 0.18, 10 / state.viewport.zoom);
+          const onBorder =
+            distanceToSegment(worldX, worldY, { x: bounds.minX, y: bounds.minY }, { x: bounds.maxX, y: bounds.minY }) <= tolerance ||
+            distanceToSegment(worldX, worldY, { x: bounds.maxX, y: bounds.minY }, { x: bounds.maxX, y: bounds.maxY }) <= tolerance ||
+            distanceToSegment(worldX, worldY, { x: bounds.maxX, y: bounds.maxY }, { x: bounds.minX, y: bounds.maxY }) <= tolerance ||
+            distanceToSegment(worldX, worldY, { x: bounds.minX, y: bounds.maxY }, { x: bounds.minX, y: bounds.minY }) <= tolerance;
+          if (onBorder) return view;
+        }
+        return null;
+      }
+
       function collectSelectionCandidates(rect, containment) {
         const candidates = [];
+
+        state.views.forEach((view) => {
+          if (!viewMatchesRect(view, rect, containment)) return;
+          candidates.push({
+            kind: "view",
+            id: view.id,
+            name: view.name,
+            label: selectionCandidateLabel("view", view),
+          });
+        });
 
         state.measurements.forEach((measurement) => {
           if (!measurement.visible || measurement.opacity <= 0) return;
@@ -3227,6 +3634,11 @@
       function activateSelectionCandidate(candidate) {
         dismissSelectionPicker();
         if (!candidate) return;
+        if (candidate.kind === "view") {
+          setActiveViewById(candidate.id);
+          setStatus("View active.");
+          return;
+        }
         if (candidate.kind === "measurement") {
           setActiveMeasurementById(candidate.id);
           setStatus("Measurement active.");
@@ -3529,6 +3941,49 @@
           }
         }
 
+        state.views
+          .slice()
+          .reverse()
+          .forEach((view) => {
+            if (!view.visible || !view.bounds) return;
+            const rect = viewBoundsScreenRect(view.bounds);
+            const handles = viewHandleWorldPositions(view);
+            overlayCtx.save();
+            overlayCtx.strokeStyle = view.id === state.activeViewId ? getCssVar("--crosshair") : getCssVar("--selection");
+            overlayCtx.lineWidth = view.id === state.activeViewId ? 1.5 : 1;
+            overlayCtx.setLineDash(view.id === state.activeViewId ? [8, 4] : [5, 4]);
+            overlayCtx.strokeRect(rect.x + 0.5, rect.y + 0.5, Math.max(0, rect.width - 1), Math.max(0, rect.height - 1));
+            overlayCtx.setLineDash([]);
+            if (view.id === state.activeViewId) {
+              Object.values(handles).forEach((handle) => {
+                const screenHandle = worldToScreen(handle.x, handle.y);
+                overlayCtx.beginPath();
+                overlayCtx.fillStyle = getCssVar("--bg-strong");
+                overlayCtx.strokeStyle = getCssVar("--crosshair");
+                overlayCtx.arc(screenHandle.x, screenHandle.y, 4, 0, Math.PI * 2);
+                overlayCtx.fill();
+                overlayCtx.stroke();
+              });
+            }
+            overlayCtx.font = "600 11px IBM Plex Sans, Segoe UI, sans-serif";
+            overlayCtx.textAlign = "left";
+            overlayCtx.textBaseline = "bottom";
+            overlayCtx.fillStyle = view.id === state.activeViewId ? getCssVar("--crosshair") : getCssVar("--selection");
+            overlayCtx.fillText(view.name, rect.x + 6, rect.y - 6);
+            overlayCtx.restore();
+          });
+
+        if (state.interaction && state.interaction.type === "viewbox-draw") {
+          const draftBounds = normalizeViewBounds(state.interaction.start, state.interaction.current);
+          const rect = viewBoundsScreenRect(draftBounds);
+          overlayCtx.save();
+          overlayCtx.strokeStyle = getCssVar("--crosshair");
+          overlayCtx.lineWidth = 1.5;
+          overlayCtx.setLineDash([8, 4]);
+          overlayCtx.strokeRect(rect.x + 0.5, rect.y + 0.5, Math.max(0, rect.width - 1), Math.max(0, rect.height - 1));
+          overlayCtx.restore();
+        }
+
         if (state.interaction && state.interaction.type === "selection-marquee" && state.interaction.moved) {
           const rect = ui.overlayCanvas.getBoundingClientRect();
           const left = Math.min(state.interaction.startClientX, state.interaction.currentClientX) - rect.left;
@@ -3805,6 +4260,19 @@
         render({ ui: true, overlay: true });
       }
 
+      function addView() {
+        if (activeView() && activeView().pending) {
+          setStatus("Finish the current view box or press Escape to cancel.");
+          render({ overlay: true });
+          return;
+        }
+        const view = createView("View " + state.nextViewNumber++);
+        state.views.unshift(view);
+        setActiveViewById(view.id, { drawing: true });
+        setStatus("Drag on the canvas to define the new view box.");
+        render({ ui: true, overlay: true });
+      }
+
       function addLayer() {
         const layer = createLayer("Layer " + (state.layers.length + 1));
         state.layers.unshift(layer);
@@ -4035,6 +4503,48 @@
         render({ overlay: true });
       }
 
+      function beginViewBoxDraw(clientX, clientY) {
+        const view = activeView();
+        if (!view || !view.pending) return;
+        const pointer = worldFromClient(clientX, clientY);
+        const snapped = {
+          x: viewBoxBoundaryFromWorld(pointer.worldX),
+          y: viewBoxBoundaryFromWorld(pointer.worldY),
+        };
+        state.interaction = {
+          type: "viewbox-draw",
+          viewId: view.id,
+          start: snapped,
+          current: snapped,
+        };
+        setStatus("Drag to define the view box.");
+        render({ overlay: true });
+      }
+
+      function beginViewTransform(clientX, clientY) {
+        const view = activeView();
+        if (!view || !view.bounds || view.pending) return false;
+        const pointer = worldFromClient(clientX, clientY);
+        const hit = viewTransformHit(view, pointer.worldX, pointer.worldY);
+        if (!hit) return false;
+
+        state.interaction = {
+          type: hit.type === "move" ? "view-move" : "view-resize",
+          viewId: view.id,
+          handle: hit.handle,
+          startPointerX: viewBoxBoundaryFromWorld(pointer.worldX),
+          startPointerY: viewBoxBoundaryFromWorld(pointer.worldY),
+          startBounds: {
+            minX: view.bounds.minX,
+            minY: view.bounds.minY,
+            maxX: view.bounds.maxX,
+            maxY: view.bounds.maxY,
+          },
+        };
+        setStatus(hit.type === "move" ? "Moving active view box." : "Resizing active view box.");
+        return true;
+      }
+
       function beginSelectionGesture(clientX, clientY, mode) {
         state.interaction = {
           type: "selection-marquee",
@@ -4049,6 +4559,13 @@
 
       function beginSelection(clientX, clientY) {
         const pointer = worldFromClient(clientX, clientY);
+        const view = viewHitAt(clientX, clientY, pointer.worldX, pointer.worldY);
+        if (view) {
+          setActiveViewById(view.id);
+          setStatus("View active.");
+          render({ ui: true, overlay: true });
+          return;
+        }
         const measurement = measurementHitAt(pointer.worldX, pointer.worldY);
         if (measurement) {
           setActiveMeasurementById(measurement.id);
@@ -4144,6 +4661,10 @@
           if (!isRightClick) beginColorEyedropper(event.clientX, event.clientY);
           return;
         }
+        if (state.activeTool === "viewbox" && !isRightClick) {
+          beginViewBoxDraw(event.clientX, event.clientY);
+          return;
+        }
         if (state.sceneCalibration && !isRightClick) {
           collectSceneCalibrationPoint(event.clientX, event.clientY);
           return;
@@ -4166,7 +4687,19 @@
           else if (measurement.mode === "area") beginMeasurementArea(event.clientX, event.clientY);
           return;
         }
+        if (state.activeTool === "view" && !isRightClick) {
+          if (beginViewTransform(event.clientX, event.clientY)) {
+            return;
+          }
+          clearActiveTarget();
+          setStatus("Selection tool active.");
+          render({ ui: true, overlay: true });
+          return;
+        }
         if (state.activeTool === "select") {
+          if (!isRightClick && beginViewTransform(event.clientX, event.clientY)) {
+            return;
+          }
           beginSelectionGesture(event.clientX, event.clientY, isRightClick ? "contain" : "intersect");
           return;
         }
@@ -4188,6 +4721,9 @@
           } else if (state.activeTool === "transform" && activeScene() && !activeScene().locked) {
             const pointer = worldFromClient(event.clientX, event.clientY);
             ui.overlayCanvas.style.cursor = cursorForSceneHit(sceneTransformHit(activeScene(), pointer.worldX, pointer.worldY));
+          } else if (state.activeTool === "view" && activeView() && !activeView().pending) {
+            const pointer = worldFromClient(event.clientX, event.clientY);
+            ui.overlayCanvas.style.cursor = cursorForViewHit(viewTransformHit(activeView(), pointer.worldX, pointer.worldY));
           } else if (state.activeTool === "measure") {
             ui.overlayCanvas.style.cursor = "crosshair";
             if (
@@ -4202,6 +4738,8 @@
             }
           } else if (state.activeTool === "brush") {
             ui.overlayCanvas.style.cursor = state.color.eyedropper ? "copy" : "crosshair";
+          } else if (state.activeTool === "viewbox") {
+            ui.overlayCanvas.style.cursor = "crosshair";
           } else {
             ui.overlayCanvas.style.cursor = "default";
           }
@@ -4263,6 +4801,59 @@
             state.interaction.moved = true;
           }
           render({ overlay: true });
+          return;
+        }
+
+        if (state.interaction.type === "viewbox-draw") {
+          const pointer = worldFromClient(event.clientX, event.clientY);
+          state.interaction.current = {
+            x: viewBoxBoundaryFromWorld(pointer.worldX),
+            y: viewBoxBoundaryFromWorld(pointer.worldY),
+          };
+          render({ overlay: true });
+          return;
+        }
+
+        if (state.interaction.type === "view-move") {
+          const view = state.views.find((entry) => entry.id === state.interaction.viewId);
+          if (!view || !view.bounds) return;
+          const pointer = worldFromClient(event.clientX, event.clientY);
+          const snappedX = viewBoxBoundaryFromWorld(pointer.worldX);
+          const snappedY = viewBoxBoundaryFromWorld(pointer.worldY);
+          const deltaX = snappedX - state.interaction.startPointerX;
+          const deltaY = snappedY - state.interaction.startPointerY;
+          view.bounds = {
+            minX: state.interaction.startBounds.minX + deltaX,
+            minY: state.interaction.startBounds.minY + deltaY,
+            maxX: state.interaction.startBounds.maxX + deltaX,
+            maxY: state.interaction.startBounds.maxY + deltaY,
+          };
+          render({ ui: true, overlay: true });
+          return;
+        }
+
+        if (state.interaction.type === "view-resize") {
+          const view = state.views.find((entry) => entry.id === state.interaction.viewId);
+          if (!view || !view.bounds) return;
+          const pointer = worldFromClient(event.clientX, event.clientY);
+          const snappedX = viewBoxBoundaryFromWorld(pointer.worldX);
+          const snappedY = viewBoxBoundaryFromWorld(pointer.worldY);
+          const nextBounds = { ...state.interaction.startBounds };
+
+          if (state.interaction.handle === "nw" || state.interaction.handle === "sw") {
+            nextBounds.minX = Math.min(snappedX, state.interaction.startBounds.maxX - CELL_SIZE);
+          } else {
+            nextBounds.maxX = Math.max(snappedX, state.interaction.startBounds.minX + CELL_SIZE);
+          }
+
+          if (state.interaction.handle === "nw" || state.interaction.handle === "ne") {
+            nextBounds.minY = Math.min(snappedY, state.interaction.startBounds.maxY - CELL_SIZE);
+          } else {
+            nextBounds.maxY = Math.max(snappedY, state.interaction.startBounds.minY + CELL_SIZE);
+          }
+
+          view.bounds = nextBounds;
+          render({ ui: true, overlay: true });
           return;
         }
 
@@ -4357,6 +4948,27 @@
             setStatus("Length started. Click the second point or drag.");
           }
         }
+        if (state.interaction.type === "viewbox-draw") {
+          const view = state.views.find((entry) => entry.id === state.interaction.viewId);
+          const draftBounds = normalizeViewBounds(state.interaction.start, state.interaction.current);
+          if (view) {
+            const width = draftBounds.maxX - draftBounds.minX;
+            const height = draftBounds.maxY - draftBounds.minY;
+            if (width >= CELL_SIZE && height >= CELL_SIZE) {
+              view.bounds = draftBounds;
+              view.pending = false;
+              state.activeTool = "view";
+              setStatus("View box created.");
+              state.interaction = null;
+              render({ ui: true, overlay: true });
+              return;
+            }
+            setStatus("View box needs a larger drag.");
+          }
+        }
+        if (state.interaction.type === "view-move" || state.interaction.type === "view-resize") {
+          setStatus("View box updated.");
+        }
         if (state.interaction.sceneId) setStatus("Scene transform updated.");
         state.interaction = null;
         render({ ui: true, overlay: true });
@@ -4375,6 +4987,9 @@
       }
 
       function activateTool(tool) {
+        if (tool !== "viewbox") {
+          cancelPendingView();
+        }
         if (tool === "select") {
           clearActiveTarget();
         } else if (tool === "brush") {
@@ -4383,6 +4998,7 @@
           } else {
             state.activeSceneId = null;
             state.activeMeasurementId = null;
+            state.activeViewId = null;
             state.activeTool = "brush";
           }
         } else {
@@ -4456,6 +5072,10 @@
         state.measurementSectionCollapsed = !state.measurementSectionCollapsed;
         render({ ui: true });
       });
+      ui.viewSectionToggle.addEventListener("click", () => {
+        state.viewSectionCollapsed = !state.viewSectionCollapsed;
+        render({ ui: true });
+      });
       ui.colorPanelToggle.addEventListener("click", () => {
         state.colorPanelCollapsed = !state.colorPanelCollapsed;
         render({ ui: true });
@@ -4473,6 +5093,7 @@
         importSceneFile(file);
       });
       ui.addMeasurementButton.addEventListener("click", addMeasurement);
+      ui.addViewButton.addEventListener("click", addView);
       ui.addLayerButton.addEventListener("click", addLayer);
       ui.sceneScaleCancelButton.addEventListener("click", () => {
         closeModal(ui.sceneScaleModal);
@@ -4559,6 +5180,11 @@
         }
         if (event.key === "Escape" && dismissSelectionPicker()) {
           setStatus("Selection picker closed.");
+          render({ ui: true, overlay: true });
+          return;
+        }
+        if (event.key === "Escape" && cancelPendingView()) {
+          setStatus("Empty view cancelled.");
           render({ ui: true, overlay: true });
           return;
         }
