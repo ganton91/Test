@@ -404,6 +404,20 @@
         gap: 8px;
       }
 
+      .card-header {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .card-header-title {
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+
       .layer-name {
         width: auto;
         max-width: 100%;
@@ -432,6 +446,7 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        transform: translateY(1.5px);
       }
 
       .layer-meta {
@@ -442,6 +457,49 @@
       .layer-meta-secondary {
         font-size: 11px;
         color: var(--muted);
+      }
+
+      .inline-controls {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex: 0 0 auto;
+      }
+
+      .inline-icon {
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        line-height: 1;
+        transition: color 140ms ease, opacity 140ms ease;
+      }
+
+      .inline-icon:hover {
+        color: var(--text);
+      }
+
+      .inline-icon.visibility-dot {
+        font-size: 16px;
+      }
+
+      .inline-icon.delete-mark {
+        font-size: 16px;
+      }
+
+      .inline-icon:disabled {
+        opacity: 0.3;
+        cursor: default;
+      }
+
+      .scene-card .layer-actions .layer-icon {
+        width: auto;
+        min-width: 0;
+        height: 24px;
+        padding: 0 8px;
+        border-radius: 8px;
+        font-size: 11px;
       }
 
       .layer-actions {
@@ -585,7 +643,7 @@
 
       .floating-tools {
         position: absolute;
-        right: 18px;
+        right: 42px;
         top: 52px;
         display: flex;
         flex-direction: column;
@@ -635,7 +693,7 @@
 
       .tool-panel {
         top: 144px;
-        right: 18px;
+        right: 42px;
         width: 220px;
         padding: 12px;
         background: var(--floating-panel);
@@ -1798,6 +1856,47 @@
             nameField = label;
           }
 
+          const header = document.createElement("div");
+          header.className = "card-header";
+
+          const titleWrap = document.createElement("div");
+          titleWrap.className = "card-header-title";
+          titleWrap.appendChild(nameField);
+
+          const inlineControls = document.createElement("div");
+          inlineControls.className = "inline-controls";
+
+          const visibilityInline = document.createElement("button");
+          visibilityInline.className = "inline-icon visibility-dot";
+          visibilityInline.textContent = layer.visible ? "●" : "○";
+          visibilityInline.title = layer.visible ? "Hide layer" : "Show layer";
+          visibilityInline.addEventListener("click", (event) => {
+            event.stopPropagation();
+            layer.visible = !layer.visible;
+            render({ ui: true, content: true, overlay: true });
+          });
+          inlineControls.appendChild(visibilityInline);
+
+          const removeInline = document.createElement("button");
+          removeInline.className = "inline-icon delete-mark";
+          removeInline.textContent = "×";
+          removeInline.title = "Delete layer";
+          removeInline.disabled = state.layers.length === 1;
+          removeInline.addEventListener("click", (event) => {
+            event.stopPropagation();
+            if (state.layers.length === 1) return;
+            const index = state.layers.findIndex((entry) => entry.id === layer.id);
+            state.layers.splice(index, 1);
+            if (state.activeLayerId === layer.id) {
+              clearActiveTarget();
+            }
+            render({ ui: true, content: true, overlay: true });
+          });
+          inlineControls.appendChild(removeInline);
+
+          header.appendChild(titleWrap);
+          header.appendChild(inlineControls);
+
           const meta = document.createElement("div");
           meta.className = "layer-meta";
           meta.textContent = layer.cellCount + " cells";
@@ -1806,7 +1905,7 @@
           areaMeta.className = "layer-meta-secondary";
           areaMeta.textContent = (layer.cellCount * 0.0025).toFixed(2) + " m²";
 
-          main.appendChild(nameField);
+          main.appendChild(header);
 
           const opacityField = document.createElement("div");
           opacityField.className = "field";
@@ -1833,37 +1932,6 @@
           opacityField.appendChild(opacityLabel);
           opacityField.appendChild(opacitySlider);
 
-          const actions = document.createElement("div");
-          actions.className = "layer-actions";
-
-          const visibility = document.createElement("button");
-          visibility.className = "layer-icon";
-          visibility.textContent = layer.visible ? "◉" : "○";
-          visibility.title = layer.visible ? "Hide layer" : "Show layer";
-          visibility.addEventListener("click", (event) => {
-            event.stopPropagation();
-            layer.visible = !layer.visible;
-            render({ ui: true, content: true, overlay: true });
-          });
-          actions.appendChild(visibility);
-
-          const remove = document.createElement("button");
-          remove.className = "layer-icon";
-          remove.textContent = "×";
-          remove.title = "Delete layer";
-          remove.disabled = state.layers.length === 1;
-          remove.addEventListener("click", (event) => {
-            event.stopPropagation();
-            if (state.layers.length === 1) return;
-            const index = state.layers.findIndex((entry) => entry.id === layer.id);
-            state.layers.splice(index, 1);
-            if (state.activeLayerId === layer.id) {
-              clearActiveTarget();
-            }
-            render({ ui: true, content: true, overlay: true });
-          });
-          actions.appendChild(remove);
-
           card.addEventListener("dragover", (event) => {
             event.preventDefault();
             event.dataTransfer.dropEffect = "move";
@@ -1880,7 +1948,6 @@
           });
 
           card.appendChild(grip);
-          main.appendChild(actions);
           main.appendChild(meta);
           main.appendChild(areaMeta);
           main.appendChild(opacityField);
@@ -1957,7 +2024,48 @@
             nameField = label;
           }
 
-          main.appendChild(nameField);
+          const header = document.createElement("div");
+          header.className = "card-header";
+
+          const titleWrap = document.createElement("div");
+          titleWrap.className = "card-header-title";
+          titleWrap.appendChild(nameField);
+
+          const inlineControls = document.createElement("div");
+          inlineControls.className = "inline-controls";
+
+          const visibilityInline = document.createElement("button");
+          visibilityInline.className = "inline-icon visibility-dot";
+          visibilityInline.textContent = scene.visible ? "●" : "○";
+          visibilityInline.title = scene.visible ? "Hide scene" : "Show scene";
+          visibilityInline.addEventListener("click", (event) => {
+            event.stopPropagation();
+            scene.visible = !scene.visible;
+            render({ ui: true, scenes: true });
+          });
+          inlineControls.appendChild(visibilityInline);
+
+          const removeInline = document.createElement("button");
+          removeInline.className = "inline-icon delete-mark";
+          removeInline.textContent = "×";
+          removeInline.title = "Delete scene";
+          removeInline.addEventListener("click", (event) => {
+            event.stopPropagation();
+            const index = state.scenes.findIndex((entry) => entry.id === scene.id);
+            if (index === -1) return;
+            URL.revokeObjectURL(scene.previewUrl);
+            state.scenes.splice(index, 1);
+            if (state.activeSceneId === scene.id) {
+              clearActiveTarget();
+            }
+            render({ ui: true, scenes: true });
+          });
+          inlineControls.appendChild(removeInline);
+
+          header.appendChild(titleWrap);
+          header.appendChild(inlineControls);
+
+          main.appendChild(header);
 
           const opacityField = document.createElement("div");
           opacityField.className = "field";
@@ -1989,7 +2097,7 @@
 
           const calibrate = document.createElement("button");
           calibrate.className = "layer-icon";
-          calibrate.textContent = "↔";
+          calibrate.textContent = "Set Scale";
           calibrate.title = "Set scene scale";
           calibrate.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -1999,7 +2107,7 @@
 
           const lock = document.createElement("button");
           lock.className = "layer-icon";
-          lock.textContent = scene.locked ? "L" : "U";
+          lock.textContent = scene.locked ? "Locked" : "Unlocked";
           lock.title = scene.locked ? "Unlock scene" : "Lock scene";
           lock.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -2011,34 +2119,6 @@
             render({ ui: true, scenes: true, overlay: true });
           });
           actions.appendChild(lock);
-
-          const visibility = document.createElement("button");
-          visibility.className = "layer-icon";
-          visibility.textContent = scene.visible ? "◉" : "○";
-          visibility.title = scene.visible ? "Hide scene" : "Show scene";
-          visibility.addEventListener("click", (event) => {
-            event.stopPropagation();
-            scene.visible = !scene.visible;
-            render({ ui: true, scenes: true });
-          });
-          actions.appendChild(visibility);
-
-          const remove = document.createElement("button");
-          remove.className = "layer-icon";
-          remove.textContent = "×";
-          remove.title = "Delete scene";
-          remove.addEventListener("click", (event) => {
-            event.stopPropagation();
-            const index = state.scenes.findIndex((entry) => entry.id === scene.id);
-            if (index === -1) return;
-            URL.revokeObjectURL(scene.previewUrl);
-            state.scenes.splice(index, 1);
-            if (state.activeSceneId === scene.id) {
-              clearActiveTarget();
-            }
-            render({ ui: true, scenes: true });
-          });
-          actions.appendChild(remove);
 
           card.addEventListener("dragover", (event) => {
             event.preventDefault();
