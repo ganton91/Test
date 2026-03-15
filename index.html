@@ -671,7 +671,7 @@
       .floating-tool {
         display: inline-flex;
         align-items: center;
-        justify-content: space-between;
+        justify-content: center;
         min-width: 116px;
         padding: 10px 12px;
         font-size: 12px;
@@ -684,20 +684,6 @@
       .floating-tool.active {
         border-color: color-mix(in srgb, var(--line-strong) 70%, var(--text) 30%);
         box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line-strong) 72%, var(--text) 28%), var(--shadow);
-      }
-
-      .floating-tool-indicator {
-        width: 8px;
-        height: 8px;
-        border-radius: 999px;
-        border: 1px solid var(--line-strong);
-        background: transparent;
-        flex: 0 0 auto;
-      }
-
-      .floating-tool.active .floating-tool-indicator {
-        background: var(--text);
-        border-color: var(--text);
       }
 
       .floating-panels-left {
@@ -1132,11 +1118,9 @@
         <div class="floating-tools">
           <button class="floating-tool active" id="selectionToolButton">
             <span>Select</span>
-            <span class="floating-tool-indicator"></span>
           </button>
           <button class="floating-tool" id="brushToolButton">
             <span>Brush</span>
-            <span class="floating-tool-indicator"></span>
           </button>
         </div>
 
@@ -1153,7 +1137,7 @@
             <div class="tool-fields">
               <div class="field">
                 <label>Palette</label>
-                <div class="color-palette" id="brushPalette">
+                <div class="color-palette" id="colorPalette">
                   <button class="color-swatch" type="button" data-color="#111827" style="background:#111827" aria-label="Color #111827"></button>
                   <button class="color-swatch" type="button" data-color="#f97316" style="background:#f97316" aria-label="Color #f97316"></button>
                   <button class="color-swatch" type="button" data-color="#ef4444" style="background:#ef4444" aria-label="Color #ef4444"></button>
@@ -1165,18 +1149,18 @@
                 </div>
               </div>
               <div class="field">
-                <label for="brushHue">Hue</label>
-                <input id="brushHue" type="range" min="0" max="360" step="1" value="0" />
+                <label for="colorHue">Hue</label>
+                <input id="colorHue" type="range" min="0" max="360" step="1" value="0" />
               </div>
               <div class="field">
-                <label for="brushSaturation">Saturation</label>
-                <input id="brushSaturation" type="range" min="0" max="100" step="1" value="0" />
+                <label for="colorSaturation">Saturation</label>
+                <input id="colorSaturation" type="range" min="0" max="100" step="1" value="0" />
               </div>
               <div class="field">
-                <label for="brushBrightness">Brightness</label>
-                <input id="brushBrightness" type="range" min="0" max="100" step="1" value="0" />
+                <label for="colorBrightness">Brightness</label>
+                <input id="colorBrightness" type="range" min="0" max="100" step="1" value="0" />
               </div>
-              <button class="ghost-button" id="brushEyedropperButton" type="button">Eyedropper Tool</button>
+              <button class="ghost-button" id="colorEyedropperButton" type="button">Eyedropper Tool</button>
             </div>
           </div>
 
@@ -1261,12 +1245,12 @@
         selectionToolButton: document.getElementById("selectionToolButton"),
         brushToolButton: document.getElementById("brushToolButton"),
         brushPanel: document.getElementById("brushPanel"),
-        brushPalette: document.getElementById("brushPalette"),
-        brushPaletteButtons: Array.from(document.querySelectorAll(".color-swatch")),
-        brushHue: document.getElementById("brushHue"),
-        brushSaturation: document.getElementById("brushSaturation"),
-        brushBrightness: document.getElementById("brushBrightness"),
-        brushEyedropperButton: document.getElementById("brushEyedropperButton"),
+        colorPalette: document.getElementById("colorPalette"),
+        colorPaletteButtons: Array.from(document.querySelectorAll(".color-swatch")),
+        colorHue: document.getElementById("colorHue"),
+        colorSaturation: document.getElementById("colorSaturation"),
+        colorBrightness: document.getElementById("colorBrightness"),
+        colorEyedropperButton: document.getElementById("colorEyedropperButton"),
         brushWidth: document.getElementById("brushWidth"),
         brushLinkButton: document.getElementById("brushLinkButton"),
         brushHeight: document.getElementById("brushHeight"),
@@ -1295,15 +1279,17 @@
           clientY: 0,
           inside: false,
         },
-        brush: {
-          color: DEFAULT_COLOR,
+        color: {
+          active: DEFAULT_COLOR,
           hsv: hexToHsv(DEFAULT_COLOR),
-          paletteColors: ui.brushPaletteButtons.map((button) => button.dataset.color),
+          paletteColors: ui.colorPaletteButtons.map((button) => button.dataset.color),
           activeSwatchIndex: 0,
+          eyedropper: false,
+        },
+        brush: {
           width: 1,
           height: 1,
           linked: false,
-          eyedropper: false,
         },
         nextSceneNumber: 1,
         scenes: [],
@@ -1361,7 +1347,7 @@
           visible: true,
           opacity: 1,
           width: 3,
-          color: state.brush.color,
+          defaultColor: state.color.active,
           mode: "points",
           points: [],
           lengths: [],
@@ -1370,7 +1356,7 @@
       }
 
       function measurementAnnotationColor(entry, measurement) {
-        return (entry && entry.color) || (measurement && measurement.color) || state.brush.color;
+        return (entry && entry.color) || (measurement && measurement.defaultColor) || state.color.active;
       }
 
       function createTile(layer, tileX, tileY) {
@@ -1524,7 +1510,7 @@
         state.activeSceneId = scene.id;
         state.activeLayerId = null;
         state.activeMeasurementId = null;
-        state.brush.eyedropper = false;
+        state.color.eyedropper = false;
         state.activeTool = "transform";
         return true;
       }
@@ -1537,7 +1523,7 @@
         state.activeMeasurementId = measurement.id;
         state.activeLayerId = null;
         state.activeSceneId = null;
-        state.brush.eyedropper = false;
+        state.color.eyedropper = false;
         state.activeTool = "measure";
         return true;
       }
@@ -1551,7 +1537,7 @@
         state.editingLayerId = null;
         state.editingSceneId = null;
         state.editingMeasurementId = null;
-        state.brush.eyedropper = false;
+        state.color.eyedropper = false;
         state.activeTool = "select";
       }
 
@@ -1686,30 +1672,30 @@
         return Math.max(1, Math.round(centimeters / CENTIMETERS_PER_CELL));
       }
 
-      function setBrushColor(color, options = {}) {
-        state.brush.color = color;
+      function setActiveColor(color, options = {}) {
+        state.color.active = color;
         if (options.hsv) {
-          state.brush.hsv = {
+          state.color.hsv = {
             h: Number(options.hsv.h),
             s: Number(options.hsv.s),
             v: Number(options.hsv.v),
           };
         } else {
-          state.brush.hsv = hexToHsv(color);
+          state.color.hsv = hexToHsv(color);
         }
       }
 
-      function setActiveBrushSwatch(index) {
-        if (index < 0 || index >= state.brush.paletteColors.length) return;
-        state.brush.activeSwatchIndex = index;
-        setBrushColor(state.brush.paletteColors[index]);
+      function setActiveColorSwatch(index) {
+        if (index < 0 || index >= state.color.paletteColors.length) return;
+        state.color.activeSwatchIndex = index;
+        setActiveColor(state.color.paletteColors[index]);
       }
 
-      function setBrushSwatchColor(index, color, options = {}) {
-        if (index < 0 || index >= state.brush.paletteColors.length) return;
-        state.brush.paletteColors[index] = color;
-        state.brush.activeSwatchIndex = index;
-        setBrushColor(color, options);
+      function setColorSwatchColor(index, color, options = {}) {
+        if (index < 0 || index >= state.color.paletteColors.length) return;
+        state.color.paletteColors[index] = color;
+        state.color.activeSwatchIndex = index;
+        setActiveColor(color, options);
       }
 
       function cancelSceneCalibration() {
@@ -2046,7 +2032,7 @@
         }
 
         if (state.renderState.scenesDirty) {
-          drawSceneScene();
+          drawSceneLayer();
           state.renderState.scenesDirty = false;
         }
 
@@ -2084,20 +2070,20 @@
         ui.brushLinkButton.classList.toggle("active", state.brush.linked);
         ui.brushLinkButton.setAttribute("aria-pressed", String(state.brush.linked));
         ui.brushLinkButton.title = state.brush.linked ? "Unlock width and height" : "Link width and height";
-        ui.brushEyedropperButton.classList.toggle("active", state.brush.eyedropper);
-        ui.brushHue.value = state.brush.hsv.h;
-        ui.brushSaturation.value = state.brush.hsv.s;
-        ui.brushBrightness.value = state.brush.hsv.v;
-        ui.brushPaletteButtons.forEach((button, index) => {
-          const color = state.brush.paletteColors[index];
+        ui.colorEyedropperButton.classList.toggle("active", state.color.eyedropper);
+        ui.colorHue.value = state.color.hsv.h;
+        ui.colorSaturation.value = state.color.hsv.s;
+        ui.colorBrightness.value = state.color.hsv.v;
+        ui.colorPaletteButtons.forEach((button, index) => {
+          const color = state.color.paletteColors[index];
           button.style.background = color;
           button.dataset.color = color;
           button.setAttribute("aria-label", "Color " + color);
-          button.classList.toggle("active", index === state.brush.activeSwatchIndex);
+          button.classList.toggle("active", index === state.color.activeSwatchIndex);
         });
         ui.overlayCanvas.style.cursor =
           state.activeTool === "brush"
-            ? state.brush.eyedropper
+            ? state.color.eyedropper
               ? "copy"
               : "crosshair"
             : state.activeTool === "measure"
@@ -2777,7 +2763,7 @@
         };
       }
 
-      function drawSceneScene() {
+      function drawSceneLayer() {
         const width = ui.sceneCanvas.clientWidth;
         const height = ui.sceneCanvas.clientHeight;
         sceneCtx.clearRect(0, 0, width, height);
@@ -3040,7 +3026,7 @@
 
       function drawMeasurementDraft(context, draft, measurement) {
         if (!draft || !measurement) return;
-        const color = state.brush.color;
+        const color = state.color.active;
         context.save();
         context.strokeStyle = hexToRgba(color, Math.max(0.28, Math.min(1, measurement.opacity)));
         context.fillStyle = hexToRgba(color, Math.max(0.16, measurement.opacity * 0.22));
@@ -3201,7 +3187,7 @@
             }
         }
 
-        if (state.pointer.inside && state.activeTool === "brush" && state.brush.eyedropper) {
+        if (state.pointer.inside && state.activeTool === "brush" && state.color.eyedropper) {
           return;
         }
 
@@ -3215,8 +3201,8 @@
           const snappedWidth = Math.max(1, snapPixel(state.brush.width * size));
           const snappedHeight = Math.max(1, snapPixel(state.brush.height * size));
           overlayCtx.save();
-          overlayCtx.fillStyle = hexToRgba(state.brush.color, 0.18);
-          overlayCtx.strokeStyle = hexToRgba(state.brush.color, 0.56);
+          overlayCtx.fillStyle = hexToRgba(state.color.active, 0.18);
+          overlayCtx.strokeStyle = hexToRgba(state.color.active, 0.56);
           overlayCtx.fillRect(x, y, snappedWidth, snappedHeight);
           overlayCtx.strokeRect(x + 0.5, y + 0.5, snappedWidth - 1, snappedHeight - 1);
           overlayCtx.restore();
@@ -3480,7 +3466,7 @@
         let changed = false;
         for (let y = 0; y < state.brush.height; y += 1) {
           for (let x = 0; x < state.brush.width; x += 1) {
-            changed = setCellColor(layer, origin.x + x, origin.y + y, mode === "paint" ? state.brush.color : null) || changed;
+            changed = setCellColor(layer, origin.x + x, origin.y + y, mode === "paint" ? state.color.active : null) || changed;
           }
         }
         return changed;
@@ -3528,7 +3514,7 @@
         render({ ui: changed, content: true, overlay: true });
       }
 
-      function beginBrushEyedropper(clientX, clientY) {
+      function beginColorEyedropper(clientX, clientY) {
         const pointer = worldFromClient(clientX, clientY);
         const color = samplePaintColorAt(pointer.worldX, pointer.worldY);
         if (!color) {
@@ -3536,9 +3522,9 @@
           render({ overlay: true });
           return;
         }
-        setBrushSwatchColor(state.brush.activeSwatchIndex, color);
-        state.brush.eyedropper = false;
-        setStatus("Brush color sampled from canvas.");
+        setColorSwatchColor(state.color.activeSwatchIndex, color);
+        state.color.eyedropper = false;
+        setStatus("Color sampled from canvas.");
         render({ ui: true, overlay: true });
       }
 
@@ -3561,7 +3547,7 @@
           id: "point-" + Math.random().toString(36).slice(2, 9),
           cellX: cell.x,
           cellY: cell.y,
-          color: state.brush.color,
+          color: state.color.active,
         });
         setStatus("Measurement point added.");
         render({ ui: true, overlay: true });
@@ -3574,7 +3560,7 @@
           start,
           end,
           meters: measurementLengthMeters(start, end),
-          color: state.brush.color,
+          color: state.color.active,
         });
         return true;
       }
@@ -3632,7 +3618,7 @@
             id: "area-" + Math.random().toString(36).slice(2, 9),
             points,
             squareMeters: measurementAreaSquareMeters(points),
-            color: state.brush.color,
+            color: state.color.active,
           });
           state.measurementDraft = null;
           setStatus("Measurement area added.");
@@ -3743,8 +3729,8 @@
           beginPan(event.clientX, event.clientY);
           return;
         }
-        if (state.brush.eyedropper) {
-          if (!isRightClick) beginBrushEyedropper(event.clientX, event.clientY);
+        if (state.color.eyedropper) {
+          if (!isRightClick) beginColorEyedropper(event.clientX, event.clientY);
           return;
         }
         if (state.sceneCalibration && !isRightClick) {
@@ -3804,7 +3790,7 @@
               state.measurementDraft.hover = snapped;
             }
           } else if (state.activeTool === "brush") {
-            ui.overlayCanvas.style.cursor = state.brush.eyedropper ? "copy" : "crosshair";
+            ui.overlayCanvas.style.cursor = state.color.eyedropper ? "copy" : "crosshair";
           } else {
             ui.overlayCanvas.style.cursor = "default";
           }
@@ -3961,7 +3947,7 @@
             state.activeTool = "brush";
           }
         } else {
-          state.brush.eyedropper = false;
+          state.color.eyedropper = false;
         }
         state.activeTool = tool;
         setStatus(
@@ -3972,27 +3958,27 @@
 
       ui.selectionToolButton.addEventListener("click", () => activateTool("select"));
       ui.brushToolButton.addEventListener("click", () => activateTool("brush"));
-      ui.brushPaletteButtons.forEach((button, index) => {
+      ui.colorPaletteButtons.forEach((button, index) => {
         button.addEventListener("click", () => {
-          setActiveBrushSwatch(index);
+          setActiveColorSwatch(index);
           render({ ui: true, overlay: true });
         });
       });
-      const syncBrushColorFromHsv = () => {
+      const syncActiveColorFromHsv = () => {
         const nextHsv = {
-          h: Number(ui.brushHue.value),
-          s: Number(ui.brushSaturation.value),
-          v: Number(ui.brushBrightness.value),
+          h: Number(ui.colorHue.value),
+          s: Number(ui.colorSaturation.value),
+          v: Number(ui.colorBrightness.value),
         };
-        setBrushSwatchColor(state.brush.activeSwatchIndex, hsvToHex(nextHsv.h, nextHsv.s, nextHsv.v), { hsv: nextHsv });
+        setColorSwatchColor(state.color.activeSwatchIndex, hsvToHex(nextHsv.h, nextHsv.s, nextHsv.v), { hsv: nextHsv });
         render({ ui: true, overlay: true });
       };
-      ui.brushHue.addEventListener("input", syncBrushColorFromHsv);
-      ui.brushSaturation.addEventListener("input", syncBrushColorFromHsv);
-      ui.brushBrightness.addEventListener("input", syncBrushColorFromHsv);
-      ui.brushEyedropperButton.addEventListener("click", () => {
-        state.brush.eyedropper = !state.brush.eyedropper;
-        setStatus(state.brush.eyedropper ? "Eyedropper active. Click a painted cell." : "Brush eyedropper off.");
+      ui.colorHue.addEventListener("input", syncActiveColorFromHsv);
+      ui.colorSaturation.addEventListener("input", syncActiveColorFromHsv);
+      ui.colorBrightness.addEventListener("input", syncActiveColorFromHsv);
+      ui.colorEyedropperButton.addEventListener("click", () => {
+        state.color.eyedropper = !state.color.eyedropper;
+        setStatus(state.color.eyedropper ? "Eyedropper active. Click a painted cell." : "Color eyedropper off.");
         render({ ui: true, overlay: true });
       });
       ui.brushWidth.addEventListener("input", () => {
@@ -4127,9 +4113,9 @@
           render({ overlay: true });
           return;
         }
-        if (event.key === "Escape" && state.brush.eyedropper) {
-          state.brush.eyedropper = false;
-          setStatus("Brush eyedropper off.");
+        if (event.key === "Escape" && state.color.eyedropper) {
+          state.color.eyedropper = false;
+          setStatus("Color eyedropper off.");
           render({ ui: true, overlay: true });
           return;
         }

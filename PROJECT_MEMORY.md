@@ -33,6 +33,7 @@ This document should be treated as authoritative unless the user explicitly chan
   - same title typography
   - same compact header row treatment
 - Brush color is managed through a custom color UI:
+  - the underlying state and helpers should be treated as a global color subsystem, not as brush-only naming
   - the color UI is now a global floating `Color` panel, not part of `Brush Settings`
   - curated palette swatches in a single row and stretched across the full palette row width
   - one swatch is always the active palette slot
