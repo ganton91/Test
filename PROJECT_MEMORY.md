@@ -52,6 +52,10 @@ This document should be treated as authoritative unless the user explicitly chan
   - tight row height and tight vertical padding
   - action symbols/icons inside those buttons should use a dedicated inner icon wrapper, not raw text directly in the button
   - if a new section header is added later, it should inherit this same visual system unless the user explicitly asks for a different treatment
+- Sidebar sections can be independently collapsed:
+  - clicking the section title toggles open/closed state
+  - a small arrow at the left of the title indicates state
+  - arrow points down when open and sideways when collapsed
 
 ## Modal Rules
 

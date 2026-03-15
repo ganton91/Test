@@ -285,6 +285,38 @@
         min-width: 0;
       }
 
+      .section-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+      }
+
+      .section-toggle-arrow {
+        width: 8px;
+        height: 8px;
+        display: inline-block;
+        border-right: 1.5px solid currentColor;
+        border-bottom: 1.5px solid currentColor;
+        transform: translateY(-1px) rotate(45deg);
+        transition: transform 140ms ease;
+        color: var(--muted);
+      }
+
+      .panel-section.collapsed .section-toggle-arrow {
+        transform: translateY(-1px) rotate(-45deg);
+      }
+
+      .panel-section.collapsed .scene-list,
+      .panel-section.collapsed .layer-list,
+      .panel-section.collapsed .empty-state {
+        display: none;
+      }
+
       .scene-list,
       .layer-list {
         display: flex;
@@ -823,25 +855,31 @@
       <main class="workspace">
         <aside class="layers-panel" id="layersPanel">
           <div class="layers-body">
-            <div class="panel-section">
+            <div class="panel-section" id="sceneSection">
               <div class="section-header">
                 <div class="section-header-left">
-                  <div class="section-header-title">Scenes</div>
+                  <button class="section-toggle" id="sceneSectionToggle" type="button" aria-expanded="true">
+                    <span class="section-toggle-arrow" aria-hidden="true"></span>
+                    <span class="section-header-title">Scenes</span>
+                  </button>
                 </div>
                 <button class="section-header-action" id="sceneAddButton" aria-label="Import scene image"></button>
               </div>
               <div class="scene-list" id="sceneList"></div>
               <div class="empty-state hidden" id="sceneEmptyState"></div>
             </div>
-            <div class="panel-section">
+            <div class="panel-section" id="layerSection">
               <div class="section-header">
                 <div class="section-header-left">
-                  <div class="section-header-title">Layers</div>
+                  <button class="section-toggle" id="layerSectionToggle" type="button" aria-expanded="true">
+                    <span class="section-toggle-arrow" aria-hidden="true"></span>
+                    <span class="section-header-title">Layers</span>
+                  </button>
                 </div>
                 <button class="section-header-action" id="addLayerButton" aria-label="Add layer"></button>
               </div>
+              <div class="layer-list" id="layerList"></div>
             </div>
-            <div class="layer-list" id="layerList"></div>
           </div>
         </aside>
         <input id="sceneImportInput" type="file" accept="image/*" hidden />
@@ -966,6 +1004,10 @@
         rulerBottom: document.getElementById("rulerBottom"),
         rulerRight: document.getElementById("rulerRight"),
         layersPanel: document.getElementById("layersPanel"),
+        sceneSection: document.getElementById("sceneSection"),
+        layerSection: document.getElementById("layerSection"),
+        sceneSectionToggle: document.getElementById("sceneSectionToggle"),
+        layerSectionToggle: document.getElementById("layerSectionToggle"),
         sceneAddButton: document.getElementById("sceneAddButton"),
         sceneImportInput: document.getElementById("sceneImportInput"),
         sceneList: document.getElementById("sceneList"),
@@ -1025,6 +1067,7 @@
         activeSceneId: null,
         editingSceneId: null,
         dragSceneId: null,
+        sceneSectionCollapsed: false,
         sceneCalibration: null,
         gridPosition: "below",
         dualStrokeGrid: false,
@@ -1032,6 +1075,7 @@
         activeLayerId: null,
         editingLayerId: null,
         dragLayerId: null,
+        layerSectionCollapsed: false,
         interaction: null,
         spacePan: false,
         renderState: {
@@ -1601,6 +1645,7 @@
         if (state.renderState.uiDirty) {
           updateThemeButtons();
           renderToolState();
+          renderSectionState();
           renderScenes();
           renderLayers();
           ui.staticCanvas.style.zIndex = state.gridPosition === "above" ? "3" : "0";
@@ -1657,6 +1702,13 @@
         ui.brushToolButton.classList.toggle("active", state.activeTool === "brush");
         ui.brushPanel.classList.toggle("hidden", state.activeTool !== "brush");
         ui.overlayCanvas.style.cursor = state.activeTool === "brush" ? "crosshair" : state.activeTool === "transform" ? "move" : "default";
+      }
+
+      function renderSectionState() {
+        ui.sceneSection.classList.toggle("collapsed", state.sceneSectionCollapsed);
+        ui.layerSection.classList.toggle("collapsed", state.layerSectionCollapsed);
+        ui.sceneSectionToggle.setAttribute("aria-expanded", String(!state.sceneSectionCollapsed));
+        ui.layerSectionToggle.setAttribute("aria-expanded", String(!state.layerSectionCollapsed));
       }
 
       function renderLayers() {
@@ -2685,6 +2737,14 @@
       ui.sceneAddButton.addEventListener("click", () => {
         ui.sceneImportInput.value = "";
         ui.sceneImportInput.click();
+      });
+      ui.sceneSectionToggle.addEventListener("click", () => {
+        state.sceneSectionCollapsed = !state.sceneSectionCollapsed;
+        render({ ui: true });
+      });
+      ui.layerSectionToggle.addEventListener("click", () => {
+        state.layerSectionCollapsed = !state.layerSectionCollapsed;
+        render({ ui: true });
       });
       ui.sceneImportInput.addEventListener("change", () => {
         const [file] = ui.sceneImportInput.files || [];
