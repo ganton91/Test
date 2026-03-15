@@ -675,6 +675,7 @@
         min-width: 116px;
         padding: 10px 12px;
         font-size: 12px;
+        font-weight: 600;
         background: var(--floating-surface);
         box-shadow: var(--shadow);
       }
@@ -711,6 +712,11 @@
         position: relative;
       }
 
+      .floating-panels-left .section-header {
+        padding: 0 9px 4px;
+        min-height: 26px;
+      }
+
       .tool-panel,
       .menu-panel {
         position: absolute;
@@ -735,36 +741,19 @@
         padding: 10px 12px 12px;
       }
 
-      .tool-panel-header {
-        display: flex;
-        align-items: center;
-        min-height: 24px;
-      }
-
-      .tool-panel-toggle {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        color: inherit;
-        cursor: pointer;
-      }
-
       .tool-panel.collapsed .tool-fields {
         display: none;
       }
 
       .tool-panel.collapsed {
-        padding-bottom: 10px;
+        padding-bottom: 6px;
       }
 
-      .tool-panel.collapsed .tool-panel-header {
+      .tool-panel.collapsed .section-header {
         margin-bottom: 0;
       }
 
-      .tool-panel.collapsed .tool-panel-toggle .section-toggle-arrow {
+      .tool-panel.collapsed .section-toggle-arrow {
         transform: translateY(-1px) rotate(-45deg);
       }
 
@@ -782,7 +771,6 @@
         display: none;
       }
 
-      .tool-title,
       .menu-title {
         font-size: 11px;
         letter-spacing: 0.08em;
@@ -1141,7 +1129,7 @@
 
         <div class="floating-tools">
           <button class="floating-tool active" id="selectionToolButton">
-            <span>Selection</span>
+            <span>Select</span>
             <span class="floating-tool-indicator"></span>
           </button>
           <button class="floating-tool" id="brushToolButton">
@@ -1152,11 +1140,13 @@
 
         <div class="floating-panels-left">
           <div class="tool-panel color-panel" id="colorPanel">
-            <div class="tool-panel-header">
-              <button class="tool-panel-toggle" id="colorPanelToggle" type="button" aria-expanded="true">
-                <span class="section-toggle-arrow" aria-hidden="true"></span>
-                <span class="tool-title">Color</span>
-              </button>
+            <div class="section-header">
+              <div class="section-header-left">
+                <button class="section-toggle" id="colorPanelToggle" type="button" aria-expanded="true">
+                  <span class="section-toggle-arrow" aria-hidden="true"></span>
+                  <span class="section-header-title">Color Palette</span>
+                </button>
+              </div>
             </div>
             <div class="tool-fields">
               <div class="field">
@@ -1189,11 +1179,13 @@
           </div>
 
           <div class="tool-panel brush-panel" id="brushPanel">
-            <div class="tool-panel-header">
-              <button class="tool-panel-toggle" id="brushPanelToggle" type="button" aria-expanded="true">
-                <span class="section-toggle-arrow" aria-hidden="true"></span>
-                <span class="tool-title">Brush Settings</span>
-              </button>
+            <div class="section-header">
+              <div class="section-header-left">
+                <button class="section-toggle" id="brushPanelToggle" type="button" aria-expanded="true">
+                  <span class="section-toggle-arrow" aria-hidden="true"></span>
+                  <span class="section-header-title">Brush Settings</span>
+                </button>
+              </div>
             </div>
             <div class="tool-fields">
               <div class="dimension-row">
