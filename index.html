@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Milimetre</title>
+    <title>millimétré</title>
     <style>
       :root {
         color-scheme: light;
@@ -25,6 +25,8 @@
         --grid-1m: rgb(20, 24, 28);
         --crosshair: rgb(210, 45, 78);
         --selection: rgba(17, 24, 39, 0.82);
+        --grid-dual-stroke: #fcfcfb;
+        --crosshair-dual-stroke: #fcfcfb;
         --shadow: 0 18px 48px rgba(17, 24, 39, 0.08);
       }
 
@@ -48,6 +50,8 @@
         --grid-1m: rgb(255, 255, 255);
         --crosshair: rgb(255, 111, 145);
         --selection: rgba(255, 255, 255, 0.86);
+        --grid-dual-stroke: #11161a;
+        --crosshair-dual-stroke: #11161a;
         --shadow: 0 20px 56px rgba(0, 0, 0, 0.32);
       }
 
@@ -78,15 +82,15 @@
 
       .app {
         display: grid;
-        grid-template-rows: 56px 1fr;
+        grid-template-rows: 48px 1fr;
         height: 100vh;
       }
 
       .topbar {
         display: flex;
         align-items: center;
-        gap: 14px;
-        padding: 10px 14px;
+        gap: 12px;
+        padding: 8px 12px;
         border-bottom: 1px solid var(--line);
         background: var(--bg-elevated);
         backdrop-filter: blur(18px);
@@ -95,21 +99,7 @@
       .brand {
         display: flex;
         align-items: center;
-        gap: 10px;
         min-width: max-content;
-      }
-
-      .brand-mark {
-        display: grid;
-        place-items: center;
-        width: 28px;
-        height: 28px;
-        border-radius: 9px;
-        border: 1px solid var(--line-strong);
-        background: var(--surface-strong);
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
       }
 
       .brand-name {
@@ -120,13 +110,13 @@
 
       .separator {
         width: 1px;
-        height: 20px;
+        height: 16px;
         background: var(--line-strong);
       }
 
       .toolbar-actions {
         display: flex;
-        gap: 8px;
+        gap: 6px;
       }
 
       .ghost-button,
@@ -154,8 +144,8 @@
       }
 
       .ghost-button {
-        padding: 8px 12px;
-        font-size: 12px;
+        padding: 6px 10px;
+        font-size: 11px;
       }
 
       .ghost-button.stub {
@@ -165,10 +155,6 @@
       .ghost-button.active {
         background: var(--accent-soft);
         border-color: var(--line-strong);
-      }
-
-      .topbar-spacer {
-        flex: 1;
       }
 
       .workspace {
@@ -626,17 +612,20 @@
       }
 
       .menu-panel {
-        top: 50px;
-        left: 290px;
-        width: 170px;
-        padding: 12px;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        width: min(540px, calc(100vw - 40px));
+        padding: 18px;
+        transform: translate(-50%, -50%);
+        z-index: 30;
       }
 
       .menu-actions {
         display: flex;
-        flex-direction: column;
         gap: 8px;
-        margin-top: 10px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
       }
 
       .menu-section + .menu-section {
@@ -645,10 +634,18 @@
         border-top: 1px solid var(--line);
       }
 
+      .menu-section {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
       .mode-button {
         padding: 9px 10px;
-        text-align: left;
+        text-align: center;
         font-size: 12px;
+        white-space: nowrap;
       }
 
       .mode-button.active {
@@ -673,6 +670,15 @@
         .floating-tool {
           min-width: 96px;
         }
+
+        .menu-section {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .menu-actions {
+          justify-content: flex-start;
+        }
       }
     </style>
   </head>
@@ -680,8 +686,7 @@
     <div class="app">
       <header class="topbar">
         <div class="brand">
-          <div class="brand-mark">AG</div>
-          <div class="brand-name">Milimetre</div>
+          <div class="brand-name">millimétré</div>
         </div>
         <div class="separator"></div>
         <div class="toolbar-actions">
@@ -691,8 +696,6 @@
           <button class="ghost-button stub" id="exportButton">Export</button>
           <button class="ghost-button stub" id="importButton">Import</button>
         </div>
-        <div class="topbar-spacer"></div>
-        <button class="ghost-button active" id="scaleTag">5 x 5 cm grid</button>
       </header>
 
       <main class="workspace">
@@ -726,6 +729,13 @@
             <div class="menu-actions">
               <button class="mode-button active" data-grid-position="below">Below layers</button>
               <button class="mode-button" data-grid-position="above">Above layers</button>
+            </div>
+          </div>
+          <div class="menu-section">
+            <div class="menu-title">Dual Stroke Grid</div>
+            <div class="menu-actions">
+              <button class="mode-button active" data-dual-grid="off">Off</button>
+              <button class="mode-button" data-dual-grid="on">On</button>
             </div>
           </div>
         </div>
@@ -816,6 +826,7 @@
         settingsMenu: document.getElementById("settingsMenu"),
         themeButtons: Array.from(document.querySelectorAll("[data-theme]")),
         gridPositionButtons: Array.from(document.querySelectorAll("[data-grid-position]")),
+        dualGridButtons: Array.from(document.querySelectorAll("[data-dual-grid]")),
         selectionToolButton: document.getElementById("selectionToolButton"),
         brushToolButton: document.getElementById("brushToolButton"),
         brushPanel: document.getElementById("brushPanel"),
@@ -854,6 +865,7 @@
           height: 1,
         },
         gridPosition: "below",
+        dualStrokeGrid: false,
         layers: [createLayer("Layer 1")],
         activeLayerId: null,
         dragLayerId: null,
@@ -1006,6 +1018,24 @@
         };
       }
 
+      function strokeSceneLine(context, x1, y1, x2, y2, lineWidth, strokeColor, dualStrokeColor) {
+        if (state.dualStrokeGrid) {
+          context.beginPath();
+          context.moveTo(x1, y1);
+          context.lineTo(x2, y2);
+          context.strokeStyle = dualStrokeColor;
+          context.lineWidth = lineWidth + 0.3;
+          context.stroke();
+        }
+
+        context.beginPath();
+        context.moveTo(x1, y1);
+        context.lineTo(x2, y2);
+        context.strokeStyle = strokeColor;
+        context.lineWidth = lineWidth;
+        context.stroke();
+      }
+
       function setStatus(message) {
         ui.statusPill.textContent = message;
       }
@@ -1068,12 +1098,16 @@
         ui.gridPositionButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.gridPosition === state.gridPosition);
         });
+        ui.dualGridButtons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.dualGrid === (state.dualStrokeGrid ? "on" : "off"));
+        });
       }
 
       function renderToolState() {
         ui.selectionToolButton.classList.toggle("active", state.activeTool === "select");
         ui.brushToolButton.classList.toggle("active", state.activeTool === "brush");
         ui.brushPanel.classList.toggle("hidden", state.activeTool !== "brush");
+        ui.overlayCanvas.style.cursor = state.activeTool === "brush" ? "crosshair" : "default";
       }
 
       function renderLayers() {
@@ -1239,35 +1273,23 @@
           const cellIndex = Math.round((x - state.viewport.x) / step);
           const major = cellIndex % CELLS_PER_METER === 0;
           const halfMeter = cellIndex % CELLS_PER_HALF_METER === 0;
-          staticCtx.beginPath();
-          staticCtx.moveTo(x, 0);
-          staticCtx.lineTo(x, height);
-          staticCtx.strokeStyle = major ? getCssVar("--grid-1m") : halfMeter ? getCssVar("--grid-50cm") : getCssVar("--grid-5cm");
-          staticCtx.lineWidth = major ? 0.56 : halfMeter ? 0.36 : 0.18;
-          staticCtx.stroke();
+          const strokeColor = major ? getCssVar("--grid-1m") : halfMeter ? getCssVar("--grid-50cm") : getCssVar("--grid-5cm");
+          const lineWidth = major ? 0.56 : halfMeter ? 0.36 : 0.18;
+          strokeSceneLine(staticCtx, x, 0, x, height, lineWidth, strokeColor, getCssVar("--grid-dual-stroke"));
         }
 
         for (let y = startY; y <= height; y += step) {
           const cellIndex = Math.round((y - state.viewport.y) / step);
           const major = cellIndex % CELLS_PER_METER === 0;
           const halfMeter = cellIndex % CELLS_PER_HALF_METER === 0;
-          staticCtx.beginPath();
-          staticCtx.moveTo(0, y);
-          staticCtx.lineTo(width, y);
-          staticCtx.strokeStyle = major ? getCssVar("--grid-1m") : halfMeter ? getCssVar("--grid-50cm") : getCssVar("--grid-5cm");
-          staticCtx.lineWidth = major ? 0.56 : halfMeter ? 0.36 : 0.18;
-          staticCtx.stroke();
+          const strokeColor = major ? getCssVar("--grid-1m") : halfMeter ? getCssVar("--grid-50cm") : getCssVar("--grid-5cm");
+          const lineWidth = major ? 0.56 : halfMeter ? 0.36 : 0.18;
+          strokeSceneLine(staticCtx, 0, y, width, y, lineWidth, strokeColor, getCssVar("--grid-dual-stroke"));
         }
 
         staticCtx.save();
-        staticCtx.strokeStyle = getCssVar("--crosshair");
-        staticCtx.lineWidth = 0.56;
-        staticCtx.beginPath();
-        staticCtx.moveTo(state.viewport.x, 0);
-        staticCtx.lineTo(state.viewport.x, height);
-        staticCtx.moveTo(0, state.viewport.y);
-        staticCtx.lineTo(width, state.viewport.y);
-        staticCtx.stroke();
+        strokeSceneLine(staticCtx, state.viewport.x, 0, state.viewport.x, height, 0.56, getCssVar("--crosshair"), getCssVar("--crosshair-dual-stroke"));
+        strokeSceneLine(staticCtx, 0, state.viewport.y, width, state.viewport.y, 0.56, getCssVar("--crosshair"), getCssVar("--crosshair-dual-stroke"));
         staticCtx.restore();
       }
 
@@ -1648,6 +1670,14 @@
           state.gridPosition = button.dataset.gridPosition;
           setStatus(state.gridPosition === "above" ? "Grid shown above layers." : "Grid shown below layers.");
           render({ ui: true });
+        });
+      });
+
+      ui.dualGridButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          state.dualStrokeGrid = button.dataset.dualGrid === "on";
+          setStatus(state.dualStrokeGrid ? "Dual stroke grid enabled." : "Dual stroke grid disabled.");
+          render({ ui: true, static: true });
         });
       });
 
