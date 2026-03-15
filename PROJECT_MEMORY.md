@@ -292,3 +292,11 @@ The current goal is to keep building `Milimetre` as a strong, minimal infinite c
   - `Layers`
   - `Scenes`
 - If marquee selection finds multiple hits, a contextual picker appears near the cursor so the user can choose the target item.
+
+## Renderer Note
+
+- Painted layer tiles on `contentCanvas` should be drawn from shared snapped tile boundaries:
+  - `left/top` from the current snapped tile boundary
+  - `right/bottom` from the next snapped tile boundary
+  - draw size = next boundary minus current boundary
+- This is preferred over using a separately rounded shared `tileSpan`, because the boundary-based approach prevents visible tile seam artifacts during zooming and at reduced opacity.

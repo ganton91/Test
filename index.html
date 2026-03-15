@@ -2952,8 +2952,11 @@
               redrawTile(tile);
               const screenX = snapPixel(state.viewport.x + tileX * tileSpan);
               const screenY = snapPixel(state.viewport.y + tileY * tileSpan);
-              const snappedTileSpan = Math.max(1, snapPixel(tileSpan));
-              contentCtx.drawImage(tile.canvas, screenX, screenY, snappedTileSpan, snappedTileSpan);
+              const nextScreenX = snapPixel(state.viewport.x + (tileX + 1) * tileSpan);
+              const nextScreenY = snapPixel(state.viewport.y + (tileY + 1) * tileSpan);
+              const drawWidth = Math.max(1, nextScreenX - screenX);
+              const drawHeight = Math.max(1, nextScreenY - screenY);
+              contentCtx.drawImage(tile.canvas, screenX, screenY, drawWidth, drawHeight);
             }
           }
           contentCtx.restore();
