@@ -308,6 +308,7 @@
       }
 
       .panel-section.collapsed .scene-list,
+      .panel-section.collapsed .measurement-list,
       .panel-section.collapsed .layer-list,
       .panel-section.collapsed .empty-state {
         display: none;
@@ -318,6 +319,7 @@
       }
 
       .scene-list,
+      .measurement-list,
       .layer-list {
         display: flex;
         flex-direction: column;
@@ -496,6 +498,25 @@
         padding: 0 8px;
         border-radius: 8px;
         font-size: 11px;
+      }
+
+      .measurement-card .layer-actions .layer-icon {
+        width: auto;
+        min-width: 0;
+        height: 24px;
+        padding: 0 8px;
+        border-radius: 8px;
+        font-size: 11px;
+      }
+
+      .measurement-card .layer-actions .layer-icon.active {
+        background: var(--accent-soft);
+        border-color: var(--line-strong);
+      }
+
+      .measurement-card {
+        grid-template-columns: 16px minmax(0, 1fr);
+        align-items: start;
       }
 
       .layer-actions {
@@ -994,6 +1015,18 @@
               </div>
               <div class="layer-list" id="layerList"></div>
             </div>
+            <div class="panel-section" id="measurementSection">
+              <div class="section-header">
+                <div class="section-header-left">
+                  <button class="section-toggle" id="measurementSectionToggle" type="button" aria-expanded="true">
+                    <span class="section-toggle-arrow" aria-hidden="true"></span>
+                    <span class="section-header-title">Measurements</span>
+                  </button>
+                </div>
+                <button class="section-header-action" id="addMeasurementButton" aria-label="Add measurement"></button>
+              </div>
+              <div class="measurement-list" id="measurementList"></div>
+            </div>
           </div>
         </aside>
         <input id="sceneImportInput" type="file" accept="image/*" hidden />
@@ -1137,13 +1170,17 @@
         layersPanel: document.getElementById("layersPanel"),
         sceneSection: document.getElementById("sceneSection"),
         layerSection: document.getElementById("layerSection"),
+        measurementSection: document.getElementById("measurementSection"),
         sceneSectionToggle: document.getElementById("sceneSectionToggle"),
         layerSectionToggle: document.getElementById("layerSectionToggle"),
+        measurementSectionToggle: document.getElementById("measurementSectionToggle"),
         sceneAddButton: document.getElementById("sceneAddButton"),
         sceneImportInput: document.getElementById("sceneImportInput"),
         sceneList: document.getElementById("sceneList"),
         layerList: document.getElementById("layerList"),
         addLayerButton: document.getElementById("addLayerButton"),
+        measurementList: document.getElementById("measurementList"),
+        addMeasurementButton: document.getElementById("addMeasurementButton"),
         settingsButton: document.getElementById("settingsButton"),
         settingsMenu: document.getElementById("settingsMenu"),
         sceneScaleModal: document.getElementById("sceneScaleModal"),
@@ -1207,6 +1244,13 @@
         dragSceneId: null,
         sceneSectionCollapsed: false,
         sceneCalibration: null,
+        nextMeasurementNumber: 1,
+        measurements: [],
+        activeMeasurementId: null,
+        editingMeasurementId: null,
+        dragMeasurementId: null,
+        measurementSectionCollapsed: false,
+        measurementDraft: null,
         gridPosition: "below",
         dualStrokeGrid: false,
         layers: [createLayer("Layer 1")],
@@ -1237,6 +1281,21 @@
           opacity: 1,
           tiles: {},
           cellCount: 0,
+        };
+      }
+
+      function createMeasurement(name) {
+        return {
+          id: "measurement-" + Math.random().toString(36).slice(2, 10),
+          name,
+          visible: true,
+          opacity: 1,
+          width: 3,
+          color: state.brush.color,
+          mode: "points",
+          points: [],
+          lengths: [],
+          areas: [],
         };
       }
 
@@ -1273,6 +1332,10 @@
 
       function activeScene() {
         return state.scenes.find((scene) => scene.id === state.activeSceneId) || null;
+      }
+
+      function activeMeasurement() {
+        return state.measurements.find((measurement) => measurement.id === state.activeMeasurementId) || null;
       }
 
       function getTileCoords(cellX, cellY) {
@@ -1372,8 +1435,10 @@
         const layer = state.layers.find((entry) => entry.id === layerId);
         if (!layer) return false;
         cancelSceneCalibration();
+        cancelMeasurementDraft();
         state.activeLayerId = layer.id;
         state.activeSceneId = null;
+        state.activeMeasurementId = null;
         state.activeTool = "brush";
         return true;
       }
@@ -1381,27 +1446,46 @@
       function setActiveSceneById(sceneId) {
         const scene = state.scenes.find((entry) => entry.id === sceneId);
         if (!scene) return false;
+        cancelMeasurementDraft();
         state.activeSceneId = scene.id;
         state.activeLayerId = null;
+        state.activeMeasurementId = null;
         state.brush.eyedropper = false;
         state.activeTool = "transform";
         return true;
       }
 
-      function clearActiveTarget() {
+      function setActiveMeasurementById(measurementId) {
+        const measurement = state.measurements.find((entry) => entry.id === measurementId);
+        if (!measurement) return false;
         cancelSceneCalibration();
+        if (state.activeMeasurementId !== measurementId) cancelMeasurementDraft();
+        state.activeMeasurementId = measurement.id;
         state.activeLayerId = null;
         state.activeSceneId = null;
+        state.brush.eyedropper = false;
+        state.activeTool = "measure";
+        return true;
+      }
+
+      function clearActiveTarget() {
+        cancelSceneCalibration();
+        cancelMeasurementDraft();
+        state.activeLayerId = null;
+        state.activeSceneId = null;
+        state.activeMeasurementId = null;
         state.editingLayerId = null;
         state.editingSceneId = null;
+        state.editingMeasurementId = null;
         state.brush.eyedropper = false;
         state.activeTool = "select";
       }
 
       function toggleLayerActivation(layerId) {
-        if (state.activeLayerId === layerId && !state.activeSceneId) {
+        if (state.activeLayerId === layerId && !state.activeSceneId && !state.activeMeasurementId) {
           state.editingLayerId = null;
           state.editingSceneId = null;
+          state.editingMeasurementId = null;
           clearActiveTarget();
           setStatus("Selection tool active.");
           render({ ui: true, overlay: true });
@@ -1410,6 +1494,7 @@
         if (setActiveLayerById(layerId)) {
           state.editingLayerId = null;
           state.editingSceneId = null;
+          state.editingMeasurementId = null;
           setStatus("Brush active on selected layer.");
           render({ ui: true, overlay: true });
         }
@@ -1427,9 +1512,10 @@
       }
 
       function toggleSceneActivation(sceneId) {
-        if (state.activeSceneId === sceneId && !state.activeLayerId) {
+        if (state.activeSceneId === sceneId && !state.activeLayerId && !state.activeMeasurementId) {
           state.editingSceneId = null;
           state.editingLayerId = null;
+          state.editingMeasurementId = null;
           clearActiveTarget();
           setStatus("Selection tool active.");
           render({ ui: true, overlay: true });
@@ -1438,7 +1524,27 @@
         if (setActiveSceneById(sceneId)) {
           state.editingSceneId = null;
           state.editingLayerId = null;
+          state.editingMeasurementId = null;
           setStatus("Transform active on selected scene.");
+          render({ ui: true, overlay: true });
+        }
+      }
+
+      function toggleMeasurementActivation(measurementId) {
+        if (state.activeMeasurementId === measurementId && !state.activeLayerId && !state.activeSceneId) {
+          state.editingMeasurementId = null;
+          state.editingLayerId = null;
+          state.editingSceneId = null;
+          clearActiveTarget();
+          setStatus("Selection tool active.");
+          render({ ui: true, overlay: true });
+          return;
+        }
+        if (setActiveMeasurementById(measurementId)) {
+          state.editingMeasurementId = null;
+          state.editingLayerId = null;
+          state.editingSceneId = null;
+          setStatus("Measurement active.");
           render({ ui: true, overlay: true });
         }
       }
@@ -1446,6 +1552,7 @@
       function beginRenameScene(sceneId) {
         state.editingSceneId = sceneId;
         state.editingLayerId = null;
+        state.editingMeasurementId = null;
         render({ ui: true });
       }
 
@@ -1454,14 +1561,27 @@
         render({ ui: true });
       }
 
+      function beginRenameMeasurement(measurementId) {
+        state.editingMeasurementId = measurementId;
+        state.editingLayerId = null;
+        state.editingSceneId = null;
+        render({ ui: true });
+      }
+
+      function endRenameMeasurement() {
+        state.editingMeasurementId = null;
+        render({ ui: true });
+      }
+
       function isEditingName() {
-        return !!(state.editingLayerId || state.editingSceneId);
+        return !!(state.editingLayerId || state.editingSceneId || state.editingMeasurementId);
       }
 
       function cancelRenameMode() {
         if (!isEditingName()) return false;
         state.editingLayerId = null;
         state.editingSceneId = null;
+        state.editingMeasurementId = null;
         render({ ui: true });
         return true;
       }
@@ -1477,6 +1597,10 @@
 
       function worldUnitsFromMeters(meters) {
         return meters * CELLS_PER_METER * CELL_SIZE;
+      }
+
+      function metersFromWorldUnits(units) {
+        return units / (CELLS_PER_METER * CELL_SIZE);
       }
 
       function cellsToCentimeters(cells) {
@@ -1511,6 +1635,15 @@
           closeModal(ui.sceneScaleModal);
         }
         return true;
+      }
+
+      function cancelMeasurementDraft() {
+        const hadDraft = !!state.measurementDraft;
+        state.measurementDraft = null;
+        if (state.interaction && String(state.interaction.type || "").startsWith("measurement-")) {
+          state.interaction = null;
+        }
+        return hadDraft;
       }
 
       function startSceneCalibration(sceneId) {
@@ -1812,6 +1945,7 @@
           renderToolState();
           renderSectionState();
           renderScenes();
+          renderMeasurements();
           renderLayers();
           ui.staticCanvas.style.zIndex = state.gridPosition === "above" ? "3" : "0";
           ui.sceneCanvas.style.zIndex = "1";
@@ -1884,6 +2018,8 @@
             ? state.brush.eyedropper
               ? "copy"
               : "crosshair"
+            : state.activeTool === "measure"
+            ? "crosshair"
             : state.activeTool === "transform"
             ? "move"
             : "default";
@@ -1891,9 +2027,248 @@
 
       function renderSectionState() {
         ui.sceneSection.classList.toggle("collapsed", state.sceneSectionCollapsed);
+        ui.measurementSection.classList.toggle("collapsed", state.measurementSectionCollapsed);
         ui.layerSection.classList.toggle("collapsed", state.layerSectionCollapsed);
         ui.sceneSectionToggle.setAttribute("aria-expanded", String(!state.sceneSectionCollapsed));
+        ui.measurementSectionToggle.setAttribute("aria-expanded", String(!state.measurementSectionCollapsed));
         ui.layerSectionToggle.setAttribute("aria-expanded", String(!state.layerSectionCollapsed));
+      }
+
+      function renderMeasurements() {
+        ui.measurementList.innerHTML = "";
+        state.measurements.forEach((measurement) => {
+          const card = document.createElement("div");
+          card.className = "layer-card measurement-card" + (measurement.id === state.activeMeasurementId ? " active" : "");
+          if (measurement.id !== state.activeMeasurementId) card.classList.add("inactive-collapsed");
+          if (measurement.id === state.dragMeasurementId) card.classList.add("dragging");
+
+          const grip = document.createElement("div");
+          grip.className = "drag-handle";
+          grip.textContent = "⋮⋮";
+          grip.draggable = true;
+          grip.addEventListener("dragstart", (event) => {
+            state.dragMeasurementId = measurement.id;
+            event.dataTransfer.effectAllowed = "move";
+            setCardDragPreview(event, card);
+            render({ ui: true });
+          });
+          grip.addEventListener("dragend", () => {
+            state.dragMeasurementId = null;
+            render({ ui: true });
+          });
+
+          const main = document.createElement("div");
+          main.className = "layer-main";
+          main.addEventListener("click", () => {
+            toggleMeasurementActivation(measurement.id);
+          });
+
+          let nameField;
+          if (state.editingMeasurementId === measurement.id) {
+            const input = document.createElement("input");
+            input.className = "layer-name";
+            input.value = measurement.name;
+            input.size = Math.max(1, measurement.name.length);
+            input.addEventListener("click", (event) => event.stopPropagation());
+            input.addEventListener("pointerdown", (event) => event.stopPropagation());
+            input.addEventListener("input", () => {
+              measurement.name = input.value || measurement.name;
+              input.size = Math.max(1, input.value.length);
+            });
+            input.addEventListener("blur", endRenameMeasurement);
+            input.addEventListener("keydown", (event) => {
+              if (event.key === "Enter" || event.key === "Escape") input.blur();
+            });
+            queueMicrotask(() => {
+              input.focus();
+              input.select();
+            });
+            nameField = input;
+          } else {
+            const label = document.createElement("div");
+            label.className = "layer-name-label";
+            label.textContent = measurement.name;
+            label.addEventListener("click", (event) => {
+              if (state.activeMeasurementId !== measurement.id || state.activeLayerId || state.activeSceneId) return;
+              event.stopPropagation();
+              beginRenameMeasurement(measurement.id);
+            });
+            nameField = label;
+          }
+
+          const header = document.createElement("div");
+          header.className = "card-header";
+
+          const titleWrap = document.createElement("div");
+          titleWrap.className = "card-header-title";
+          titleWrap.appendChild(nameField);
+
+          const inlineControls = document.createElement("div");
+          inlineControls.className = "inline-controls";
+
+          const visibilityInline = document.createElement("button");
+          visibilityInline.className = "inline-icon visibility-dot";
+          visibilityInline.textContent = measurement.visible ? "●" : "○";
+          visibilityInline.title = measurement.visible ? "Hide measurement" : "Show measurement";
+          visibilityInline.addEventListener("click", (event) => {
+            event.stopPropagation();
+            measurement.visible = !measurement.visible;
+            render({ ui: true, overlay: true });
+          });
+          inlineControls.appendChild(visibilityInline);
+
+          const removeInline = document.createElement("button");
+          removeInline.className = "inline-icon delete-mark";
+          removeInline.textContent = "×";
+          removeInline.title = "Delete measurement";
+          removeInline.addEventListener("click", (event) => {
+            event.stopPropagation();
+            const index = state.measurements.findIndex((entry) => entry.id === measurement.id);
+            if (index === -1) return;
+            state.measurements.splice(index, 1);
+            if (state.activeMeasurementId === measurement.id) clearActiveTarget();
+            render({ ui: true, overlay: true });
+          });
+          inlineControls.appendChild(removeInline);
+
+          header.appendChild(titleWrap);
+          header.appendChild(inlineControls);
+          main.appendChild(header);
+
+          const modes = document.createElement("div");
+          modes.className = "layer-actions";
+
+          const pointMode = document.createElement("button");
+          pointMode.className = "layer-icon" + (measurement.mode === "points" ? " active" : "");
+          pointMode.textContent = "Points";
+          pointMode.title = "Point measurements";
+          pointMode.addEventListener("click", (event) => {
+            event.stopPropagation();
+            cancelMeasurementDraft();
+            measurement.mode = "points";
+            if (measurement.id !== state.activeMeasurementId) setActiveMeasurementById(measurement.id);
+            setStatus("Points mode active.");
+            render({ ui: true, overlay: true });
+          });
+          modes.appendChild(pointMode);
+
+          const lengthMode = document.createElement("button");
+          lengthMode.className = "layer-icon" + (measurement.mode === "length" ? " active" : "");
+          lengthMode.textContent = "Length";
+          lengthMode.title = "Length measurements";
+          lengthMode.addEventListener("click", (event) => {
+            event.stopPropagation();
+            cancelMeasurementDraft();
+            measurement.mode = "length";
+            if (measurement.id !== state.activeMeasurementId) setActiveMeasurementById(measurement.id);
+            setStatus("Length mode active.");
+            render({ ui: true, overlay: true });
+          });
+          modes.appendChild(lengthMode);
+
+          const areaMode = document.createElement("button");
+          areaMode.className = "layer-icon" + (measurement.mode === "area" ? " active" : "");
+          areaMode.textContent = "Area";
+          areaMode.title = "Area measurements";
+          areaMode.addEventListener("click", (event) => {
+            event.stopPropagation();
+            cancelMeasurementDraft();
+            measurement.mode = "area";
+            if (measurement.id !== state.activeMeasurementId) setActiveMeasurementById(measurement.id);
+            setStatus("Area mode active.");
+            render({ ui: true, overlay: true });
+          });
+          modes.appendChild(areaMode);
+          main.appendChild(modes);
+
+          const itemCount = measurement.points.length + measurement.lengths.length + measurement.areas.length;
+          const totalLength = measurement.lengths.reduce((sum, entry) => sum + entry.meters, 0);
+          const totalArea = measurement.areas.reduce((sum, entry) => sum + entry.squareMeters, 0);
+
+          const meta = document.createElement("div");
+          meta.className = "layer-meta";
+          meta.textContent = itemCount + " items";
+
+          const lengthMeta = document.createElement("div");
+          lengthMeta.className = "layer-meta-secondary";
+          lengthMeta.textContent = totalLength.toFixed(2) + " m";
+
+          const areaMeta = document.createElement("div");
+          areaMeta.className = "layer-meta-secondary";
+          areaMeta.textContent = totalArea.toFixed(2) + " m²";
+
+          const widthField = document.createElement("div");
+          widthField.className = "field";
+          widthField.addEventListener("pointerdown", (event) => event.stopPropagation());
+          widthField.addEventListener("mousedown", (event) => event.stopPropagation());
+
+          const widthLabel = document.createElement("label");
+          widthLabel.textContent = "Width";
+
+          const widthSlider = document.createElement("input");
+          widthSlider.type = "range";
+          widthSlider.min = "1";
+          widthSlider.max = "12";
+          widthSlider.step = "1";
+          widthSlider.value = String(measurement.width);
+          widthSlider.addEventListener("pointerdown", (event) => event.stopPropagation());
+          widthSlider.addEventListener("mousedown", (event) => event.stopPropagation());
+          widthSlider.addEventListener("click", (event) => event.stopPropagation());
+          widthSlider.addEventListener("input", (event) => {
+            measurement.width = Math.max(1, Math.min(12, Number(event.target.value)));
+            render({ overlay: true });
+          });
+          widthField.appendChild(widthLabel);
+          widthField.appendChild(widthSlider);
+
+          const opacityField = document.createElement("div");
+          opacityField.className = "field";
+          opacityField.addEventListener("pointerdown", (event) => event.stopPropagation());
+          opacityField.addEventListener("mousedown", (event) => event.stopPropagation());
+
+          const opacityLabel = document.createElement("label");
+          opacityLabel.textContent = "Opacity";
+
+          const opacitySlider = document.createElement("input");
+          opacitySlider.type = "range";
+          opacitySlider.min = "0";
+          opacitySlider.max = "100";
+          opacitySlider.step = "1";
+          opacitySlider.value = String(Math.round(measurement.opacity * 100));
+          opacitySlider.addEventListener("pointerdown", (event) => event.stopPropagation());
+          opacitySlider.addEventListener("mousedown", (event) => event.stopPropagation());
+          opacitySlider.addEventListener("click", (event) => event.stopPropagation());
+          opacitySlider.addEventListener("input", (event) => {
+            measurement.opacity = Math.max(0, Math.min(1, Number(event.target.value) / 100));
+            render({ overlay: true });
+          });
+          opacityField.appendChild(opacityLabel);
+          opacityField.appendChild(opacitySlider);
+
+          card.addEventListener("dragover", (event) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+          });
+          card.addEventListener("drop", (event) => {
+            event.preventDefault();
+            if (!state.dragMeasurementId || state.dragMeasurementId === measurement.id) return;
+            const from = state.measurements.findIndex((entry) => entry.id === state.dragMeasurementId);
+            const to = state.measurements.findIndex((entry) => entry.id === measurement.id);
+            const [moved] = state.measurements.splice(from, 1);
+            state.measurements.splice(to, 0, moved);
+            state.dragMeasurementId = null;
+            render({ ui: true, overlay: true });
+          });
+
+          card.appendChild(grip);
+          main.appendChild(meta);
+          main.appendChild(lengthMeta);
+          main.appendChild(areaMeta);
+          main.appendChild(widthField);
+          main.appendChild(opacityField);
+          card.appendChild(main);
+          ui.measurementList.appendChild(card);
+        });
       }
 
       function renderLayers() {
@@ -2363,6 +2738,252 @@
         });
       }
 
+      function measurementPointWorld(point) {
+        return {
+          x: (point.cellX + 0.5) * CELL_SIZE,
+          y: (point.cellY + 0.5) * CELL_SIZE,
+        };
+      }
+
+      function measurementVertexFromWorld(worldX, worldY) {
+        const step = CELL_SIZE / 2;
+        return {
+          x: Math.round(worldX / step) * step,
+          y: Math.round(worldY / step) * step,
+        };
+      }
+
+      function pointsEqual(a, b) {
+        return !!a && !!b && a.x === b.x && a.y === b.y;
+      }
+
+      function measurementLengthMeters(start, end) {
+        return metersFromWorldUnits(Math.hypot(end.x - start.x, end.y - start.y));
+      }
+
+      function measurementAreaSquareMeters(points) {
+        if (!points || points.length < 3) return 0;
+        let sum = 0;
+        for (let index = 0; index < points.length; index += 1) {
+          const current = points[index];
+          const next = points[(index + 1) % points.length];
+          sum += current.x * next.y - next.x * current.y;
+        }
+        const worldArea = Math.abs(sum) / 2;
+        const unitsPerMeter = CELLS_PER_METER * CELL_SIZE;
+        return worldArea / (unitsPerMeter * unitsPerMeter);
+      }
+
+      function polygonCentroid(points) {
+        if (!points.length) return { x: 0, y: 0 };
+        if (points.length < 3) {
+          return {
+            x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
+            y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
+          };
+        }
+        let areaAccumulator = 0;
+        let xAccumulator = 0;
+        let yAccumulator = 0;
+        for (let index = 0; index < points.length; index += 1) {
+          const current = points[index];
+          const next = points[(index + 1) % points.length];
+          const cross = current.x * next.y - next.x * current.y;
+          areaAccumulator += cross;
+          xAccumulator += (current.x + next.x) * cross;
+          yAccumulator += (current.y + next.y) * cross;
+        }
+        if (areaAccumulator === 0) {
+          return {
+            x: points.reduce((sum, point) => sum + point.x, 0) / points.length,
+            y: points.reduce((sum, point) => sum + point.y, 0) / points.length,
+          };
+        }
+        return {
+          x: xAccumulator / (3 * areaAccumulator),
+          y: yAccumulator / (3 * areaAccumulator),
+        };
+      }
+
+      function pointInPolygon(worldX, worldY, points) {
+        let inside = false;
+        for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+          const xi = points[i].x;
+          const yi = points[i].y;
+          const xj = points[j].x;
+          const yj = points[j].y;
+          const intersects = yi > worldY !== yj > worldY && worldX < ((xj - xi) * (worldY - yi)) / (yj - yi || 1e-9) + xi;
+          if (intersects) inside = !inside;
+        }
+        return inside;
+      }
+
+      function distanceToSegment(worldX, worldY, start, end) {
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const lengthSquared = dx * dx + dy * dy;
+        if (!lengthSquared) return Math.hypot(worldX - start.x, worldY - start.y);
+        let t = ((worldX - start.x) * dx + (worldY - start.y) * dy) / lengthSquared;
+        t = Math.max(0, Math.min(1, t));
+        const projectionX = start.x + t * dx;
+        const projectionY = start.y + t * dy;
+        return Math.hypot(worldX - projectionX, worldY - projectionY);
+      }
+
+      function eraseMeasurementAt(clientX, clientY) {
+        const measurement = activeMeasurement();
+        if (!measurement) return false;
+        const pointer = worldFromClient(clientX, clientY);
+        const tolerance = Math.max(CELL_SIZE * 0.12, (measurement.width + 3) / state.viewport.zoom);
+        let changed = false;
+
+        const remainingPoints = measurement.points.filter((point) => {
+          const worldPoint = measurementPointWorld(point);
+          const hit = Math.hypot(pointer.worldX - worldPoint.x, pointer.worldY - worldPoint.y) <= tolerance;
+          changed = changed || hit;
+          return !hit;
+        });
+        measurement.points = remainingPoints;
+
+        const remainingLengths = measurement.lengths.filter((length) => {
+          const hit =
+            distanceToSegment(pointer.worldX, pointer.worldY, length.start, length.end) <= tolerance ||
+            Math.hypot(pointer.worldX - length.start.x, pointer.worldY - length.start.y) <= tolerance ||
+            Math.hypot(pointer.worldX - length.end.x, pointer.worldY - length.end.y) <= tolerance;
+          changed = changed || hit;
+          return !hit;
+        });
+        measurement.lengths = remainingLengths;
+
+        const remainingAreas = measurement.areas.filter((area) => {
+          const hitEdge = area.points.some((point, index) => {
+            const next = area.points[(index + 1) % area.points.length];
+            return distanceToSegment(pointer.worldX, pointer.worldY, point, next) <= tolerance;
+          });
+          const hit = hitEdge || pointInPolygon(pointer.worldX, pointer.worldY, area.points);
+          changed = changed || hit;
+          return !hit;
+        });
+        measurement.areas = remainingAreas;
+
+        if (changed) {
+          setStatus("Measurement annotation erased.");
+          render({ ui: true, overlay: true });
+        }
+        return changed;
+      }
+
+      function measurementHitAt(worldX, worldY) {
+        for (const measurement of state.measurements) {
+          if (!measurement.visible || measurement.opacity <= 0) continue;
+          const tolerance = CELL_SIZE * 0.12;
+
+          const pointHit = measurement.points.some((point) => {
+            const worldPoint = measurementPointWorld(point);
+            return Math.hypot(worldX - worldPoint.x, worldY - worldPoint.y) <= tolerance;
+          });
+          if (pointHit) return measurement;
+
+          const lengthHit = measurement.lengths.some((length) => {
+            return (
+              distanceToSegment(worldX, worldY, length.start, length.end) <= tolerance ||
+              Math.hypot(worldX - length.start.x, worldY - length.start.y) <= tolerance ||
+              Math.hypot(worldX - length.end.x, worldY - length.end.y) <= tolerance
+            );
+          });
+          if (lengthHit) return measurement;
+
+          const areaHit = measurement.areas.some((area) => {
+            const hitEdge = area.points.some((point, index) => {
+              const next = area.points[(index + 1) % area.points.length];
+              return distanceToSegment(worldX, worldY, point, next) <= tolerance;
+            });
+            return hitEdge || pointInPolygon(worldX, worldY, area.points);
+          });
+          if (areaHit) return measurement;
+        }
+        return null;
+      }
+
+      function drawMeasurementLength(context, measurement, length) {
+        const start = worldToScreen(length.start.x, length.start.y);
+        const end = worldToScreen(length.end.x, length.end.y);
+        const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+        context.save();
+        context.strokeStyle = hexToRgba(measurement.color, Math.max(0, Math.min(1, measurement.opacity)));
+        context.fillStyle = hexToRgba(measurement.color, Math.max(0, Math.min(1, measurement.opacity)));
+        context.lineWidth = Math.max(1, measurement.width);
+        context.beginPath();
+        context.moveTo(start.x, start.y);
+        context.lineTo(end.x, end.y);
+        context.stroke();
+        context.beginPath();
+        context.arc(start.x, start.y, Math.max(2, measurement.width * 0.7), 0, Math.PI * 2);
+        context.arc(end.x, end.y, Math.max(2, measurement.width * 0.7), 0, Math.PI * 2);
+        context.fill();
+        context.font = "600 11px IBM Plex Sans, Segoe UI, sans-serif";
+        context.textAlign = "center";
+        context.textBaseline = "bottom";
+        context.fillText(length.meters.toFixed(2) + " m", midpoint.x, midpoint.y - 6);
+        context.restore();
+      }
+
+      function drawMeasurementArea(context, measurement, area) {
+        const screenPoints = area.points.map((point) => worldToScreen(point.x, point.y));
+        const centroidWorld = polygonCentroid(area.points);
+        const centroid = worldToScreen(centroidWorld.x, centroidWorld.y);
+        context.save();
+        context.fillStyle = hexToRgba(measurement.color, Math.max(0, Math.min(1, measurement.opacity * 0.18)));
+        context.strokeStyle = hexToRgba(measurement.color, Math.max(0, Math.min(1, measurement.opacity)));
+        context.lineWidth = Math.max(1, measurement.width);
+        context.beginPath();
+        context.moveTo(screenPoints[0].x, screenPoints[0].y);
+        screenPoints.slice(1).forEach((point) => context.lineTo(point.x, point.y));
+        context.closePath();
+        context.fill();
+        context.stroke();
+        context.font = "600 11px IBM Plex Sans, Segoe UI, sans-serif";
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.fillStyle = hexToRgba(measurement.color, Math.max(0, Math.min(1, measurement.opacity)));
+        context.fillText(area.squareMeters.toFixed(2) + " m²", centroid.x, centroid.y);
+        context.restore();
+      }
+
+      function drawMeasurementDraft(context, draft, measurement) {
+        if (!draft || !measurement) return;
+        context.save();
+        context.strokeStyle = hexToRgba(measurement.color, Math.max(0.28, Math.min(1, measurement.opacity)));
+        context.fillStyle = hexToRgba(measurement.color, Math.max(0.16, measurement.opacity * 0.22));
+        context.lineWidth = Math.max(1, measurement.width);
+
+        if (draft.type === "length-click" || draft.type === "length-drag") {
+          const start = worldToScreen(draft.start.x, draft.start.y);
+          const end = worldToScreen(draft.end.x, draft.end.y);
+          context.beginPath();
+          context.moveTo(start.x, start.y);
+          context.lineTo(end.x, end.y);
+          context.stroke();
+        }
+
+        if (draft.type === "area" && draft.points.length) {
+          const draftPoints = draft.points.concat(
+            draft.hover && !pointsEqual(draft.hover, draft.points[draft.points.length - 1]) ? [draft.hover] : []
+          );
+          const screenPoints = draftPoints.map((point) => worldToScreen(point.x, point.y));
+          context.beginPath();
+          context.moveTo(screenPoints[0].x, screenPoints[0].y);
+          screenPoints.slice(1).forEach((point) => context.lineTo(point.x, point.y));
+          context.stroke();
+          screenPoints.forEach((point) => {
+            context.beginPath();
+            context.arc(point.x, point.y, Math.max(2, measurement.width * 0.55), 0, Math.PI * 2);
+            context.fill();
+          });
+        }
+        context.restore();
+      }
+
       function drawOverlayScene() {
         const width = ui.overlayCanvas.clientWidth;
         const height = ui.overlayCanvas.clientHeight;
@@ -2424,6 +3045,35 @@
             });
           }
           overlayCtx.restore();
+        }
+
+        state.measurements
+          .slice()
+          .reverse()
+          .forEach((measurement) => {
+            if (!measurement.visible || measurement.opacity <= 0) return;
+            measurement.points.forEach((point) => {
+              const worldPoint = measurementPointWorld(point);
+              const screenPoint = worldToScreen(worldPoint.x, worldPoint.y);
+              const radius = 2 + measurement.width * 0.65;
+              overlayCtx.save();
+              overlayCtx.strokeStyle = hexToRgba(measurement.color, Math.max(0, Math.min(1, measurement.opacity)));
+              overlayCtx.fillStyle = hexToRgba(measurement.color, Math.max(0, Math.min(1, measurement.opacity * 0.42)));
+              overlayCtx.beginPath();
+              overlayCtx.arc(screenPoint.x, screenPoint.y, radius, 0, Math.PI * 2);
+              overlayCtx.fill();
+              overlayCtx.stroke();
+              overlayCtx.restore();
+            });
+            measurement.lengths.forEach((length) => drawMeasurementLength(overlayCtx, measurement, length));
+            measurement.areas.forEach((area) => drawMeasurementArea(overlayCtx, measurement, area));
+          });
+
+        if (state.measurementDraft) {
+          const draftMeasurement = state.measurements.find((entry) => entry.id === state.measurementDraft.measurementId);
+          if (draftMeasurement && draftMeasurement.visible && draftMeasurement.opacity > 0) {
+            drawMeasurementDraft(overlayCtx, state.measurementDraft, draftMeasurement);
+          }
         }
 
         if (state.pointer.inside && state.activeTool === "select") {
@@ -2674,6 +3324,14 @@
         return rgbToHex(rgb.r, rgb.g, rgb.b);
       }
 
+      function addMeasurement() {
+        const measurement = createMeasurement("Measurement " + state.nextMeasurementNumber++);
+        state.measurements.unshift(measurement);
+        setActiveMeasurementById(measurement.id);
+        setStatus("New measurement added.");
+        render({ ui: true, overlay: true });
+      }
+
       function addLayer() {
         const layer = createLayer("Layer " + (state.layers.length + 1));
         state.layers.unshift(layer);
@@ -2794,8 +3452,122 @@
         render({ ui: true, overlay: true });
       }
 
+      function addMeasurementPoint(clientX, clientY) {
+        const measurement = activeMeasurement();
+        if (!measurement || measurement.mode !== "points") {
+          setStatus("Points mode is active in this first measurement pass.");
+          render({ overlay: true });
+          return;
+        }
+        const pointer = worldFromClient(clientX, clientY);
+        const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+        const exists = measurement.points.some((point) => point.cellX === cell.x && point.cellY === cell.y);
+        if (exists) {
+          setStatus("Point already exists on this cell.");
+          render({ overlay: true });
+          return;
+        }
+        measurement.points.push({
+          id: "point-" + Math.random().toString(36).slice(2, 9),
+          cellX: cell.x,
+          cellY: cell.y,
+        });
+        setStatus("Measurement point added.");
+        render({ ui: true, overlay: true });
+      }
+
+      function commitMeasurementLength(measurement, start, end) {
+        if (!measurement || pointsEqual(start, end)) return false;
+        measurement.lengths.push({
+          id: "length-" + Math.random().toString(36).slice(2, 9),
+          start,
+          end,
+          meters: measurementLengthMeters(start, end),
+        });
+        return true;
+      }
+
+      function beginMeasurementLength(clientX, clientY) {
+        const measurement = activeMeasurement();
+        if (!measurement || measurement.mode !== "length") return;
+        const pointer = worldFromClient(clientX, clientY);
+        const snapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
+
+        if (
+          state.measurementDraft &&
+          state.measurementDraft.type === "length-click" &&
+          state.measurementDraft.measurementId === measurement.id
+        ) {
+          const committed = commitMeasurementLength(measurement, state.measurementDraft.start, snapped);
+          state.measurementDraft = null;
+          setStatus(committed ? "Measurement length added." : "Length needs two different points.");
+          render({ ui: true, overlay: true });
+          return;
+        }
+
+        state.interaction = {
+          type: "measurement-length-drag",
+          measurementId: measurement.id,
+          start: snapped,
+          startClientX: clientX,
+          startClientY: clientY,
+          moved: false,
+        };
+      }
+
+      function beginMeasurementArea(clientX, clientY) {
+        const measurement = activeMeasurement();
+        if (!measurement || measurement.mode !== "area") return;
+        const pointer = worldFromClient(clientX, clientY);
+        const snapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
+        const draft = state.measurementDraft;
+
+        if (!draft || draft.type !== "area" || draft.measurementId !== measurement.id) {
+          state.measurementDraft = {
+            type: "area",
+            measurementId: measurement.id,
+            points: [snapped],
+            hover: snapped,
+          };
+          setStatus("Area started. Keep clicking points and click the first point to close.");
+          render({ overlay: true });
+          return;
+        }
+
+        if (draft.points.length >= 3 && pointsEqual(snapped, draft.points[0])) {
+          const points = draft.points.slice();
+          measurement.areas.push({
+            id: "area-" + Math.random().toString(36).slice(2, 9),
+            points,
+            squareMeters: measurementAreaSquareMeters(points),
+          });
+          state.measurementDraft = null;
+          setStatus("Measurement area added.");
+          render({ ui: true, overlay: true });
+          return;
+        }
+
+        if (pointsEqual(snapped, draft.points[draft.points.length - 1])) {
+          setStatus("Choose a different vertex.");
+          render({ overlay: true });
+          return;
+        }
+
+        draft.points.push(snapped);
+        draft.hover = snapped;
+        setStatus("Area point added.");
+        render({ overlay: true });
+      }
+
       function beginSelection(clientX, clientY) {
         const pointer = worldFromClient(clientX, clientY);
+        const measurement = measurementHitAt(pointer.worldX, pointer.worldY);
+        if (measurement) {
+          setActiveMeasurementById(measurement.id);
+          setStatus("Measurement active.");
+          render({ ui: true, overlay: true });
+          return;
+        }
         const layer = topPaintedLayerAt(pointer.worldX, pointer.worldY);
         if (layer) {
           setActiveLayerById(layer.id);
@@ -2886,6 +3658,24 @@
           collectSceneCalibrationPoint(event.clientX, event.clientY);
           return;
         }
+        if (state.activeTool === "measure") {
+          if (isRightClick) {
+            if (state.measurementDraft) {
+              cancelMeasurementDraft();
+            }
+            state.interaction = {
+              type: "measurement-erase",
+            };
+            eraseMeasurementAt(event.clientX, event.clientY);
+            return;
+          }
+          const measurement = activeMeasurement();
+          if (!measurement) return;
+          if (measurement.mode === "points") addMeasurementPoint(event.clientX, event.clientY);
+          else if (measurement.mode === "length") beginMeasurementLength(event.clientX, event.clientY);
+          else if (measurement.mode === "area") beginMeasurementArea(event.clientX, event.clientY);
+          return;
+        }
         if (state.activeTool === "select" && !isRightClick) {
           beginSelection(event.clientX, event.clientY);
           return;
@@ -2908,6 +3698,18 @@
           } else if (state.activeTool === "transform" && activeScene() && !activeScene().locked) {
             const pointer = worldFromClient(event.clientX, event.clientY);
             ui.overlayCanvas.style.cursor = cursorForSceneHit(sceneTransformHit(activeScene(), pointer.worldX, pointer.worldY));
+          } else if (state.activeTool === "measure") {
+            ui.overlayCanvas.style.cursor = "crosshair";
+            if (
+              state.measurementDraft &&
+              state.measurementDraft.measurementId === state.activeMeasurementId &&
+              (state.measurementDraft.type === "length-click" || state.measurementDraft.type === "area")
+            ) {
+              const pointer = worldFromClient(event.clientX, event.clientY);
+              const snapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
+              state.measurementDraft.end = snapped;
+              state.measurementDraft.hover = snapped;
+            }
           } else if (state.activeTool === "brush") {
             ui.overlayCanvas.style.cursor = state.brush.eyedropper ? "copy" : "crosshair";
           } else {
@@ -2932,6 +3734,30 @@
             const changed = paintCells(cell.x, cell.y, state.interaction.mode);
             state.interaction.lastKey = key;
             render({ ui: changed, content: true, overlay: true });
+          }
+          return;
+        }
+
+        if (state.interaction.type === "measurement-erase") {
+          eraseMeasurementAt(event.clientX, event.clientY);
+          return;
+        }
+
+        if (state.interaction.type === "measurement-length-drag") {
+          const pointer = worldFromClient(event.clientX, event.clientY);
+          const snapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
+          const movedEnough =
+            Math.abs(event.clientX - state.interaction.startClientX) > 3 ||
+            Math.abs(event.clientY - state.interaction.startClientY) > 3;
+          if (movedEnough) {
+            state.interaction.moved = true;
+            state.measurementDraft = {
+              type: "length-drag",
+              measurementId: state.interaction.measurementId,
+              start: state.interaction.start,
+              end: snapped,
+            };
+            render({ overlay: true });
           }
           return;
         }
@@ -2993,6 +3819,26 @@
       function handlePointerUp() {
         if (!state.interaction) return;
         if (state.interaction.type === "pan") setStatus("Viewport updated.");
+        if (state.interaction.type === "measurement-length-drag") {
+          const measurement = state.measurements.find((entry) => entry.id === state.interaction.measurementId);
+          if (measurement) {
+            if (state.interaction.moved && state.measurementDraft && state.measurementDraft.type === "length-drag") {
+              const committed = commitMeasurementLength(measurement, state.measurementDraft.start, state.measurementDraft.end);
+              setStatus(committed ? "Measurement length added." : "Length needs two different points.");
+              state.measurementDraft = null;
+              state.interaction = null;
+              render({ ui: true, overlay: true });
+              return;
+            }
+            state.measurementDraft = {
+              type: "length-click",
+              measurementId: measurement.id,
+              start: state.interaction.start,
+              end: state.interaction.start,
+            };
+            setStatus("Length started. Click the second point or drag.");
+          }
+        }
         if (state.interaction.sceneId) setStatus("Scene transform updated.");
         state.interaction = null;
         render({ ui: true, overlay: true });
@@ -3018,6 +3864,7 @@
             setActiveLayerById(state.layers[0].id);
           } else {
             state.activeSceneId = null;
+            state.activeMeasurementId = null;
             state.activeTool = "brush";
           }
         } else {
@@ -3082,6 +3929,10 @@
         state.sceneSectionCollapsed = !state.sceneSectionCollapsed;
         render({ ui: true });
       });
+      ui.measurementSectionToggle.addEventListener("click", () => {
+        state.measurementSectionCollapsed = !state.measurementSectionCollapsed;
+        render({ ui: true });
+      });
       ui.layerSectionToggle.addEventListener("click", () => {
         state.layerSectionCollapsed = !state.layerSectionCollapsed;
         render({ ui: true });
@@ -3090,6 +3941,7 @@
         const [file] = ui.sceneImportInput.files || [];
         importSceneFile(file);
       });
+      ui.addMeasurementButton.addEventListener("click", addMeasurement);
       ui.addLayerButton.addEventListener("click", addLayer);
       ui.sceneScaleCancelButton.addEventListener("click", () => {
         closeModal(ui.sceneScaleModal);
@@ -3164,6 +4016,11 @@
           return;
         }
         if (event.code === "Space") state.spacePan = true;
+        if (event.key === "Escape" && cancelMeasurementDraft()) {
+          setStatus("Measurement draft cancelled.");
+          render({ overlay: true });
+          return;
+        }
         if (event.key === "Escape" && state.brush.eyedropper) {
           state.brush.eyedropper = false;
           setStatus("Brush eyedropper off.");

@@ -31,6 +31,18 @@ This document should be treated as authoritative unless the user explicitly chan
   - an eyedropper mode that samples only from painted cells on the canvas
   - the eyedropper also writes back into the active swatch
   - when eyedropper mode is active, the brush footprint preview is hidden and the browser pick cursor is used without any extra overlay marker
+- `Measurements` is now a third annotation subsystem alongside `Scenes` and `Layers`
+- Measurement cards currently support the first safe phase:
+  - section + cards + shared active-state integration
+  - visible point annotations
+  - width and opacity controls
+  - visible `Length` and `Area` annotations are now enabled
+  - `Points` snap to the center of each `5 x 5 cm` cell
+  - `Length` and `Area` snap on a half-cell grid (`2.5 cm`)
+  - `Length` supports both click-drag-release and click-first / click-second workflows
+  - `Area` is polygon-based and closes when the first point is clicked again
+  - `Escape` should cancel an unfinished measurement draft before it exits measurement mode entirely
+  - while a measurement is active, right-click drag acts as a measurement eraser and removes whole point/length/area annotations from the active measurement
 
 ## Core Interaction Model
 
@@ -43,16 +55,22 @@ This document should be treated as authoritative unless the user explicitly chan
 - Right click erases
 - Space + drag pans
 - Mouse wheel zooms
-- `Scenes` and `Layers` use one shared active-state model:
-  - only one `Scene` or one `Layer` can be active at a time
+- `Scenes`, `Layers`, and `Measurements` use one shared active-state model:
+  - only one `Scene`, one `Layer`, or one `Measurement` can be active at a time
   - active `Layer` switches the app into `Brush`
   - active `Scene` switches the app into scene transform mode
+  - active `Measurement` switches the app into measurement mode
   - `Escape`, clicking the same active card again, or manually choosing `Selection` clears all active state
 - Card interaction pattern for `Scenes` and `Layers` is shared:
   - click on an inactive card activates it
   - click on the name of an already active card enters rename mode
   - click elsewhere on an already active card deactivates it
 - In `Selection` mode, clicking a visible `Scene` on the canvas should select the topmost matching scene before checking painted layers underneath
+- Selection hit priority must follow visual stacking:
+  - check `Measurements` from topmost to bottommost first
+  - check painted `Layers` from topmost to bottommost first
+  - then check painted `Layers` from topmost to bottommost
+  - only if no measurement or painted layer is hit should selection fall through to `Scenes`
 
 ## Layout Rules
 
@@ -71,6 +89,7 @@ This document should be treated as authoritative unless the user explicitly chan
   - a small arrow at the left of the title indicates state
   - arrow points down when open and sideways when collapsed
 - Inactive `Scene` and `Layer` cards collapse to a compact state:
+- Inactive `Scene`, `Layer`, and `Measurement` cards collapse to a compact state:
   - only drag handle and name remain visible
   - `Hide` and `Delete` remain visible as compact inline controls in the name row
   - full controls/details otherwise appear only when the card is active
