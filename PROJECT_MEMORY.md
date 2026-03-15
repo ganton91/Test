@@ -21,6 +21,9 @@ This document should be treated as authoritative unless the user explicitly chan
 - Avoid default helper/explanatory filler text in the UI unless the user explicitly asks for it
 - Floating UI surfaces should use their own dedicated global tokens, separate from the shared `surface` / `bg-elevated` tokens used elsewhere
 - Brush dimensions are stored internally in cells, but the Brush Settings UI exposes them in centimeters (`5 cm` per cell)
+- Brush Settings includes a width/height link toggle:
+  - when linked, width and height stay equal and update together
+  - when unlinked, they can be edited independently
 
 ## Core Interaction Model
 

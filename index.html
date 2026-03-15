@@ -808,8 +808,33 @@
 
       .dimension-row {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr);
         gap: 8px;
+        align-items: end;
+      }
+
+      .dimension-link {
+        width: 28px;
+        height: 36px;
+        padding: 0;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--muted);
+        cursor: pointer;
+        transition: 140ms ease;
+      }
+
+      .dimension-link:hover {
+        background: var(--surface-strong);
+        border-color: var(--line-strong);
+        color: var(--text);
+      }
+
+      .dimension-link.active {
+        background: var(--accent-soft);
+        border-color: var(--line-strong);
+        color: var(--text);
       }
 
       .tool-chips {
@@ -1044,6 +1069,7 @@
                 <label for="brushWidth">Width cm</label>
                 <input id="brushWidth" type="number" min="5" max="500" step="5" value="5" />
               </div>
+              <button class="dimension-link" id="brushLinkButton" type="button" aria-pressed="false" title="Link width and height">⛓</button>
               <div class="field">
                 <label for="brushHeight">Height cm</label>
                 <input id="brushHeight" type="number" min="5" max="500" step="5" value="5" />
@@ -1104,6 +1130,7 @@
         brushPanel: document.getElementById("brushPanel"),
         brushColor: document.getElementById("brushColor"),
         brushWidth: document.getElementById("brushWidth"),
+        brushLinkButton: document.getElementById("brushLinkButton"),
         brushHeight: document.getElementById("brushHeight"),
         sizeChips: Array.from(document.querySelectorAll(".tool-chip")),
         statusPill: document.getElementById("statusPill"),
@@ -1136,6 +1163,7 @@
           color: DEFAULT_COLOR,
           width: 1,
           height: 1,
+          linked: false,
         },
         nextSceneNumber: 1,
         scenes: [],
@@ -1785,6 +1813,9 @@
         ui.selectionToolButton.classList.toggle("active", state.activeTool === "select");
         ui.brushToolButton.classList.toggle("active", state.activeTool === "brush");
         ui.brushPanel.classList.toggle("hidden", state.activeTool !== "brush");
+        ui.brushLinkButton.classList.toggle("active", state.brush.linked);
+        ui.brushLinkButton.setAttribute("aria-pressed", String(state.brush.linked));
+        ui.brushLinkButton.title = state.brush.linked ? "Unlock width and height" : "Link width and height";
         ui.overlayCanvas.style.cursor = state.activeTool === "brush" ? "crosshair" : state.activeTool === "transform" ? "move" : "default";
       }
 
@@ -2830,11 +2861,26 @@
         render({ ui: true, overlay: true });
       });
       ui.brushWidth.addEventListener("input", () => {
-        state.brush.width = centimetersToCells(ui.brushWidth.value);
+        const nextWidth = centimetersToCells(ui.brushWidth.value);
+        state.brush.width = nextWidth;
+        if (state.brush.linked) {
+          state.brush.height = nextWidth;
+        }
         render({ ui: true, overlay: true });
       });
       ui.brushHeight.addEventListener("input", () => {
-        state.brush.height = centimetersToCells(ui.brushHeight.value);
+        const nextHeight = centimetersToCells(ui.brushHeight.value);
+        state.brush.height = nextHeight;
+        if (state.brush.linked) {
+          state.brush.width = nextHeight;
+        }
+        render({ ui: true, overlay: true });
+      });
+      ui.brushLinkButton.addEventListener("click", () => {
+        state.brush.linked = !state.brush.linked;
+        if (state.brush.linked) {
+          state.brush.height = state.brush.width;
+        }
         render({ ui: true, overlay: true });
       });
 
