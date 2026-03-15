@@ -20,10 +20,10 @@
         --accent-soft: rgba(17, 24, 39, 0.08);
         --canvas-bg: #fcfcfb;
         --ruler-bg: rgba(248, 248, 246, 0.95);
-        --grid-5cm: rgba(20, 24, 28, 0.06);
-        --grid-50cm: rgba(20, 24, 28, 0.11);
-        --grid-1m: rgba(20, 24, 28, 0.16);
-        --crosshair: rgba(210, 45, 78, 0.45);
+        --grid-5cm: rgb(20, 24, 28);
+        --grid-50cm: rgb(20, 24, 28);
+        --grid-1m: rgb(20, 24, 28);
+        --crosshair: rgb(210, 45, 78);
         --selection: rgba(17, 24, 39, 0.82);
         --shadow: 0 18px 48px rgba(17, 24, 39, 0.08);
       }
@@ -43,10 +43,10 @@
         --accent-soft: rgba(248, 250, 252, 0.08);
         --canvas-bg: #11161a;
         --ruler-bg: rgba(20, 24, 28, 0.96);
-        --grid-5cm: rgba(255, 255, 255, 0.05);
-        --grid-50cm: rgba(255, 255, 255, 0.1);
-        --grid-1m: rgba(255, 255, 255, 0.16);
-        --crosshair: rgba(255, 111, 145, 0.5);
+        --grid-5cm: rgb(255, 255, 255);
+        --grid-50cm: rgb(255, 255, 255);
+        --grid-1m: rgb(255, 255, 255);
+        --crosshair: rgb(255, 111, 145);
         --selection: rgba(255, 255, 255, 0.86);
         --shadow: 0 20px 56px rgba(0, 0, 0, 0.32);
       }
@@ -550,6 +550,49 @@
         color: inherit;
       }
 
+      .field input[type="range"] {
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        appearance: none;
+        -webkit-appearance: none;
+      }
+
+      .field input[type="range"]::-webkit-slider-runnable-track {
+        height: 4px;
+        border-radius: 999px;
+        background: var(--line-strong);
+      }
+
+      .field input[type="range"]::-webkit-slider-thumb {
+        width: 12px;
+        height: 12px;
+        margin-top: -4px;
+        border: 0;
+        border-radius: 50%;
+        background: var(--text);
+        appearance: none;
+        -webkit-appearance: none;
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+      }
+
+      .field input[type="range"]::-moz-range-track {
+        height: 4px;
+        border: 0;
+        border-radius: 999px;
+        background: var(--line-strong);
+      }
+
+      .field input[type="range"]::-moz-range-thumb {
+        width: 12px;
+        height: 12px;
+        border: 0;
+        border-radius: 50%;
+        background: var(--text);
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+      }
+
       .dimension-row {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -594,6 +637,12 @@
         flex-direction: column;
         gap: 8px;
         margin-top: 10px;
+      }
+
+      .menu-section + .menu-section {
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
       }
 
       .mode-button {
@@ -665,10 +714,19 @@
         </aside>
 
         <div class="menu-panel hidden" id="settingsMenu">
-          <div class="menu-title">Appearance</div>
-          <div class="menu-actions">
-            <button class="mode-button active" data-theme="light">Light mode</button>
-            <button class="mode-button" data-theme="dark">Dark mode</button>
+          <div class="menu-section">
+            <div class="menu-title">Appearance</div>
+            <div class="menu-actions">
+              <button class="mode-button active" data-theme="light">Light mode</button>
+              <button class="mode-button" data-theme="dark">Dark mode</button>
+            </div>
+          </div>
+          <div class="menu-section">
+            <div class="menu-title">Grid Position</div>
+            <div class="menu-actions">
+              <button class="mode-button active" data-grid-position="below">Below layers</button>
+              <button class="mode-button" data-grid-position="above">Above layers</button>
+            </div>
           </div>
         </div>
 
@@ -756,7 +814,8 @@
         addLayerButton: document.getElementById("addLayerButton"),
         settingsButton: document.getElementById("settingsButton"),
         settingsMenu: document.getElementById("settingsMenu"),
-        modeButtons: Array.from(document.querySelectorAll(".mode-button")),
+        themeButtons: Array.from(document.querySelectorAll("[data-theme]")),
+        gridPositionButtons: Array.from(document.querySelectorAll("[data-grid-position]")),
         selectionToolButton: document.getElementById("selectionToolButton"),
         brushToolButton: document.getElementById("brushToolButton"),
         brushPanel: document.getElementById("brushPanel"),
@@ -794,6 +853,7 @@
           width: 1,
           height: 1,
         },
+        gridPosition: "below",
         layers: [createLayer("Layer 1")],
         activeLayerId: null,
         dragLayerId: null,
@@ -816,6 +876,7 @@
           id: "layer-" + Math.random().toString(36).slice(2, 10),
           name,
           visible: true,
+          opacity: 1,
           tiles: {},
           cellCount: 0,
         };
@@ -938,6 +999,13 @@
         };
       }
 
+      function brushOriginFromCell(cellX, cellY) {
+        return {
+          x: cellX - Math.floor((state.brush.width - 1) / 2),
+          y: cellY - Math.floor((state.brush.height - 1) / 2),
+        };
+      }
+
       function setStatus(message) {
         ui.statusPill.textContent = message;
       }
@@ -961,6 +1029,9 @@
           updateThemeButtons();
           renderToolState();
           renderLayers();
+          ui.staticCanvas.style.zIndex = state.gridPosition === "above" ? "2" : "0";
+          ui.contentCanvas.style.zIndex = "1";
+          ui.overlayCanvas.style.zIndex = "3";
           ui.layersPanel.classList.toggle("collapsed", state.panelCollapsed);
           ui.panelToggle.textContent = state.panelCollapsed ? "→" : "←";
           ui.brushColor.value = state.brush.color;
@@ -991,8 +1062,11 @@
       }
 
       function updateThemeButtons() {
-        ui.modeButtons.forEach((button) => {
+        ui.themeButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.theme === state.theme);
+        });
+        ui.gridPositionButtons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.gridPosition === state.gridPosition);
         });
       }
 
@@ -1045,6 +1119,33 @@
 
           main.appendChild(input);
           main.appendChild(meta);
+
+          const opacityField = document.createElement("div");
+          opacityField.className = "field";
+          opacityField.style.marginTop = "8px";
+          opacityField.addEventListener("pointerdown", (event) => event.stopPropagation());
+          opacityField.addEventListener("mousedown", (event) => event.stopPropagation());
+
+          const opacityLabel = document.createElement("label");
+          opacityLabel.textContent = "Opacity";
+
+          const opacitySlider = document.createElement("input");
+          opacitySlider.type = "range";
+          opacitySlider.min = "0";
+          opacitySlider.max = "100";
+          opacitySlider.step = "1";
+          opacitySlider.value = String(Math.round(layer.opacity * 100));
+          opacitySlider.addEventListener("pointerdown", (event) => event.stopPropagation());
+          opacitySlider.addEventListener("mousedown", (event) => event.stopPropagation());
+          opacitySlider.addEventListener("click", (event) => event.stopPropagation());
+          opacitySlider.addEventListener("input", (event) => {
+            layer.opacity = Math.max(0, Math.min(1, Number(event.target.value) / 100));
+            render({ content: true });
+          });
+
+          opacityField.appendChild(opacityLabel);
+          opacityField.appendChild(opacitySlider);
+          main.appendChild(opacityField);
 
           const actions = document.createElement("div");
           actions.className = "layer-actions";
@@ -1127,8 +1228,6 @@
         const width = ui.staticCanvas.clientWidth;
         const height = ui.staticCanvas.clientHeight;
         staticCtx.clearRect(0, 0, width, height);
-        staticCtx.fillStyle = getCssVar("--canvas-bg");
-        staticCtx.fillRect(0, 0, width, height);
 
         const step = CELL_SIZE * state.viewport.zoom;
         if (step <= 1) return;
@@ -1144,6 +1243,7 @@
           staticCtx.moveTo(x, 0);
           staticCtx.lineTo(x, height);
           staticCtx.strokeStyle = major ? getCssVar("--grid-1m") : halfMeter ? getCssVar("--grid-50cm") : getCssVar("--grid-5cm");
+          staticCtx.lineWidth = major ? 0.56 : halfMeter ? 0.36 : 0.18;
           staticCtx.stroke();
         }
 
@@ -1155,11 +1255,13 @@
           staticCtx.moveTo(0, y);
           staticCtx.lineTo(width, y);
           staticCtx.strokeStyle = major ? getCssVar("--grid-1m") : halfMeter ? getCssVar("--grid-50cm") : getCssVar("--grid-5cm");
+          staticCtx.lineWidth = major ? 0.56 : halfMeter ? 0.36 : 0.18;
           staticCtx.stroke();
         }
 
         staticCtx.save();
         staticCtx.strokeStyle = getCssVar("--crosshair");
+        staticCtx.lineWidth = 0.56;
         staticCtx.beginPath();
         staticCtx.moveTo(state.viewport.x, 0);
         staticCtx.lineTo(state.viewport.x, height);
@@ -1187,8 +1289,10 @@
         const bounds = visibleTileBounds();
         contentCtx.clearRect(0, 0, width, height);
 
-        state.layers.forEach((layer) => {
+        [...state.layers].reverse().forEach((layer) => {
           if (!layer.visible) return;
+          contentCtx.save();
+          contentCtx.globalAlpha = layer.opacity;
           for (let tileY = bounds.minTileY; tileY <= bounds.maxTileY; tileY += 1) {
             for (let tileX = bounds.minTileX; tileX <= bounds.maxTileX; tileX += 1) {
               const tile = layer.tiles[tileKey(tileX, tileY)];
@@ -1200,6 +1304,7 @@
               contentCtx.drawImage(tile.canvas, screenX, screenY, snappedTileSpan, snappedTileSpan);
             }
           }
+          contentCtx.restore();
         });
       }
 
@@ -1231,9 +1336,10 @@
         if (state.pointer.inside && state.activeTool === "brush") {
           const pointer = worldFromClient(state.pointer.clientX, state.pointer.clientY);
           const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+          const origin = brushOriginFromCell(cell.x, cell.y);
           const size = CELL_SIZE * state.viewport.zoom;
-          const x = snapPixel(state.viewport.x + cell.x * size);
-          const y = snapPixel(state.viewport.y + cell.y * size);
+          const x = snapPixel(state.viewport.x + origin.x * size);
+          const y = snapPixel(state.viewport.y + origin.y * size);
           const snappedWidth = Math.max(1, snapPixel(state.brush.width * size));
           const snappedHeight = Math.max(1, snapPixel(state.brush.height * size));
           overlayCtx.save();
@@ -1292,6 +1398,7 @@
         context.moveTo(x + 0.5, invert ? 0 : thickness);
         context.lineTo(x + 0.5, invert ? thickness - tick : tick);
         context.strokeStyle = major ? getCssVar("--grid-1m") : halfMeter ? getCssVar("--grid-50cm") : getCssVar("--grid-5cm");
+        context.lineWidth = major ? 0.56 : halfMeter ? 0.4 : 0.26;
         context.stroke();
 
         const label = major ? formatMeters(cellIndex) : formatCentimeters(cellIndex);
@@ -1313,20 +1420,24 @@
         context.moveTo(invert ? 0 : thickness, y + 0.5);
         context.lineTo(invert ? thickness - tick : tick, y + 0.5);
         context.strokeStyle = major ? getCssVar("--grid-1m") : halfMeter ? getCssVar("--grid-50cm") : getCssVar("--grid-5cm");
+        context.lineWidth = major ? 0.56 : halfMeter ? 0.4 : 0.26;
         context.stroke();
 
         const shouldLabel = major || (showHalfMeterLabels && halfMeter) || showCellLabels;
         if (!shouldLabel) return;
         context.save();
-        context.translate(invert ? thickness - 10 : 11, y);
+        const edgeOffset = invert ? thickness - 8 : 9;
+        context.translate(edgeOffset, y);
         context.rotate(-Math.PI / 2);
+        context.textAlign = "left";
+        context.textBaseline = "middle";
         context.fillStyle = getCssVar("--muted");
         context.font = major
           ? "600 10px IBM Plex Sans, Segoe UI, sans-serif"
           : showHalfMeterLabels && halfMeter
           ? "10px IBM Plex Sans, Segoe UI, sans-serif"
           : "9px IBM Plex Sans, Segoe UI, sans-serif";
-        context.fillText(major ? formatMeters(signedCellIndex) : formatCentimeters(signedCellIndex), 0, 0);
+        context.fillText(major ? formatMeters(signedCellIndex) : formatCentimeters(signedCellIndex), 4, 0);
         context.restore();
       }
 
@@ -1365,10 +1476,11 @@
       function paintCells(cellX, cellY, mode) {
         const layer = activeLayer();
         if (!layer) return false;
+        const origin = brushOriginFromCell(cellX, cellY);
         let changed = false;
         for (let y = 0; y < state.brush.height; y += 1) {
           for (let x = 0; x < state.brush.width; x += 1) {
-            changed = setCellColor(layer, cellX + x, cellY + y, mode === "paint" ? state.brush.color : null) || changed;
+            changed = setCellColor(layer, origin.x + x, origin.y + y, mode === "paint" ? state.brush.color : null) || changed;
           }
         }
         return changed;
@@ -1523,11 +1635,19 @@
         ui.settingsButton.classList.toggle("active", !ui.settingsMenu.classList.contains("hidden"));
       });
 
-      ui.modeButtons.forEach((button) => {
+      ui.themeButtons.forEach((button) => {
         button.addEventListener("click", () => {
           state.theme = button.dataset.theme;
           setStatus((state.theme === "dark" ? "Dark" : "Light") + " mode active.");
           render({ ui: true, static: true, content: true, overlay: true, rulers: true });
+        });
+      });
+
+      ui.gridPositionButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          state.gridPosition = button.dataset.gridPosition;
+          setStatus(state.gridPosition === "above" ? "Grid shown above layers." : "Grid shown below layers.");
+          render({ ui: true });
         });
       });
 
