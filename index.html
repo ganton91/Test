@@ -370,6 +370,20 @@
         border-color: var(--line-strong);
       }
 
+      .layer-card.inactive-collapsed {
+        align-items: center;
+        padding-top: 8px;
+        padding-bottom: 8px;
+      }
+
+      .layer-card.inactive-collapsed .layer-main {
+        gap: 0;
+      }
+
+      .layer-card.inactive-collapsed .layer-main > :not(:first-child) {
+        display: none;
+      }
+
       .layer-card.dragging {
         opacity: 0.55;
       }
@@ -1725,6 +1739,7 @@
         state.layers.forEach((layer) => {
           const card = document.createElement("div");
           card.className = "layer-card layer-stack-card" + (layer.id === state.activeLayerId ? " active" : "");
+          if (layer.id !== state.activeLayerId) card.classList.add("inactive-collapsed");
           if (layer.id === state.dragLayerId) card.classList.add("dragging");
 
           const grip = document.createElement("div");
@@ -1883,6 +1898,7 @@
         state.scenes.forEach((scene) => {
           const card = document.createElement("div");
           card.className = "layer-card scene-card" + (scene.id === state.activeSceneId ? " active" : "");
+          if (scene.id !== state.activeSceneId) card.classList.add("inactive-collapsed");
           if (scene.id === state.dragSceneId) card.classList.add("dragging");
 
           const grip = document.createElement("div");

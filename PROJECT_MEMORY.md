@@ -56,6 +56,10 @@ This document should be treated as authoritative unless the user explicitly chan
   - clicking the section title toggles open/closed state
   - a small arrow at the left of the title indicates state
   - arrow points down when open and sideways when collapsed
+- Inactive `Scene` and `Layer` cards collapse to a compact state:
+  - only drag handle and name remain visible
+  - full controls/details appear only when the card is active
+  - drag-and-drop must still work from the compact card state
 
 ## Modal Rules
 
