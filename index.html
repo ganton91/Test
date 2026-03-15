@@ -247,6 +247,11 @@
         height: 10px;
       }
 
+      .section-header-action.active {
+        background: var(--accent-soft);
+        border-color: var(--line-strong);
+      }
+
       .layers-body {
         flex: 1;
         display: flex;
@@ -507,6 +512,11 @@
         font-size: 11px;
       }
 
+      .scene-card .layer-actions .layer-icon.active {
+        background: var(--accent-soft);
+        border-color: var(--line-strong);
+      }
+
       .view-card .layer-actions .layer-icon {
         width: auto;
         min-width: 0;
@@ -674,23 +684,37 @@
         height: 100%;
       }
 
+      .canvas-shell.view-mode .canvas-wrap {
+        display: none;
+      }
+
+      .canvas-shell.view-mode .floating-tools,
+      .canvas-shell.view-mode .floating-panels-left {
+        display: none;
+      }
+
       .view-switcher {
         position: absolute;
         left: 50%;
         bottom: 38px;
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--bg-strong);
+        box-shadow: var(--shadow);
         transform: translateX(-50%);
         z-index: 11;
       }
 
       .view-switcher-button {
         padding: 7px 11px;
-        border: 1px solid var(--line);
+        border: 0;
         border-radius: 12px;
-        background: var(--bg-strong);
-        box-shadow: var(--shadow);
+        background: transparent;
+        box-shadow: none;
         color: var(--muted);
         font-size: 11px;
         font-weight: 600;
@@ -700,14 +724,85 @@
 
       .view-switcher-button:hover {
         background: var(--surface-strong);
-        border-color: var(--line-strong);
         color: var(--text);
       }
 
       .view-switcher-button.active {
         background: var(--accent-soft);
-        border-color: var(--line-strong);
         color: var(--text);
+      }
+
+      .canvas-mode-hint {
+        position: absolute;
+        left: 50%;
+        top: 196px;
+        padding: 7px 11px;
+        border: 1px solid var(--muted);
+        border-radius: 12px;
+        background: var(--bg-strong);
+        box-shadow: var(--shadow);
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 600;
+        transform: translateX(-50%);
+        z-index: 11;
+      }
+
+      .view-output-shell {
+        position: absolute;
+        top: 28px;
+        left: 28px;
+        right: 28px;
+        bottom: 28px;
+        display: none;
+        padding: 14px;
+        background: var(--canvas-bg);
+      }
+
+      .canvas-shell.view-mode .view-output-shell {
+        display: grid;
+      }
+
+      .view-output-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-rows: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        min-width: 0;
+        min-height: 0;
+      }
+
+      .view-pane {
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--bg-strong);
+      }
+
+      .view-pane-title {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .view-pane-surface {
+        flex: 1;
+        min-height: 120px;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        border: 1px dashed var(--line);
+        background: var(--surface);
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
       }
 
       .floating-tools {
@@ -1322,7 +1417,28 @@
             <canvas id="contentCanvas"></canvas>
             <canvas id="overlayCanvas"></canvas>
           </div>
+          <div class="view-output-shell" id="viewOutputShell">
+            <div class="view-output-grid">
+              <section class="view-pane">
+                <div class="view-pane-title">Front</div>
+                <div class="view-pane-surface" id="viewOutputLabel">Front view placeholder</div>
+              </section>
+              <section class="view-pane">
+                <div class="view-pane-title">Back</div>
+                <div class="view-pane-surface">Back view placeholder</div>
+              </section>
+              <section class="view-pane">
+                <div class="view-pane-title">Left</div>
+                <div class="view-pane-surface">Left view placeholder</div>
+              </section>
+              <section class="view-pane">
+                <div class="view-pane-title">Right</div>
+                <div class="view-pane-surface">Right view placeholder</div>
+              </section>
+            </div>
+          </div>
           <div class="view-switcher" id="viewSwitcher"></div>
+          <div class="canvas-mode-hint hidden" id="canvasModeHint"></div>
           <div class="floating-tools">
             <button class="floating-tool active" id="selectionToolButton">
               <span>Select</span>
@@ -1415,6 +1531,7 @@
 
       const ui = {
         body: document.body,
+        canvasShell: document.querySelector(".canvas-shell"),
         staticCanvas: document.getElementById("staticCanvas"),
         sceneCanvas: document.getElementById("sceneCanvas"),
         contentCanvas: document.getElementById("contentCanvas"),
@@ -1444,6 +1561,7 @@
         addMeasurementButton: document.getElementById("addMeasurementButton"),
         viewList: document.getElementById("viewList"),
         addViewButton: document.getElementById("addViewButton"),
+        canvasModeHint: document.getElementById("canvasModeHint"),
         settingsButton: document.getElementById("settingsButton"),
         settingsMenu: document.getElementById("settingsMenu"),
         sceneScaleModal: document.getElementById("sceneScaleModal"),
@@ -1475,6 +1593,8 @@
         brushHeight: document.getElementById("brushHeight"),
         selectionPicker: document.getElementById("selectionPicker"),
         viewSwitcher: document.getElementById("viewSwitcher"),
+        viewOutputShell: document.getElementById("viewOutputShell"),
+        viewOutputLabel: document.getElementById("viewOutputLabel"),
       };
 
       const staticCtx = ui.staticCanvas.getContext("2d");
@@ -1526,6 +1646,7 @@
         measurementSectionCollapsed: false,
         nextViewNumber: 1,
         views: [],
+        pendingViewCreation: null,
         activeCanvasViewTab: "main",
         activeViewId: null,
         editingViewId: null,
@@ -1644,6 +1765,11 @@
         return state.views.find((view) => view.id === state.activeViewId) || null;
       }
 
+      function activeCanvasView() {
+        if (state.activeCanvasViewTab === "main") return null;
+        return state.views.find((view) => view.id === state.activeCanvasViewTab) || null;
+      }
+
       function renderViewSwitcher() {
         if (!ui.viewSwitcher) return;
         ui.viewSwitcher.innerHTML = "";
@@ -1672,6 +1798,33 @@
           });
           ui.viewSwitcher.appendChild(button);
         });
+      }
+
+      function renderViewCreateState() {
+        const pending = !!state.pendingViewCreation;
+        ui.addViewButton.classList.toggle("active", pending);
+      }
+
+      function renderCanvasModeHint() {
+        if (!ui.canvasModeHint) return;
+        let text = "";
+        if (state.pendingViewCreation) {
+          text = "Drag to create view box";
+        } else if (state.sceneCalibration && !isModalOpen(ui.sceneScaleModal)) {
+          text = "Pick two points to set scale";
+        }
+        ui.canvasModeHint.textContent = text;
+        ui.canvasModeHint.classList.toggle("hidden", !text);
+      }
+
+      function renderCanvasViewMode() {
+        if (!ui.canvasShell) return;
+        const view = activeCanvasView();
+        const inViewMode = !!view;
+        ui.canvasShell.classList.toggle("view-mode", inViewMode);
+        if (ui.viewOutputLabel) {
+          ui.viewOutputLabel.textContent = inViewMode ? view.name + " front view placeholder" : "Front view placeholder";
+        }
       }
 
       function defaultViewLayerConfig(existingConfig = null) {
@@ -2143,24 +2296,35 @@
       }
 
       function cancelPendingView() {
-        const view = activeView();
-        if (!view || !view.pending) return false;
-        const index = state.views.findIndex((entry) => entry.id === view.id);
-        if (index === -1) return false;
-        state.views.splice(index, 1);
-        if (state.activeCanvasViewTab === view.id) {
-          state.activeCanvasViewTab = "main";
+        let cancelled = false;
+        if (state.pendingViewCreation) {
+          state.pendingViewCreation = null;
+          cancelled = true;
         }
-        if (state.viewEditDraft && state.viewEditDraft.viewId === view.id) {
-          closeViewEditModal();
+        const view = activeView();
+        if (view && view.pending) {
+          const index = state.views.findIndex((entry) => entry.id === view.id);
+          if (index !== -1) {
+            state.views.splice(index, 1);
+            if (state.activeCanvasViewTab === view.id) {
+              state.activeCanvasViewTab = "main";
+            }
+            if (state.viewEditDraft && state.viewEditDraft.viewId === view.id) {
+              closeViewEditModal();
+            }
+            state.activeViewId = null;
+            state.editingViewId = null;
+            cancelled = true;
+          }
         }
         if (state.interaction && String(state.interaction.type || "").startsWith("viewbox-")) {
           state.interaction = null;
+          cancelled = true;
         }
-        state.activeViewId = null;
-        state.editingViewId = null;
-        state.activeTool = "select";
-        return true;
+        if (cancelled) {
+          state.activeTool = "select";
+        }
+        return cancelled;
       }
 
       function startSceneCalibration(sceneId) {
@@ -2264,7 +2428,7 @@
           ui.sceneScaleMeters.select();
         });
         setStatus("Enter the real-world distance in meters.");
-        render({ overlay: true });
+        render({ ui: true, overlay: true });
         return true;
       }
 
@@ -2522,6 +2686,9 @@
           renderToolState();
           renderSectionState();
           renderViewSwitcher();
+          renderViewCreateState();
+          renderCanvasModeHint();
+          renderCanvasViewMode();
           renderSelectionPicker();
           renderViewEditModal();
           renderScenes();
@@ -3485,7 +3652,7 @@
           actions.appendChild(calibrate);
 
           const lock = document.createElement("button");
-          lock.className = "layer-icon";
+          lock.className = "layer-icon" + (scene.locked ? " active" : "");
           lock.textContent = scene.locked ? "Locked" : "Unlocked";
           lock.title = scene.locked ? "Unlock scene" : "Lock scene";
           lock.addEventListener("click", (event) => {
@@ -4640,14 +4807,16 @@
       }
 
       function addView() {
-        if (activeView() && activeView().pending) {
+        if (state.pendingViewCreation || (state.interaction && state.interaction.type === "viewbox-draw")) {
           setStatus("Finish the current view box or press Escape to cancel.");
-          render({ overlay: true });
+          render({ ui: true, overlay: true });
           return;
         }
-        const view = createView("View " + state.nextViewNumber++);
-        state.views.unshift(view);
-        setActiveViewById(view.id, { drawing: true });
+        state.pendingViewCreation = {
+          name: "View " + state.nextViewNumber,
+        };
+        clearActiveTarget();
+        state.activeTool = "viewbox";
         setStatus("Drag on the canvas to define the new view box.");
         render({ ui: true, overlay: true });
       }
@@ -4883,8 +5052,7 @@
       }
 
       function beginViewBoxDraw(clientX, clientY) {
-        const view = activeView();
-        if (!view || !view.pending) return;
+        if (!state.pendingViewCreation) return;
         const pointer = worldFromClient(clientX, clientY);
         const snapped = {
           x: viewBoxBoundaryFromWorld(pointer.worldX),
@@ -4892,7 +5060,7 @@
         };
         state.interaction = {
           type: "viewbox-draw",
-          viewId: view.id,
+          viewName: state.pendingViewCreation.name,
           start: snapped,
           current: snapped,
         };
@@ -5328,22 +5496,24 @@
           }
         }
         if (state.interaction.type === "viewbox-draw") {
-          const view = state.views.find((entry) => entry.id === state.interaction.viewId);
           const draftBounds = normalizeViewBounds(state.interaction.start, state.interaction.current);
-          if (view) {
-            const width = draftBounds.maxX - draftBounds.minX;
-            const height = draftBounds.maxY - draftBounds.minY;
-            if (width >= CELL_SIZE && height >= CELL_SIZE) {
-              view.bounds = draftBounds;
-              view.pending = false;
-              state.activeTool = "view";
-              setStatus("View box created.");
-              state.interaction = null;
-              render({ ui: true, overlay: true });
-              return;
-            }
-            setStatus("View box needs a larger drag.");
+          const width = draftBounds.maxX - draftBounds.minX;
+          const height = draftBounds.maxY - draftBounds.minY;
+          if (width >= CELL_SIZE && height >= CELL_SIZE && state.pendingViewCreation) {
+            const view = createView(state.pendingViewCreation.name);
+            view.bounds = draftBounds;
+            view.pending = false;
+            state.views.unshift(view);
+            state.nextViewNumber += 1;
+            setActiveViewById(view.id);
+            state.activeTool = "view";
+            state.pendingViewCreation = null;
+            setStatus("View box created.");
+            state.interaction = null;
+            render({ ui: true, overlay: true });
+            return;
           }
+          setStatus("View box needs a larger drag.");
         }
         if (state.interaction.type === "view-move" || state.interaction.type === "view-resize") {
           setStatus("View box updated.");
@@ -5519,6 +5689,18 @@
           render({ ui: true, static: true });
         });
       });
+
+      document.addEventListener(
+        "pointerdown",
+        (event) => {
+          if (!state.pendingViewCreation) return;
+          if (event.target === ui.overlayCanvas) return;
+          if (event.target.closest("#addViewButton")) return;
+          cancelPendingView();
+          render({ ui: true, overlay: true });
+        },
+        true
+      );
 
       document.addEventListener(
         "pointerdown",
