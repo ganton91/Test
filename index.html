@@ -1692,6 +1692,7 @@
           clientX: 0,
           clientY: 0,
           inside: false,
+          shiftKey: false,
         },
         color: {
           active: DEFAULT_COLOR,
@@ -4944,7 +4945,18 @@
 
         if (state.pointer.inside && state.activeTool === "brush") {
           const pointer = worldFromClient(state.pointer.clientX, state.pointer.clientY);
-          const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+          const rawCell = cellFromWorld(pointer.worldX, pointer.worldY);
+          const cell =
+            state.interaction && state.interaction.type === "brush"
+              ? brushCellWithAxisLock(
+                  state.interaction,
+                  state.pointer.clientX,
+                  state.pointer.clientY,
+                  rawCell.x,
+                  rawCell.y,
+                  state.pointer.shiftKey
+                )
+              : rawCell;
           const origin = brushOriginFromCell(cell.x, cell.y);
           const size = CELL_SIZE * state.viewport.zoom;
           const x = snapPixel(state.viewport.x + origin.x * size);
@@ -5272,12 +5284,56 @@
         state.interaction = {
           type: "brush",
           mode,
+          anchorClientX: clientX,
+          anchorClientY: clientY,
+          anchorCellX: cell.x,
+          anchorCellY: cell.y,
+          lockedAxis: null,
           lastKey: "",
         };
         const changed = paintCells(cell.x, cell.y, mode);
         state.interaction.lastKey = cell.x + ":" + cell.y + ":" + mode;
         setStatus(mode === "paint" ? "Painting active layer." : "Erasing from active layer.");
         render({ ui: changed, content: true, overlay: true });
+      }
+
+      function brushCellWithAxisLock(interaction, clientX, clientY, cellX, cellY, shiftKey) {
+        if (!interaction) {
+          return { x: cellX, y: cellY };
+        }
+        if (!shiftKey) {
+          interaction.lockedAxis = null;
+          return { x: cellX, y: cellY };
+        }
+        const deltaClientX = clientX - interaction.anchorClientX;
+        const deltaClientY = clientY - interaction.anchorClientY;
+        if (deltaClientX === 0 && deltaClientY === 0) {
+          return { x: cellX, y: cellY };
+        }
+        if (!interaction.lockedAxis) {
+          interaction.lockedAxis = Math.abs(deltaClientX) > Math.abs(deltaClientY) ? "x" : "y";
+        }
+        if (interaction.lockedAxis === "x") {
+          return {
+            x: cellX,
+            y: interaction.anchorCellY,
+          };
+        }
+        return {
+          x: interaction.anchorCellX,
+          y: cellY,
+        };
+      }
+
+      function resetBrushAxisLockAnchor(clientX, clientY) {
+        if (!state.interaction || state.interaction.type !== "brush") return;
+        const pointer = worldFromClient(clientX, clientY);
+        const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+        state.interaction.anchorClientX = clientX;
+        state.interaction.anchorClientY = clientY;
+        state.interaction.anchorCellX = cell.x;
+        state.interaction.anchorCellY = cell.y;
+        state.interaction.lockedAxis = null;
       }
 
       function beginColorEyedropper(clientX, clientY) {
@@ -5614,6 +5670,7 @@
         state.pointer.clientX = event.clientX;
         state.pointer.clientY = event.clientY;
         state.pointer.inside = true;
+        state.pointer.shiftKey = event.shiftKey;
 
         if (!state.interaction) {
           if (state.sceneCalibration && activeScene()) {
@@ -5656,7 +5713,8 @@
 
         if (state.interaction.type === "brush") {
           const pointer = worldFromClient(event.clientX, event.clientY);
-          const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+          const rawCell = cellFromWorld(pointer.worldX, pointer.worldY);
+          const cell = brushCellWithAxisLock(state.interaction, event.clientX, event.clientY, rawCell.x, rawCell.y, event.shiftKey);
           const key = cell.x + ":" + cell.y + ":" + state.interaction.mode;
           if (key !== state.interaction.lastKey) {
             const changed = paintCells(cell.x, cell.y, state.interaction.mode);
@@ -6087,6 +6145,7 @@
       ui.overlayCanvas.addEventListener("pointermove", handlePointerMove);
       ui.overlayCanvas.addEventListener("pointerleave", () => {
         state.pointer.inside = false;
+        state.pointer.shiftKey = false;
         render({ overlay: true });
       });
       ui.overlayCanvas.addEventListener("pointerup", handlePointerUp);
@@ -6095,6 +6154,11 @@
       window.addEventListener("pointerup", handlePointerUp);
 
       window.addEventListener("keydown", (event) => {
+        if (event.key === "Shift") {
+          state.pointer.shiftKey = true;
+          resetBrushAxisLockAnchor(state.pointer.clientX, state.pointer.clientY);
+          if (state.pointer.inside && state.activeTool === "brush") render({ overlay: true });
+        }
         if (event.key === "Escape" && closeActiveModal()) {
           return;
         }
@@ -6128,6 +6192,10 @@
       });
       window.addEventListener("keyup", (event) => {
         if (event.code === "Space") state.spacePan = false;
+        if (event.key === "Shift") {
+          state.pointer.shiftKey = false;
+          if (state.pointer.inside && state.activeTool === "brush") render({ overlay: true });
+        }
       });
       window.addEventListener("resize", resizeCanvases);
 
