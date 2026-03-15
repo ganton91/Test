@@ -798,6 +798,30 @@
         box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
       }
 
+      .color-palette {
+        display: grid;
+        grid-template-columns: repeat(8, minmax(0, 1fr));
+        gap: 6px;
+        width: 100%;
+      }
+
+      .color-swatch {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 1 / 1;
+        min-width: 0;
+        padding: 0;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        cursor: pointer;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+      }
+
+      .color-swatch.active {
+        outline: 2px solid var(--line-strong);
+        outline-offset: 2px;
+      }
+
       .scene-card .field input[type="range"] {
         max-width: 132px;
       }
@@ -1061,9 +1085,31 @@
           <div class="tool-title">Brush Settings</div>
           <div class="tool-fields">
             <div class="field">
-              <label for="brushColor">Color</label>
-              <input id="brushColor" type="color" value="#111827" />
+              <label>Palette</label>
+              <div class="color-palette" id="brushPalette">
+                <button class="color-swatch" type="button" data-color="#111827" style="background:#111827" aria-label="Color #111827"></button>
+                <button class="color-swatch" type="button" data-color="#f97316" style="background:#f97316" aria-label="Color #f97316"></button>
+                <button class="color-swatch" type="button" data-color="#ef4444" style="background:#ef4444" aria-label="Color #ef4444"></button>
+                <button class="color-swatch" type="button" data-color="#eab308" style="background:#eab308" aria-label="Color #eab308"></button>
+                <button class="color-swatch" type="button" data-color="#22c55e" style="background:#22c55e" aria-label="Color #22c55e"></button>
+                <button class="color-swatch" type="button" data-color="#14b8a6" style="background:#14b8a6" aria-label="Color #14b8a6"></button>
+                <button class="color-swatch" type="button" data-color="#3b82f6" style="background:#3b82f6" aria-label="Color #3b82f6"></button>
+                <button class="color-swatch" type="button" data-color="#8b5cf6" style="background:#8b5cf6" aria-label="Color #8b5cf6"></button>
+              </div>
             </div>
+            <div class="field">
+              <label for="brushHue">Hue</label>
+              <input id="brushHue" type="range" min="0" max="360" step="1" value="0" />
+            </div>
+            <div class="field">
+              <label for="brushSaturation">Saturation</label>
+              <input id="brushSaturation" type="range" min="0" max="100" step="1" value="0" />
+            </div>
+            <div class="field">
+              <label for="brushBrightness">Brightness</label>
+              <input id="brushBrightness" type="range" min="0" max="100" step="1" value="0" />
+            </div>
+            <button class="ghost-button" id="brushEyedropperButton" type="button">Eyedropper Tool</button>
             <div class="dimension-row">
               <div class="field">
                 <label for="brushWidth">Width cm</label>
@@ -1128,11 +1174,15 @@
         selectionToolButton: document.getElementById("selectionToolButton"),
         brushToolButton: document.getElementById("brushToolButton"),
         brushPanel: document.getElementById("brushPanel"),
-        brushColor: document.getElementById("brushColor"),
+        brushPalette: document.getElementById("brushPalette"),
+        brushPaletteButtons: Array.from(document.querySelectorAll(".color-swatch")),
+        brushHue: document.getElementById("brushHue"),
+        brushSaturation: document.getElementById("brushSaturation"),
+        brushBrightness: document.getElementById("brushBrightness"),
+        brushEyedropperButton: document.getElementById("brushEyedropperButton"),
         brushWidth: document.getElementById("brushWidth"),
         brushLinkButton: document.getElementById("brushLinkButton"),
         brushHeight: document.getElementById("brushHeight"),
-        sizeChips: Array.from(document.querySelectorAll(".tool-chip")),
         statusPill: document.getElementById("statusPill"),
       };
 
@@ -1161,9 +1211,12 @@
         },
         brush: {
           color: DEFAULT_COLOR,
+          paletteColors: ui.brushPaletteButtons.map((button) => button.dataset.color),
+          activeSwatchIndex: 0,
           width: 1,
           height: 1,
           linked: false,
+          eyedropper: false,
         },
         nextSceneNumber: 1,
         scenes: [],
@@ -1348,6 +1401,7 @@
         if (!scene) return false;
         state.activeSceneId = scene.id;
         state.activeLayerId = null;
+        state.brush.eyedropper = false;
         state.activeTool = "transform";
         return true;
       }
@@ -1358,6 +1412,7 @@
         state.activeSceneId = null;
         state.editingLayerId = null;
         state.editingSceneId = null;
+        state.brush.eyedropper = false;
         state.activeTool = "select";
       }
 
@@ -1449,6 +1504,22 @@
       function centimetersToCells(value) {
         const centimeters = Number(value) || CENTIMETERS_PER_CELL;
         return Math.max(1, Math.round(centimeters / CENTIMETERS_PER_CELL));
+      }
+
+      function setBrushColor(color) {
+        state.brush.color = color;
+      }
+
+      function setActiveBrushSwatch(index) {
+        if (index < 0 || index >= state.brush.paletteColors.length) return;
+        state.brush.activeSwatchIndex = index;
+        setBrushColor(state.brush.paletteColors[index]);
+      }
+
+      function setBrushSwatchColor(index, color) {
+        if (index < 0 || index >= state.brush.paletteColors.length) return;
+        state.brush.paletteColors[index] = color;
+        setActiveBrushSwatch(index);
       }
 
       function cancelSceneCalibration() {
@@ -1765,7 +1836,6 @@
           ui.contentCanvas.style.zIndex = "2";
           ui.overlayCanvas.style.zIndex = "4";
           ui.layersPanel.classList.toggle("collapsed", state.panelCollapsed);
-          ui.brushColor.value = state.brush.color;
           ui.brushWidth.value = cellsToCentimeters(state.brush.width);
           ui.brushHeight.value = cellsToCentimeters(state.brush.height);
           state.renderState.uiDirty = false;
@@ -1816,7 +1886,26 @@
         ui.brushLinkButton.classList.toggle("active", state.brush.linked);
         ui.brushLinkButton.setAttribute("aria-pressed", String(state.brush.linked));
         ui.brushLinkButton.title = state.brush.linked ? "Unlock width and height" : "Link width and height";
-        ui.overlayCanvas.style.cursor = state.activeTool === "brush" ? "crosshair" : state.activeTool === "transform" ? "move" : "default";
+        ui.brushEyedropperButton.classList.toggle("active", state.brush.eyedropper);
+        const hsv = hexToHsv(state.brush.color);
+        ui.brushHue.value = hsv.h;
+        ui.brushSaturation.value = hsv.s;
+        ui.brushBrightness.value = hsv.v;
+        ui.brushPaletteButtons.forEach((button, index) => {
+          const color = state.brush.paletteColors[index];
+          button.style.background = color;
+          button.dataset.color = color;
+          button.setAttribute("aria-label", "Color " + color);
+          button.classList.toggle("active", index === state.brush.activeSwatchIndex);
+        });
+        ui.overlayCanvas.style.cursor =
+          state.activeTool === "brush"
+            ? state.brush.eyedropper
+              ? "copy"
+              : "crosshair"
+            : state.activeTool === "transform"
+            ? "move"
+            : "default";
       }
 
       function renderSectionState() {
@@ -2392,6 +2481,10 @@
             }
         }
 
+        if (state.pointer.inside && state.activeTool === "brush" && state.brush.eyedropper) {
+          return;
+        }
+
         if (state.pointer.inside && state.activeTool === "brush") {
           const pointer = worldFromClient(state.pointer.clientX, state.pointer.clientY);
           const cell = cellFromWorld(pointer.worldX, pointer.worldY);
@@ -2524,6 +2617,83 @@
         return "rgba(" + ((int >> 16) & 255) + ", " + ((int >> 8) & 255) + ", " + (int & 255) + ", " + alpha + ")";
       }
 
+      function hexToRgb(hex) {
+        const clean = hex.replace("#", "");
+        const value = clean.length === 3 ? clean.split("").map((char) => char + char).join("") : clean;
+        const int = parseInt(value, 16);
+        return {
+          r: (int >> 16) & 255,
+          g: (int >> 8) & 255,
+          b: int & 255,
+        };
+      }
+
+      function rgbToHex(r, g, b) {
+        const toHex = (value) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, "0");
+        return "#" + toHex(r) + toHex(g) + toHex(b);
+      }
+
+      function rgbToHsv(r, g, b) {
+        const rr = r / 255;
+        const gg = g / 255;
+        const bb = b / 255;
+        const max = Math.max(rr, gg, bb);
+        const min = Math.min(rr, gg, bb);
+        const delta = max - min;
+        let h = 0;
+
+        if (delta) {
+          if (max === rr) h = ((gg - bb) / delta) % 6;
+          else if (max === gg) h = (bb - rr) / delta + 2;
+          else h = (rr - gg) / delta + 4;
+          h *= 60;
+          if (h < 0) h += 360;
+        }
+
+        const s = max === 0 ? 0 : delta / max;
+        const v = max;
+        return {
+          h: Math.round(h),
+          s: Math.round(s * 100),
+          v: Math.round(v * 100),
+        };
+      }
+
+      function hsvToRgb(h, s, v) {
+        const hue = ((Number(h) % 360) + 360) % 360;
+        const sat = Math.max(0, Math.min(100, Number(s))) / 100;
+        const val = Math.max(0, Math.min(100, Number(v))) / 100;
+        const c = val * sat;
+        const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+        const m = val - c;
+        let r = 0;
+        let g = 0;
+        let b = 0;
+
+        if (hue < 60) [r, g, b] = [c, x, 0];
+        else if (hue < 120) [r, g, b] = [x, c, 0];
+        else if (hue < 180) [r, g, b] = [0, c, x];
+        else if (hue < 240) [r, g, b] = [0, x, c];
+        else if (hue < 300) [r, g, b] = [x, 0, c];
+        else [r, g, b] = [c, 0, x];
+
+        return {
+          r: (r + m) * 255,
+          g: (g + m) * 255,
+          b: (b + m) * 255,
+        };
+      }
+
+      function hexToHsv(hex) {
+        const rgb = hexToRgb(hex);
+        return rgbToHsv(rgb.r, rgb.g, rgb.b);
+      }
+
+      function hsvToHex(h, s, v) {
+        const rgb = hsvToRgb(h, s, v);
+        return rgbToHex(rgb.r, rgb.g, rgb.b);
+      }
+
       function addLayer() {
         const layer = createLayer("Layer " + (state.layers.length + 1));
         state.layers.unshift(layer);
@@ -2589,6 +2759,13 @@
         return changed;
       }
 
+      function samplePaintColorAt(worldX, worldY) {
+        const layer = topPaintedLayerAt(worldX, worldY);
+        if (!layer) return null;
+        const cell = cellFromWorld(worldX, worldY);
+        return getCellColor(layer, cell.x, cell.y);
+      }
+
       function topPaintedLayerAt(worldX, worldY) {
         const cell = cellFromWorld(worldX, worldY);
         for (const layer of state.layers) {
@@ -2622,6 +2799,20 @@
         state.interaction.lastKey = cell.x + ":" + cell.y + ":" + mode;
         setStatus(mode === "paint" ? "Painting active layer." : "Erasing from active layer.");
         render({ ui: changed, content: true, overlay: true });
+      }
+
+      function beginBrushEyedropper(clientX, clientY) {
+        const pointer = worldFromClient(clientX, clientY);
+        const color = samplePaintColorAt(pointer.worldX, pointer.worldY);
+        if (!color) {
+          setStatus("Eyedropper needs a painted cell.");
+          render({ overlay: true });
+          return;
+        }
+        setBrushSwatchColor(state.brush.activeSwatchIndex, color);
+        state.brush.eyedropper = false;
+        setStatus("Brush color sampled from canvas.");
+        render({ ui: true, overlay: true });
       }
 
       function beginSelection(clientX, clientY) {
@@ -2708,6 +2899,10 @@
           beginPan(event.clientX, event.clientY);
           return;
         }
+        if (state.brush.eyedropper) {
+          if (!isRightClick) beginBrushEyedropper(event.clientX, event.clientY);
+          return;
+        }
         if (state.sceneCalibration && !isRightClick) {
           collectSceneCalibrationPoint(event.clientX, event.clientY);
           return;
@@ -2735,7 +2930,7 @@
             const pointer = worldFromClient(event.clientX, event.clientY);
             ui.overlayCanvas.style.cursor = cursorForSceneHit(sceneTransformHit(activeScene(), pointer.worldX, pointer.worldY));
           } else if (state.activeTool === "brush") {
-            ui.overlayCanvas.style.cursor = "crosshair";
+            ui.overlayCanvas.style.cursor = state.brush.eyedropper ? "copy" : "crosshair";
           } else {
             ui.overlayCanvas.style.cursor = "default";
           }
@@ -2846,6 +3041,8 @@
             state.activeSceneId = null;
             state.activeTool = "brush";
           }
+        } else {
+          state.brush.eyedropper = false;
         }
         state.activeTool = tool;
         setStatus(
@@ -2856,8 +3053,22 @@
 
       ui.selectionToolButton.addEventListener("click", () => activateTool("select"));
       ui.brushToolButton.addEventListener("click", () => activateTool("brush"));
-      ui.brushColor.addEventListener("input", () => {
-        state.brush.color = ui.brushColor.value;
+      ui.brushPaletteButtons.forEach((button, index) => {
+        button.addEventListener("click", () => {
+          setActiveBrushSwatch(index);
+          render({ ui: true, overlay: true });
+        });
+      });
+      const syncBrushColorFromHsv = () => {
+        setBrushSwatchColor(state.brush.activeSwatchIndex, hsvToHex(ui.brushHue.value, ui.brushSaturation.value, ui.brushBrightness.value));
+        render({ ui: true, overlay: true });
+      };
+      ui.brushHue.addEventListener("input", syncBrushColorFromHsv);
+      ui.brushSaturation.addEventListener("input", syncBrushColorFromHsv);
+      ui.brushBrightness.addEventListener("input", syncBrushColorFromHsv);
+      ui.brushEyedropperButton.addEventListener("click", () => {
+        state.brush.eyedropper = !state.brush.eyedropper;
+        setStatus(state.brush.eyedropper ? "Eyedropper active. Click a painted cell." : "Brush eyedropper off.");
         render({ ui: true, overlay: true });
       });
       ui.brushWidth.addEventListener("input", () => {
@@ -2882,15 +3093,6 @@
           state.brush.height = state.brush.width;
         }
         render({ ui: true, overlay: true });
-      });
-
-      ui.sizeChips.forEach((chip) => {
-        chip.addEventListener("click", () => {
-          const [width, height] = chip.dataset.size.split("x").map(Number);
-          state.brush.width = width;
-          state.brush.height = height;
-          render({ ui: true, overlay: true });
-        });
       });
 
       ui.sceneAddButton.addEventListener("click", () => {
@@ -2983,6 +3185,12 @@
           return;
         }
         if (event.code === "Space") state.spacePan = true;
+        if (event.key === "Escape" && state.brush.eyedropper) {
+          state.brush.eyedropper = false;
+          setStatus("Brush eyedropper off.");
+          render({ ui: true, overlay: true });
+          return;
+        }
         if (event.key === "Escape") {
           clearActiveTarget();
           setStatus("Selection tool active.");

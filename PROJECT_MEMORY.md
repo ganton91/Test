@@ -24,11 +24,21 @@ This document should be treated as authoritative unless the user explicitly chan
 - Brush Settings includes a width/height link toggle:
   - when linked, width and height stay equal and update together
   - when unlinked, they can be edited independently
+- Brush color is managed through a custom color UI:
+  - curated palette swatches in a single row and stretched across the full palette row width
+  - one swatch is always the active palette slot
+  - synchronized `HSB` sliders update the active swatch itself, not just a temporary brush color
+  - an eyedropper mode that samples only from painted cells on the canvas
+  - the eyedropper also writes back into the active swatch
+  - when eyedropper mode is active, the brush footprint preview is hidden and the browser pick cursor is used without any extra overlay marker
 
 ## Core Interaction Model
 
 - Default tool state is `Selection`
 - Pressing `Escape` must always return the app to `Selection`
+- Exception for brush eyedropper:
+  - the first `Escape` exits only the eyedropper mode
+  - a second `Escape` then follows the normal return-to-`Selection` behavior
 - Left click paints
 - Right click erases
 - Space + drag pans
