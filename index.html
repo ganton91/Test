@@ -377,7 +377,7 @@
       .ruler-top {
         top: 0;
         left: 28px;
-        right: 28px;
+        width: calc(100% - 56px);
         height: 28px;
         border-bottom: 1px solid var(--line);
       }
@@ -385,14 +385,14 @@
       .ruler-left {
         top: 28px;
         left: 0;
-        bottom: 28px;
         width: 28px;
+        height: calc(100% - 56px);
         border-right: 1px solid var(--line);
       }
 
       .ruler-bottom {
         left: 28px;
-        right: 28px;
+        width: calc(100% - 56px);
         bottom: 0;
         height: 28px;
         border-top: 1px solid var(--line);
@@ -401,8 +401,8 @@
       .ruler-right {
         top: 28px;
         right: 0;
-        bottom: 28px;
         width: 28px;
+        height: calc(100% - 56px);
         border-left: 1px solid var(--line);
       }
 
@@ -1246,13 +1246,20 @@
       }
 
       function drawRulers() {
-        const width = ui.rulerTop.clientWidth;
-        const height = ui.rulerLeft.clientHeight;
+        const width = Math.round(ui.rulerTop.getBoundingClientRect().width);
+        const height = Math.round(ui.rulerLeft.getBoundingClientRect().height);
+        const topThickness = Math.round(ui.rulerTop.getBoundingClientRect().height);
+        const leftThickness = Math.round(ui.rulerLeft.getBoundingClientRect().width);
+        const bottomThickness = Math.round(ui.rulerBottom.getBoundingClientRect().height);
+        const rightThickness = Math.round(ui.rulerRight.getBoundingClientRect().width);
         [rulerTopCtx, rulerLeftCtx, rulerBottomCtx, rulerRightCtx].forEach((context, index) => {
           const canvas = [ui.rulerTop, ui.rulerLeft, ui.rulerBottom, ui.rulerRight][index];
-          context.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+          const rect = canvas.getBoundingClientRect();
+          context.clearRect(0, 0, rect.width, rect.height);
           context.fillStyle = getCssVar("--ruler-bg");
-          context.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+          context.fillRect(0, 0, rect.width, rect.height);
+          context.lineWidth = 1;
+          context.textBaseline = "middle";
         });
 
         const step = CELL_SIZE * state.viewport.zoom;
@@ -1266,24 +1273,24 @@
           const cellIndex = Math.round((x - state.viewport.x) / step);
           const major = cellIndex % CELLS_PER_METER === 0;
           const halfMeter = cellIndex % CELLS_PER_HALF_METER === 0;
-          drawHorizontalRulerMark(rulerTopCtx, x, cellIndex, major, halfMeter, false, showCellLabels, showHalfMeterLabels);
-          drawHorizontalRulerMark(rulerBottomCtx, x, cellIndex, major, halfMeter, true, showCellLabels, showHalfMeterLabels);
+          drawHorizontalRulerMark(rulerTopCtx, x, cellIndex, major, halfMeter, false, showCellLabels, showHalfMeterLabels, topThickness);
+          drawHorizontalRulerMark(rulerBottomCtx, x, cellIndex, major, halfMeter, true, showCellLabels, showHalfMeterLabels, bottomThickness);
         }
 
         for (let y = leftStart; y <= height; y += step) {
           const cellIndex = Math.round((y - state.viewport.y) / step);
           const major = cellIndex % CELLS_PER_METER === 0;
           const halfMeter = cellIndex % CELLS_PER_HALF_METER === 0;
-          drawVerticalRulerMark(rulerLeftCtx, y, cellIndex, major, halfMeter, false, showCellLabels, showHalfMeterLabels);
-          drawVerticalRulerMark(rulerRightCtx, y, cellIndex, major, halfMeter, true, showCellLabels, showHalfMeterLabels);
+          drawVerticalRulerMark(rulerLeftCtx, y, cellIndex, major, halfMeter, false, showCellLabels, showHalfMeterLabels, leftThickness);
+          drawVerticalRulerMark(rulerRightCtx, y, cellIndex, major, halfMeter, true, showCellLabels, showHalfMeterLabels, rightThickness);
         }
       }
 
-      function drawHorizontalRulerMark(context, x, cellIndex, major, halfMeter, invert, showCellLabels, showHalfMeterLabels) {
-        const canvas = context.canvas;
+      function drawHorizontalRulerMark(context, x, cellIndex, major, halfMeter, invert, showCellLabels, showHalfMeterLabels, thickness) {
+        const tick = major ? 7 : halfMeter ? 11 : 16;
         context.beginPath();
-        context.moveTo(x + 0.5, invert ? 0 : canvas.clientHeight);
-        context.lineTo(x + 0.5, invert ? canvas.clientHeight - (major ? 7 : halfMeter ? 11 : 16) : major ? 7 : halfMeter ? 11 : 16);
+        context.moveTo(x + 0.5, invert ? 0 : thickness);
+        context.lineTo(x + 0.5, invert ? thickness - tick : tick);
         context.strokeStyle = major ? getCssVar("--grid-1m") : halfMeter ? getCssVar("--grid-50cm") : getCssVar("--grid-5cm");
         context.stroke();
 
@@ -1291,26 +1298,35 @@
         const shouldLabel = major || (showHalfMeterLabels && halfMeter) || showCellLabels;
         if (!shouldLabel) return;
         context.fillStyle = getCssVar("--muted");
-        context.font = major || (showHalfMeterLabels && halfMeter) ? "10px IBM Plex Sans, Segoe UI, sans-serif" : "9px IBM Plex Sans, Segoe UI, sans-serif";
-        context.fillText(label, x + 4, invert ? 22 : 11);
+        context.font = major
+          ? "600 10px IBM Plex Sans, Segoe UI, sans-serif"
+          : showHalfMeterLabels && halfMeter
+          ? "10px IBM Plex Sans, Segoe UI, sans-serif"
+          : "9px IBM Plex Sans, Segoe UI, sans-serif";
+        context.fillText(label, x + 4, invert ? thickness - 8 : 9);
       }
 
-      function drawVerticalRulerMark(context, y, cellIndex, major, halfMeter, invert, showCellLabels, showHalfMeterLabels) {
-        const canvas = context.canvas;
+      function drawVerticalRulerMark(context, y, cellIndex, major, halfMeter, invert, showCellLabels, showHalfMeterLabels, thickness) {
+        const signedCellIndex = -cellIndex;
+        const tick = major ? 8 : halfMeter ? 11 : 16;
         context.beginPath();
-        context.moveTo(invert ? 0 : canvas.clientWidth, y + 0.5);
-        context.lineTo(invert ? canvas.clientWidth - (major ? 8 : halfMeter ? 11 : 16) : major ? 8 : halfMeter ? 11 : 16, y + 0.5);
+        context.moveTo(invert ? 0 : thickness, y + 0.5);
+        context.lineTo(invert ? thickness - tick : tick, y + 0.5);
         context.strokeStyle = major ? getCssVar("--grid-1m") : halfMeter ? getCssVar("--grid-50cm") : getCssVar("--grid-5cm");
         context.stroke();
 
         const shouldLabel = major || (showHalfMeterLabels && halfMeter) || showCellLabels;
         if (!shouldLabel) return;
         context.save();
-        context.translate(invert ? 18 : 11, y - (major ? 4 : 3));
+        context.translate(invert ? thickness - 10 : 11, y);
         context.rotate(-Math.PI / 2);
         context.fillStyle = getCssVar("--muted");
-        context.font = major || (showHalfMeterLabels && halfMeter) ? "10px IBM Plex Sans, Segoe UI, sans-serif" : "9px IBM Plex Sans, Segoe UI, sans-serif";
-        context.fillText(major ? formatMeters(cellIndex) : formatCentimeters(cellIndex), 0, 0);
+        context.font = major
+          ? "600 10px IBM Plex Sans, Segoe UI, sans-serif"
+          : showHalfMeterLabels && halfMeter
+          ? "10px IBM Plex Sans, Segoe UI, sans-serif"
+          : "9px IBM Plex Sans, Segoe UI, sans-serif";
+        context.fillText(major ? formatMeters(signedCellIndex) : formatCentimeters(signedCellIndex), 0, 0);
         context.restore();
       }
 
@@ -1320,7 +1336,11 @@
       }
 
       function formatCentimeters(cellIndex) {
-        return cellIndex * CENTIMETERS_PER_CELL + "cm";
+        const totalCentimeters = cellIndex * CENTIMETERS_PER_CELL;
+        const sign = Math.sign(totalCentimeters);
+        const centimeters = Math.abs(totalCentimeters) % 100;
+        if (centimeters === 0) return "";
+        return (sign < 0 ? "-" : "") + centimeters + "cm";
       }
 
       function getCssVar(name) {
