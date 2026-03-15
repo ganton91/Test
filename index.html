@@ -674,6 +674,42 @@
         height: 100%;
       }
 
+      .view-switcher {
+        position: absolute;
+        left: 50%;
+        bottom: 38px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transform: translateX(-50%);
+        z-index: 11;
+      }
+
+      .view-switcher-button {
+        padding: 7px 11px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--bg-strong);
+        box-shadow: var(--shadow);
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: 140ms ease;
+      }
+
+      .view-switcher-button:hover {
+        background: var(--surface-strong);
+        border-color: var(--line-strong);
+        color: var(--text);
+      }
+
+      .view-switcher-button.active {
+        background: var(--accent-soft);
+        border-color: var(--line-strong);
+        color: var(--text);
+      }
+
       .floating-tools {
         position: absolute;
         left: 50%;
@@ -706,7 +742,7 @@
       .floating-panels-left {
         position: absolute;
         top: 52px;
-        left: calc(280px + 42px);
+        left: 42px;
         display: flex;
         flex-direction: column;
         gap: 8px;
@@ -995,21 +1031,6 @@
         background: var(--accent-soft);
         border-color: var(--line-strong);
         color: var(--text);
-      }
-
-      .status-pill {
-        position: absolute;
-        left: 50%;
-        bottom: 18px;
-        transform: translateX(-50%);
-        padding: 8px 12px;
-        border-radius: 999px;
-        border: 1px solid var(--line);
-        background: var(--bg-elevated);
-        box-shadow: var(--shadow);
-        font-size: 11px;
-        color: var(--muted);
-        z-index: 11;
       }
 
       .modal-backdrop {
@@ -1301,76 +1322,76 @@
             <canvas id="contentCanvas"></canvas>
             <canvas id="overlayCanvas"></canvas>
           </div>
-        </div>
-
-        <div class="floating-tools">
-          <button class="floating-tool active" id="selectionToolButton">
-            <span>Select</span>
-          </button>
-          <button class="floating-tool" id="brushToolButton">
-            <span>Brush</span>
-          </button>
-        </div>
-
-        <div class="floating-panels-left">
-          <div class="tool-panel color-panel" id="colorPanel">
-            <div class="section-header">
-              <div class="section-header-left">
-                <button class="section-toggle" id="colorPanelToggle" type="button" aria-expanded="true">
-                  <span class="section-toggle-arrow" aria-hidden="true"></span>
-                  <span class="section-header-title">Color Palette</span>
-                </button>
-              </div>
-            </div>
-            <div class="tool-fields">
-              <div class="field">
-                <label>Palette</label>
-                <div class="color-palette" id="colorPalette">
-                  <button class="color-swatch" type="button" data-color="#111827" style="background:#111827" aria-label="Color #111827"></button>
-                  <button class="color-swatch" type="button" data-color="#f97316" style="background:#f97316" aria-label="Color #f97316"></button>
-                  <button class="color-swatch" type="button" data-color="#ef4444" style="background:#ef4444" aria-label="Color #ef4444"></button>
-                  <button class="color-swatch" type="button" data-color="#eab308" style="background:#eab308" aria-label="Color #eab308"></button>
-                  <button class="color-swatch" type="button" data-color="#22c55e" style="background:#22c55e" aria-label="Color #22c55e"></button>
-                  <button class="color-swatch" type="button" data-color="#14b8a6" style="background:#14b8a6" aria-label="Color #14b8a6"></button>
-                  <button class="color-swatch" type="button" data-color="#3b82f6" style="background:#3b82f6" aria-label="Color #3b82f6"></button>
-                  <button class="color-swatch" type="button" data-color="#8b5cf6" style="background:#8b5cf6" aria-label="Color #8b5cf6"></button>
-                </div>
-              </div>
-              <div class="field">
-                <label for="colorHue">Hue</label>
-                <input id="colorHue" type="range" min="0" max="360" step="1" value="0" />
-              </div>
-              <div class="field">
-                <label for="colorSaturation">Saturation</label>
-                <input id="colorSaturation" type="range" min="0" max="100" step="1" value="0" />
-              </div>
-              <div class="field">
-                <label for="colorBrightness">Brightness</label>
-                <input id="colorBrightness" type="range" min="0" max="100" step="1" value="0" />
-              </div>
-              <button class="ghost-button" id="colorEyedropperButton" type="button">Eyedropper Tool</button>
-            </div>
+          <div class="view-switcher" id="viewSwitcher"></div>
+          <div class="floating-tools">
+            <button class="floating-tool active" id="selectionToolButton">
+              <span>Select</span>
+            </button>
+            <button class="floating-tool" id="brushToolButton">
+              <span>Brush</span>
+            </button>
           </div>
 
-          <div class="tool-panel brush-panel" id="brushPanel">
-            <div class="section-header">
-              <div class="section-header-left">
-                <button class="section-toggle" id="brushPanelToggle" type="button" aria-expanded="true">
-                  <span class="section-toggle-arrow" aria-hidden="true"></span>
-                  <span class="section-header-title">Brush Settings</span>
-                </button>
+          <div class="floating-panels-left">
+            <div class="tool-panel color-panel" id="colorPanel">
+              <div class="section-header">
+                <div class="section-header-left">
+                  <button class="section-toggle" id="colorPanelToggle" type="button" aria-expanded="true">
+                    <span class="section-toggle-arrow" aria-hidden="true"></span>
+                    <span class="section-header-title">Color Palette</span>
+                  </button>
+                </div>
+              </div>
+              <div class="tool-fields">
+                <div class="field">
+                  <label>Palette</label>
+                  <div class="color-palette" id="colorPalette">
+                    <button class="color-swatch" type="button" data-color="#111827" style="background:#111827" aria-label="Color #111827"></button>
+                    <button class="color-swatch" type="button" data-color="#f97316" style="background:#f97316" aria-label="Color #f97316"></button>
+                    <button class="color-swatch" type="button" data-color="#ef4444" style="background:#ef4444" aria-label="Color #ef4444"></button>
+                    <button class="color-swatch" type="button" data-color="#eab308" style="background:#eab308" aria-label="Color #eab308"></button>
+                    <button class="color-swatch" type="button" data-color="#22c55e" style="background:#22c55e" aria-label="Color #22c55e"></button>
+                    <button class="color-swatch" type="button" data-color="#14b8a6" style="background:#14b8a6" aria-label="Color #14b8a6"></button>
+                    <button class="color-swatch" type="button" data-color="#3b82f6" style="background:#3b82f6" aria-label="Color #3b82f6"></button>
+                    <button class="color-swatch" type="button" data-color="#8b5cf6" style="background:#8b5cf6" aria-label="Color #8b5cf6"></button>
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="colorHue">Hue</label>
+                  <input id="colorHue" type="range" min="0" max="360" step="1" value="0" />
+                </div>
+                <div class="field">
+                  <label for="colorSaturation">Saturation</label>
+                  <input id="colorSaturation" type="range" min="0" max="100" step="1" value="0" />
+                </div>
+                <div class="field">
+                  <label for="colorBrightness">Brightness</label>
+                  <input id="colorBrightness" type="range" min="0" max="100" step="1" value="0" />
+                </div>
+                <button class="ghost-button" id="colorEyedropperButton" type="button">Eyedropper Tool</button>
               </div>
             </div>
-            <div class="tool-fields">
-              <div class="dimension-row">
-                <div class="field">
-                  <label for="brushWidth">Width cm</label>
-                  <input id="brushWidth" type="number" min="5" max="500" step="5" value="5" />
+
+            <div class="tool-panel brush-panel" id="brushPanel">
+              <div class="section-header">
+                <div class="section-header-left">
+                  <button class="section-toggle" id="brushPanelToggle" type="button" aria-expanded="true">
+                    <span class="section-toggle-arrow" aria-hidden="true"></span>
+                    <span class="section-header-title">Brush Settings</span>
+                  </button>
                 </div>
-                <button class="dimension-link" id="brushLinkButton" type="button" aria-pressed="false" title="Link width and height">⛓</button>
-                <div class="field">
-                  <label for="brushHeight">Height cm</label>
-                  <input id="brushHeight" type="number" min="5" max="500" step="5" value="5" />
+              </div>
+              <div class="tool-fields">
+                <div class="dimension-row">
+                  <div class="field">
+                    <label for="brushWidth">Width cm</label>
+                    <input id="brushWidth" type="number" min="5" max="500" step="5" value="5" />
+                  </div>
+                  <button class="dimension-link" id="brushLinkButton" type="button" aria-pressed="false" title="Link width and height">⛓</button>
+                  <div class="field">
+                    <label for="brushHeight">Height cm</label>
+                    <input id="brushHeight" type="number" min="5" max="500" step="5" value="5" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -1379,9 +1400,6 @@
 
         <div class="selection-picker hidden" id="selectionPicker"></div>
 
-        <div class="status-pill" id="statusPill">
-          Esc switches to Selection. Left click paints, right click erases, wheel zooms, space + drag pans.
-        </div>
       </main>
     </div>
 
@@ -1456,7 +1474,7 @@
         brushLinkButton: document.getElementById("brushLinkButton"),
         brushHeight: document.getElementById("brushHeight"),
         selectionPicker: document.getElementById("selectionPicker"),
-        statusPill: document.getElementById("statusPill"),
+        viewSwitcher: document.getElementById("viewSwitcher"),
       };
 
       const staticCtx = ui.staticCanvas.getContext("2d");
@@ -1508,6 +1526,7 @@
         measurementSectionCollapsed: false,
         nextViewNumber: 1,
         views: [],
+        activeCanvasViewTab: "main",
         activeViewId: null,
         editingViewId: null,
         dragViewId: null,
@@ -1623,6 +1642,36 @@
 
       function activeView() {
         return state.views.find((view) => view.id === state.activeViewId) || null;
+      }
+
+      function renderViewSwitcher() {
+        if (!ui.viewSwitcher) return;
+        ui.viewSwitcher.innerHTML = "";
+        if (state.activeCanvasViewTab !== "main" && !state.views.some((view) => view.id === state.activeCanvasViewTab)) {
+          state.activeCanvasViewTab = "main";
+        }
+
+        const mainButton = document.createElement("button");
+        mainButton.type = "button";
+        mainButton.className = "view-switcher-button" + (state.activeCanvasViewTab === "main" ? " active" : "");
+        mainButton.textContent = "Main View";
+        mainButton.addEventListener("click", () => {
+          state.activeCanvasViewTab = "main";
+          render({ ui: true });
+        });
+        ui.viewSwitcher.appendChild(mainButton);
+
+        state.views.forEach((view) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "view-switcher-button" + (state.activeCanvasViewTab === view.id ? " active" : "");
+          button.textContent = view.name;
+          button.addEventListener("click", () => {
+            state.activeCanvasViewTab = view.id;
+            render({ ui: true });
+          });
+          ui.viewSwitcher.appendChild(button);
+        });
       }
 
       function defaultViewLayerConfig(existingConfig = null) {
@@ -2099,6 +2148,9 @@
         const index = state.views.findIndex((entry) => entry.id === view.id);
         if (index === -1) return false;
         state.views.splice(index, 1);
+        if (state.activeCanvasViewTab === view.id) {
+          state.activeCanvasViewTab = "main";
+        }
         if (state.viewEditDraft && state.viewEditDraft.viewId === view.id) {
           closeViewEditModal();
         }
@@ -2376,6 +2428,7 @@
       }
 
       function setStatus(message) {
+        if (!ui.statusPill) return;
         ui.statusPill.textContent = message;
       }
 
@@ -2468,6 +2521,7 @@
           updateThemeButtons();
           renderToolState();
           renderSectionState();
+          renderViewSwitcher();
           renderSelectionPicker();
           renderViewEditModal();
           renderScenes();
@@ -2830,6 +2884,9 @@
             const index = state.views.findIndex((entry) => entry.id === view.id);
             if (index === -1) return;
             state.views.splice(index, 1);
+            if (state.activeCanvasViewTab === view.id) {
+              state.activeCanvasViewTab = "main";
+            }
             if (state.viewEditDraft && state.viewEditDraft.viewId === view.id) {
               closeViewEditModal();
             }
