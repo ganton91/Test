@@ -166,6 +166,7 @@
         overflow: hidden;
         display: grid;
         grid-template-columns: auto 1fr;
+        min-height: 0;
       }
 
       .layers-panel {
@@ -177,6 +178,8 @@
         height: 100%;
         display: flex;
         flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
         border-right: 1px solid var(--line);
         border-bottom: 0;
         border-left: 0;
@@ -193,20 +196,16 @@
         width: 54px;
       }
 
-      .layers-header {
+      .section-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 8px;
-        padding: 12px;
-        border-bottom: 1px solid var(--line);
+        min-height: 32px;
+        padding: 6px 9px;
       }
 
-      .layers-header-left {
-        min-width: 0;
-      }
-
-      .layers-title {
+      .section-header-title {
         font-size: 12px;
         font-weight: 600;
         letter-spacing: 0.06em;
@@ -214,18 +213,31 @@
         color: var(--muted);
       }
 
-      .layers-subtitle {
-        margin-top: 3px;
-        font-size: 12px;
-      }
-
-      .panel-toggle {
-        width: 30px;
-        height: 30px;
-        border-radius: 10px;
+      .section-header-action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 26px;
+        min-height: 26px;
+        padding: 0;
+        border-radius: 8px;
         border: 1px solid var(--line);
         background: var(--surface);
         cursor: pointer;
+        font-size: 15px;
+        font-weight: 500;
+        line-height: 1;
+        text-align: center;
+      }
+
+      .section-header-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        font-size: 17px;
+        line-height: 1;
       }
 
       .layers-body {
@@ -235,28 +247,53 @@
         gap: 10px;
         padding: 12px;
         min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        scrollbar-width: none;
       }
 
-      .layers-panel.collapsed .layers-header-left,
+      .layers-body::-webkit-scrollbar {
+        display: none;
+      }
+
       .layers-panel.collapsed .layers-body {
         display: none;
       }
 
-      .add-layer {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        padding: 8px 10px;
-        font-size: 12px;
-      }
-
-      .layer-list {
-        flex: 1;
-        overflow: auto;
+      .panel-section {
         display: flex;
         flex-direction: column;
         gap: 8px;
+      }
+
+      .panel-section.compact-empty {
+        gap: 0;
+      }
+
+      .section-header-left {
+        min-width: 0;
+      }
+
+      .scene-list,
+      .layer-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .scene-details,
+      .empty-state {
+        margin-top: 4px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .empty-state {
+        padding: 2px 0 4px;
+      }
+
+      .layer-list {
+        flex: 0 0 auto;
         padding-right: 2px;
       }
 
@@ -337,6 +374,7 @@
       .canvas-shell {
         position: relative;
         min-width: 0;
+        min-height: 0;
       }
 
       .ruler-corner,
@@ -710,21 +748,33 @@
 
       <main class="workspace">
         <aside class="layers-panel" id="layersPanel">
-          <div class="layers-header">
-            <div class="layers-header-left">
-              <div class="layers-title">Layers</div>
-              <div class="layers-subtitle">Stack, rename, reorder</div>
-            </div>
-            <button class="panel-toggle" id="panelToggle" aria-label="Toggle layers panel">←</button>
-          </div>
           <div class="layers-body">
-            <button class="add-layer" id="addLayerButton">+ Add Layer</button>
-            <div class="layer-list" id="layerList"></div>
-            <div class="layer-footer">
-              Drag the grip to reorder. Selection clicks activate the top painted layer automatically.
+            <div class="panel-section">
+              <div class="section-header">
+                <div class="section-header-left">
+                  <div class="section-header-title">Scenes</div>
+                </div>
+                <button class="section-header-action" id="sceneAddButton" aria-label="Import scene image">
+                  <span class="section-header-icon">+</span>
+                </button>
+              </div>
+              <div class="scene-list" id="sceneList"></div>
+              <div class="empty-state hidden" id="sceneEmptyState"></div>
             </div>
+            <div class="panel-section">
+              <div class="section-header">
+                <div class="section-header-left">
+                  <div class="section-header-title">Layers</div>
+                </div>
+                <button class="section-header-action" id="addLayerButton" aria-label="Add layer">
+                  <span class="section-header-icon">+</span>
+                </button>
+              </div>
+            </div>
+            <div class="layer-list" id="layerList"></div>
           </div>
         </aside>
+        <input id="sceneImportInput" type="file" accept="image/*" hidden />
 
         <div class="menu-panel modal-panel hidden" id="settingsMenu">
           <div class="menu-section">
@@ -762,6 +812,7 @@
           <div class="ruler-corner-bottom-right"></div>
           <div class="canvas-wrap">
             <canvas id="staticCanvas"></canvas>
+            <canvas id="sceneCanvas"></canvas>
             <canvas id="contentCanvas"></canvas>
             <canvas id="overlayCanvas"></canvas>
           </div>
@@ -823,6 +874,7 @@
       const ui = {
         body: document.body,
         staticCanvas: document.getElementById("staticCanvas"),
+        sceneCanvas: document.getElementById("sceneCanvas"),
         contentCanvas: document.getElementById("contentCanvas"),
         overlayCanvas: document.getElementById("overlayCanvas"),
         rulerTop: document.getElementById("rulerTop"),
@@ -830,7 +882,10 @@
         rulerBottom: document.getElementById("rulerBottom"),
         rulerRight: document.getElementById("rulerRight"),
         layersPanel: document.getElementById("layersPanel"),
-        panelToggle: document.getElementById("panelToggle"),
+        sceneAddButton: document.getElementById("sceneAddButton"),
+        sceneImportInput: document.getElementById("sceneImportInput"),
+        sceneList: document.getElementById("sceneList"),
+        sceneEmptyState: document.getElementById("sceneEmptyState"),
         layerList: document.getElementById("layerList"),
         addLayerButton: document.getElementById("addLayerButton"),
         settingsButton: document.getElementById("settingsButton"),
@@ -850,6 +905,7 @@
       };
 
       const staticCtx = ui.staticCanvas.getContext("2d");
+      const sceneCtx = ui.sceneCanvas.getContext("2d");
       const contentCtx = ui.contentCanvas.getContext("2d");
       const overlayCtx = ui.overlayCanvas.getContext("2d");
       const rulerTopCtx = ui.rulerTop.getContext("2d");
@@ -859,7 +915,7 @@
 
       const state = {
         theme: "light",
-        activeTool: "select",
+        activeTool: "brush",
         panelCollapsed: false,
         viewport: {
           x: window.innerWidth / 2 - 200,
@@ -876,6 +932,10 @@
           width: 1,
           height: 1,
         },
+        nextSceneNumber: 1,
+        scenes: [],
+        activeSceneId: null,
+        dragSceneId: null,
         gridPosition: "below",
         dualStrokeGrid: false,
         layers: [createLayer("Layer 1")],
@@ -887,6 +947,7 @@
           frame: 0,
           uiDirty: true,
           staticDirty: true,
+          scenesDirty: true,
           contentDirty: true,
           overlayDirty: true,
           rulersDirty: true,
@@ -935,6 +996,10 @@
 
       function activeLayer() {
         return state.layers.find((layer) => layer.id === state.activeLayerId) || null;
+      }
+
+      function activeScene() {
+        return state.scenes.find((scene) => scene.id === state.activeSceneId) || null;
       }
 
       function getTileCoords(cellX, cellY) {
@@ -1030,6 +1095,56 @@
         };
       }
 
+      function setActiveLayerById(layerId) {
+        const layer = state.layers.find((entry) => entry.id === layerId);
+        if (!layer) return false;
+        state.activeLayerId = layer.id;
+        state.activeSceneId = null;
+        state.activeTool = "brush";
+        return true;
+      }
+
+      function setActiveSceneById(sceneId) {
+        const scene = state.scenes.find((entry) => entry.id === sceneId);
+        if (!scene) return false;
+        state.activeSceneId = scene.id;
+        state.activeLayerId = null;
+        state.activeTool = "transform";
+        return true;
+      }
+
+      function clearActiveTarget() {
+        state.activeLayerId = null;
+        state.activeSceneId = null;
+        state.activeTool = "select";
+      }
+
+      function toggleLayerActivation(layerId) {
+        if (state.activeLayerId === layerId && !state.activeSceneId) {
+          clearActiveTarget();
+          setStatus("Selection tool active.");
+          render({ ui: true, overlay: true });
+          return;
+        }
+        if (setActiveLayerById(layerId)) {
+          setStatus("Brush active on selected layer.");
+          render({ ui: true, overlay: true });
+        }
+      }
+
+      function toggleSceneActivation(sceneId) {
+        if (state.activeSceneId === sceneId && !state.activeLayerId) {
+          clearActiveTarget();
+          setStatus("Selection tool active.");
+          render({ ui: true, overlay: true });
+          return;
+        }
+        if (setActiveSceneById(sceneId)) {
+          setStatus("Transform active on selected scene.");
+          render({ ui: true, overlay: true });
+        }
+      }
+
       function strokeSceneLine(context, x1, y1, x2, y2, lineWidth, strokeColor, dualStrokeColor) {
         if (state.dualStrokeGrid) {
           context.beginPath();
@@ -1046,6 +1161,116 @@
         context.strokeStyle = strokeColor;
         context.lineWidth = lineWidth;
         context.stroke();
+      }
+
+      function normalizeAngle(angle) {
+        while (angle > Math.PI) angle -= Math.PI * 2;
+        while (angle < -Math.PI) angle += Math.PI * 2;
+        return angle;
+      }
+
+      function worldToScreen(worldX, worldY) {
+        return {
+          x: state.viewport.x + worldX * state.viewport.zoom,
+          y: state.viewport.y + worldY * state.viewport.zoom,
+        };
+      }
+
+      function screenToWorld(screenX, screenY) {
+        return {
+          x: (screenX - state.viewport.x) / state.viewport.zoom,
+          y: (screenY - state.viewport.y) / state.viewport.zoom,
+        };
+      }
+
+      function rotatePoint(x, y, angle) {
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        return {
+          x: x * cos - y * sin,
+          y: x * sin + y * cos,
+        };
+      }
+
+      function sceneCenter(scene) {
+        return {
+          x: scene.x + scene.width / 2,
+          y: scene.y + scene.height / 2,
+        };
+      }
+
+      function sceneCornerPoints(scene) {
+        const center = sceneCenter(scene);
+        const halfWidth = scene.width / 2;
+        const halfHeight = scene.height / 2;
+        return {
+          topLeft: rotatePoint(-halfWidth, -halfHeight, scene.rotation || 0),
+          topRight: rotatePoint(halfWidth, -halfHeight, scene.rotation || 0),
+          bottomRight: rotatePoint(halfWidth, halfHeight, scene.rotation || 0),
+          bottomLeft: rotatePoint(-halfWidth, halfHeight, scene.rotation || 0),
+          center,
+        };
+      }
+
+      function sceneLocalPoint(scene, worldX, worldY) {
+        const center = sceneCenter(scene);
+        return rotatePoint(worldX - center.x, worldY - center.y, -(scene.rotation || 0));
+      }
+
+      function pointInScene(scene, worldX, worldY) {
+        const local = sceneLocalPoint(scene, worldX, worldY);
+        return Math.abs(local.x) <= scene.width / 2 && Math.abs(local.y) <= scene.height / 2;
+      }
+
+      function topSceneAt(worldX, worldY) {
+        for (const scene of state.scenes) {
+          if (!scene.visible) continue;
+          if (pointInScene(scene, worldX, worldY)) return scene;
+        }
+        return null;
+      }
+
+      function sceneHandleWorldPositions(scene) {
+        const center = sceneCenter(scene);
+        const halfWidth = scene.width / 2;
+        const halfHeight = scene.height / 2;
+        const rotation = scene.rotation || 0;
+        const corners = {
+          nw: rotatePoint(-halfWidth, -halfHeight, rotation),
+          ne: rotatePoint(halfWidth, -halfHeight, rotation),
+          se: rotatePoint(halfWidth, halfHeight, rotation),
+          sw: rotatePoint(-halfWidth, halfHeight, rotation),
+        };
+        const rotateOffset = 28 / state.viewport.zoom;
+        const rotateHandle = rotatePoint(0, -halfHeight - rotateOffset, rotation);
+        return {
+          nw: { x: center.x + corners.nw.x, y: center.y + corners.nw.y },
+          ne: { x: center.x + corners.ne.x, y: center.y + corners.ne.y },
+          se: { x: center.x + corners.se.x, y: center.y + corners.se.y },
+          sw: { x: center.x + corners.sw.x, y: center.y + corners.sw.y },
+          rotate: { x: center.x + rotateHandle.x, y: center.y + rotateHandle.y },
+          center,
+        };
+      }
+
+      function sceneTransformHit(scene, worldX, worldY) {
+        const handles = sceneHandleWorldPositions(scene);
+        const radius = 10 / state.viewport.zoom;
+        for (const key of ["rotate", "nw", "ne", "se", "sw"]) {
+          const handle = handles[key];
+          const dx = worldX - handle.x;
+          const dy = worldY - handle.y;
+          if (Math.hypot(dx, dy) <= radius) return { type: key === "rotate" ? "rotate" : "scale", handle: key };
+        }
+        if (pointInScene(scene, worldX, worldY)) return { type: "move", handle: null };
+        return null;
+      }
+
+      function cursorForSceneHit(hit) {
+        if (!hit) return "default";
+        if (hit.type === "rotate") return "grab";
+        if (hit.type === "move") return "move";
+        return "nwse-resize";
       }
 
       function setStatus(message) {
@@ -1093,6 +1318,7 @@
         const full = !flags;
         state.renderState.uiDirty = state.renderState.uiDirty || full || !!flags.ui;
         state.renderState.staticDirty = state.renderState.staticDirty || full || !!flags.static;
+        state.renderState.scenesDirty = state.renderState.scenesDirty || full || !!flags.scenes;
         state.renderState.contentDirty = state.renderState.contentDirty || full || !!flags.content;
         state.renderState.overlayDirty = state.renderState.overlayDirty || full || !!flags.overlay;
         state.renderState.rulersDirty = state.renderState.rulersDirty || full || !!flags.rulers;
@@ -1107,12 +1333,13 @@
         if (state.renderState.uiDirty) {
           updateThemeButtons();
           renderToolState();
+          renderScenes();
           renderLayers();
-          ui.staticCanvas.style.zIndex = state.gridPosition === "above" ? "2" : "0";
-          ui.contentCanvas.style.zIndex = "1";
-          ui.overlayCanvas.style.zIndex = "3";
+          ui.staticCanvas.style.zIndex = state.gridPosition === "above" ? "3" : "0";
+          ui.sceneCanvas.style.zIndex = "1";
+          ui.contentCanvas.style.zIndex = "2";
+          ui.overlayCanvas.style.zIndex = "4";
           ui.layersPanel.classList.toggle("collapsed", state.panelCollapsed);
-          ui.panelToggle.textContent = state.panelCollapsed ? "→" : "←";
           ui.brushColor.value = state.brush.color;
           ui.brushWidth.value = state.brush.width;
           ui.brushHeight.value = state.brush.height;
@@ -1122,6 +1349,11 @@
         if (state.renderState.staticDirty) {
           drawStaticScene();
           state.renderState.staticDirty = false;
+        }
+
+        if (state.renderState.scenesDirty) {
+          drawSceneScene();
+          state.renderState.scenesDirty = false;
         }
 
         if (state.renderState.contentDirty) {
@@ -1156,7 +1388,7 @@
         ui.selectionToolButton.classList.toggle("active", state.activeTool === "select");
         ui.brushToolButton.classList.toggle("active", state.activeTool === "brush");
         ui.brushPanel.classList.toggle("hidden", state.activeTool !== "brush");
-        ui.overlayCanvas.style.cursor = state.activeTool === "brush" ? "crosshair" : "default";
+        ui.overlayCanvas.style.cursor = state.activeTool === "brush" ? "crosshair" : state.activeTool === "transform" ? "move" : "default";
       }
 
       function renderLayers() {
@@ -1183,8 +1415,7 @@
           const main = document.createElement("div");
           main.className = "layer-main";
           main.addEventListener("click", () => {
-            state.activeLayerId = layer.id;
-            render({ ui: true, overlay: true });
+            toggleLayerActivation(layer.id);
           });
 
           const input = document.createElement("input");
@@ -1240,26 +1471,29 @@
           visibility.addEventListener("click", (event) => {
             event.stopPropagation();
             layer.visible = !layer.visible;
+            if (!layer.visible && state.activeLayerId === layer.id) {
+              clearActiveTarget();
+            }
             render({ ui: true, content: true, overlay: true });
           });
           actions.appendChild(visibility);
 
-          if (layer.id === state.activeLayerId) {
-            const remove = document.createElement("button");
-            remove.className = "layer-icon";
-            remove.textContent = "×";
-            remove.title = "Delete active layer";
-            remove.disabled = state.layers.length === 1;
-            remove.addEventListener("click", (event) => {
-              event.stopPropagation();
-              if (state.layers.length === 1) return;
-              const index = state.layers.findIndex((entry) => entry.id === layer.id);
-              state.layers.splice(index, 1);
-              state.activeLayerId = state.layers[Math.max(0, index - 1)].id;
-              render({ ui: true, content: true, overlay: true });
-            });
-            actions.appendChild(remove);
-          }
+          const remove = document.createElement("button");
+          remove.className = "layer-icon";
+          remove.textContent = "×";
+          remove.title = "Delete layer";
+          remove.disabled = state.layers.length === 1;
+          remove.addEventListener("click", (event) => {
+            event.stopPropagation();
+            if (state.layers.length === 1) return;
+            const index = state.layers.findIndex((entry) => entry.id === layer.id);
+            state.layers.splice(index, 1);
+            if (state.activeLayerId === layer.id) {
+              clearActiveTarget();
+            }
+            render({ ui: true, content: true, overlay: true });
+          });
+          actions.appendChild(remove);
 
           card.addEventListener("dragover", (event) => {
             event.preventDefault();
@@ -1283,6 +1517,136 @@
         });
       }
 
+      function renderScenes() {
+        ui.sceneList.innerHTML = "";
+        const isEmpty = state.scenes.length === 0;
+        ui.sceneEmptyState.classList.toggle("hidden", !isEmpty);
+        ui.sceneList.parentElement.classList.toggle("compact-empty", isEmpty);
+
+        state.scenes.forEach((scene) => {
+          const card = document.createElement("div");
+          card.className = "layer-card" + (scene.id === state.activeSceneId ? " active" : "");
+          if (scene.id === state.dragSceneId) card.classList.add("dragging");
+
+          const grip = document.createElement("div");
+          grip.className = "drag-handle";
+          grip.textContent = "⋮⋮";
+          grip.draggable = true;
+          grip.addEventListener("dragstart", (event) => {
+            state.dragSceneId = scene.id;
+            event.dataTransfer.effectAllowed = "move";
+            render({ ui: true });
+          });
+          grip.addEventListener("dragend", () => {
+            state.dragSceneId = null;
+            render({ ui: true });
+          });
+
+          const main = document.createElement("div");
+          main.className = "layer-main";
+          main.addEventListener("click", () => {
+            toggleSceneActivation(scene.id);
+          });
+
+          const input = document.createElement("input");
+          input.className = "layer-name";
+          input.value = scene.name;
+          input.addEventListener("click", (event) => event.stopPropagation());
+          input.addEventListener("input", () => {
+            scene.name = input.value || scene.name;
+          });
+          input.addEventListener("change", () => render({ ui: true }));
+
+          const meta = document.createElement("div");
+          meta.className = "layer-meta";
+          meta.textContent = scene.dimensions;
+
+          main.appendChild(input);
+          main.appendChild(meta);
+
+          const opacityField = document.createElement("div");
+          opacityField.className = "field";
+          opacityField.style.marginTop = "8px";
+          opacityField.addEventListener("pointerdown", (event) => event.stopPropagation());
+          opacityField.addEventListener("mousedown", (event) => event.stopPropagation());
+
+          const opacityLabel = document.createElement("label");
+          opacityLabel.textContent = "Opacity";
+
+          const opacitySlider = document.createElement("input");
+          opacitySlider.type = "range";
+          opacitySlider.min = "0";
+          opacitySlider.max = "100";
+          opacitySlider.step = "1";
+          opacitySlider.value = String(Math.round(scene.opacity * 100));
+          opacitySlider.addEventListener("pointerdown", (event) => event.stopPropagation());
+          opacitySlider.addEventListener("mousedown", (event) => event.stopPropagation());
+          opacitySlider.addEventListener("click", (event) => event.stopPropagation());
+          opacitySlider.addEventListener("input", (event) => {
+            scene.opacity = Math.max(0, Math.min(1, Number(event.target.value) / 100));
+            render({ scenes: true });
+          });
+
+          opacityField.appendChild(opacityLabel);
+          opacityField.appendChild(opacitySlider);
+          main.appendChild(opacityField);
+
+          const actions = document.createElement("div");
+          actions.className = "layer-actions";
+
+          const visibility = document.createElement("button");
+          visibility.className = "layer-icon";
+          visibility.textContent = scene.visible ? "◉" : "○";
+          visibility.title = scene.visible ? "Hide scene" : "Show scene";
+          visibility.addEventListener("click", (event) => {
+            event.stopPropagation();
+            scene.visible = !scene.visible;
+            if (!scene.visible && state.activeSceneId === scene.id) {
+              clearActiveTarget();
+            }
+            render({ ui: true, scenes: true });
+          });
+          actions.appendChild(visibility);
+
+          const remove = document.createElement("button");
+          remove.className = "layer-icon";
+          remove.textContent = "×";
+          remove.title = "Delete scene";
+          remove.addEventListener("click", (event) => {
+            event.stopPropagation();
+            const index = state.scenes.findIndex((entry) => entry.id === scene.id);
+            if (index === -1) return;
+            URL.revokeObjectURL(scene.previewUrl);
+            state.scenes.splice(index, 1);
+            if (state.activeSceneId === scene.id) {
+              clearActiveTarget();
+            }
+            render({ ui: true, scenes: true });
+          });
+          actions.appendChild(remove);
+
+          card.addEventListener("dragover", (event) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+          });
+          card.addEventListener("drop", (event) => {
+            event.preventDefault();
+            if (!state.dragSceneId || state.dragSceneId === scene.id) return;
+            const from = state.scenes.findIndex((entry) => entry.id === state.dragSceneId);
+            const to = state.scenes.findIndex((entry) => entry.id === scene.id);
+            const [moved] = state.scenes.splice(from, 1);
+            state.scenes.splice(to, 0, moved);
+            state.dragSceneId = null;
+            render({ ui: true, scenes: true });
+          });
+
+          card.appendChild(grip);
+          card.appendChild(main);
+          card.appendChild(actions);
+          ui.sceneList.appendChild(card);
+        });
+      }
+
       function resizeCanvas(canvas, context) {
         const ratio = window.devicePixelRatio || 1;
         const rect = canvas.getBoundingClientRect();
@@ -1298,13 +1662,14 @@
 
       function resizeCanvases() {
         resizeCanvas(ui.staticCanvas, staticCtx);
+        resizeCanvas(ui.sceneCanvas, sceneCtx);
         resizeCanvas(ui.contentCanvas, contentCtx);
         resizeCanvas(ui.overlayCanvas, overlayCtx);
         resizeCanvas(ui.rulerTop, rulerTopCtx);
         resizeCanvas(ui.rulerLeft, rulerLeftCtx);
         resizeCanvas(ui.rulerBottom, rulerBottomCtx);
         resizeCanvas(ui.rulerRight, rulerRightCtx);
-        render({ ui: true, static: true, content: true, overlay: true, rulers: true });
+        render({ ui: true, static: true, scenes: true, content: true, overlay: true, rulers: true });
       }
 
       function drawStaticScene() {
@@ -1352,6 +1717,26 @@
         };
       }
 
+      function drawSceneScene() {
+        const width = ui.sceneCanvas.clientWidth;
+        const height = ui.sceneCanvas.clientHeight;
+        sceneCtx.clearRect(0, 0, width, height);
+
+        [...state.scenes].reverse().forEach((scene) => {
+          if (!scene.visible || !scene.image) return;
+          const center = sceneCenter(scene);
+          const screenCenter = worldToScreen(center.x, center.y);
+          const drawWidth = Math.max(1, snapPixel(scene.width * state.viewport.zoom));
+          const drawHeight = Math.max(1, snapPixel(scene.height * state.viewport.zoom));
+          sceneCtx.save();
+          sceneCtx.globalAlpha = scene.opacity;
+          sceneCtx.translate(snapPixel(screenCenter.x), snapPixel(screenCenter.y));
+          sceneCtx.rotate(scene.rotation || 0);
+          sceneCtx.drawImage(scene.image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+          sceneCtx.restore();
+        });
+      }
+
       function drawContentScene() {
         const width = ui.contentCanvas.clientWidth;
         const height = ui.contentCanvas.clientHeight;
@@ -1384,8 +1769,56 @@
         const height = ui.overlayCanvas.clientHeight;
         overlayCtx.clearRect(0, 0, width, height);
 
+        const activeSceneEntity = activeScene();
+        if (activeSceneEntity) {
+          const handles = sceneHandleWorldPositions(activeSceneEntity);
+          const corners = [handles.nw, handles.ne, handles.se, handles.sw];
+          const screenCorners = corners.map((corner) => worldToScreen(corner.x, corner.y));
+          const rotateHandle = worldToScreen(handles.rotate.x, handles.rotate.y);
+          const topCenter = worldToScreen((handles.nw.x + handles.ne.x) / 2, (handles.nw.y + handles.ne.y) / 2);
+
+          overlayCtx.save();
+          overlayCtx.strokeStyle = getCssVar("--selection");
+          overlayCtx.lineWidth = 1;
+          overlayCtx.beginPath();
+          overlayCtx.moveTo(screenCorners[0].x, screenCorners[0].y);
+          screenCorners.slice(1).forEach((corner) => overlayCtx.lineTo(corner.x, corner.y));
+          overlayCtx.closePath();
+          overlayCtx.stroke();
+
+          overlayCtx.beginPath();
+          overlayCtx.moveTo(topCenter.x, topCenter.y);
+          overlayCtx.lineTo(rotateHandle.x, rotateHandle.y);
+          overlayCtx.stroke();
+
+          [...screenCorners, rotateHandle].forEach((handle, index) => {
+            overlayCtx.fillStyle = index === 4 ? getCssVar("--crosshair") : getCssVar("--bg-strong");
+            overlayCtx.strokeStyle = getCssVar("--selection");
+            overlayCtx.beginPath();
+            overlayCtx.arc(handle.x, handle.y, index === 4 ? 5 : 4, 0, Math.PI * 2);
+            overlayCtx.fill();
+            overlayCtx.stroke();
+          });
+          overlayCtx.restore();
+        }
+
         if (state.pointer.inside && state.activeTool === "select") {
           const pointer = worldFromClient(state.pointer.clientX, state.pointer.clientY);
+          const scene = topSceneAt(pointer.worldX, pointer.worldY);
+          if (scene) {
+            const handles = sceneHandleWorldPositions(scene);
+            const corners = [handles.nw, handles.ne, handles.se, handles.sw].map((corner) => worldToScreen(corner.x, corner.y));
+            overlayCtx.save();
+            overlayCtx.strokeStyle = getCssVar("--selection");
+            overlayCtx.lineWidth = 1;
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(corners[0].x, corners[0].y);
+            corners.slice(1).forEach((corner) => overlayCtx.lineTo(corner.x, corner.y));
+            overlayCtx.closePath();
+            overlayCtx.stroke();
+            overlayCtx.restore();
+            return;
+          }
           const layer = topPaintedLayerAt(pointer.worldX, pointer.worldY);
           if (layer) {
             const cell = cellFromWorld(pointer.worldX, pointer.worldY);
@@ -1539,9 +1972,52 @@
       function addLayer() {
         const layer = createLayer("Layer " + (state.layers.length + 1));
         state.layers.unshift(layer);
-        state.activeLayerId = layer.id;
+        setActiveLayerById(layer.id);
         setStatus("New layer added.");
         render({ ui: true, content: true, overlay: true });
+      }
+
+      function createSceneFromImage(file, image, previewUrl) {
+        const visibleWorldWidth = ui.sceneCanvas.clientWidth / state.viewport.zoom;
+        const visibleWorldHeight = ui.sceneCanvas.clientHeight / state.viewport.zoom;
+        const scale = Math.min(
+          1,
+          (visibleWorldWidth * 0.65) / image.width || 1,
+          (visibleWorldHeight * 0.65) / image.height || 1
+        );
+        const width = Math.max(CELL_SIZE, Math.round(image.width * scale));
+        const height = Math.max(CELL_SIZE, Math.round(image.height * scale));
+        const centerWorldX = (ui.sceneCanvas.clientWidth / 2 - state.viewport.x) / state.viewport.zoom;
+        const centerWorldY = (ui.sceneCanvas.clientHeight / 2 - state.viewport.y) / state.viewport.zoom;
+
+        return {
+          id: "scene-" + Math.random().toString(36).slice(2, 10),
+          name: "Default Scene " + state.nextSceneNumber++,
+          previewUrl,
+          image,
+          visible: true,
+          opacity: 1,
+          rotation: 0,
+          x: Math.round(centerWorldX - width / 2),
+          y: Math.round(centerWorldY - height / 2),
+          width,
+          height,
+          dimensions: image.width + " x " + image.height,
+        };
+      }
+
+      function importSceneFile(file) {
+        if (!file || !file.type.startsWith("image/")) return;
+        const previewUrl = URL.createObjectURL(file);
+        const image = new Image();
+        image.onload = () => {
+          const scene = createSceneFromImage(file, image, previewUrl);
+          state.scenes.unshift(scene);
+          setActiveSceneById(scene.id);
+          setStatus("Imported scene image.");
+          render({ ui: true, scenes: true, overlay: true });
+        };
+        image.src = previewUrl;
       }
 
       function paintCells(cellX, cellY, mode) {
@@ -1580,6 +2056,7 @@
       function beginBrush(clientX, clientY, mode) {
         const pointer = worldFromClient(clientX, clientY);
         const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+        if (!activeLayer()) return;
         state.interaction = {
           type: "brush",
           mode,
@@ -1593,15 +2070,75 @@
 
       function beginSelection(clientX, clientY) {
         const pointer = worldFromClient(clientX, clientY);
-        const layer = topPaintedLayerAt(pointer.worldX, pointer.worldY);
-        if (layer) {
-          state.activeLayerId = layer.id;
-          setStatus("Activated " + layer.name + " from painted selection.");
+        const scene = topSceneAt(pointer.worldX, pointer.worldY);
+        if (scene) {
+          setActiveSceneById(scene.id);
+          setStatus("Transform active on selected scene.");
           render({ ui: true, overlay: true });
           return;
         }
+        const layer = topPaintedLayerAt(pointer.worldX, pointer.worldY);
+        if (layer) {
+          setActiveLayerById(layer.id);
+          setStatus("Brush active on selected layer.");
+          render({ ui: true, overlay: true });
+          return;
+        }
+        clearActiveTarget();
         setStatus("No painted cell here. Selection stays idle.");
-        render({ overlay: true });
+        render({ ui: true, overlay: true });
+      }
+
+      function beginSceneTransform(clientX, clientY) {
+        const scene = activeScene();
+        if (!scene) {
+          clearActiveTarget();
+          render({ ui: true, overlay: true });
+          return;
+        }
+        const pointer = worldFromClient(clientX, clientY);
+        const hit = sceneTransformHit(scene, pointer.worldX, pointer.worldY);
+        if (!hit) {
+          clearActiveTarget();
+          setStatus("Selection tool active.");
+          render({ ui: true, overlay: true });
+          return;
+        }
+
+        const center = sceneCenter(scene);
+        const localPointer = sceneLocalPoint(scene, pointer.worldX, pointer.worldY);
+        const anchorMap = {
+          nw: { x: scene.width / 2, y: scene.height / 2 },
+          ne: { x: -scene.width / 2, y: scene.height / 2 },
+          se: { x: -scene.width / 2, y: -scene.height / 2 },
+          sw: { x: scene.width / 2, y: -scene.height / 2 },
+        };
+
+        state.interaction = {
+          type: hit.type,
+          sceneId: scene.id,
+          handle: hit.handle,
+          startX: scene.x,
+          startY: scene.y,
+          startWidth: scene.width,
+          startHeight: scene.height,
+          startRotation: scene.rotation || 0,
+          startCenterX: center.x,
+          startCenterY: center.y,
+          pointerWorldX: pointer.worldX,
+          pointerWorldY: pointer.worldY,
+          localPointerX: localPointer.x,
+          localPointerY: localPointer.y,
+          anchorLocal: hit.type === "scale" ? anchorMap[hit.handle] : null,
+          rotateStartAngle: hit.type === "rotate" ? Math.atan2(pointer.worldY - center.y, pointer.worldX - center.x) : 0,
+        };
+        setStatus(
+          hit.type === "move"
+            ? "Moving active scene."
+            : hit.type === "scale"
+            ? "Scaling active scene."
+            : "Rotating active scene."
+        );
       }
 
       function handlePointerDown(event) {
@@ -1614,6 +2151,10 @@
           beginSelection(event.clientX, event.clientY);
           return;
         }
+        if (state.activeTool === "transform" && !isRightClick) {
+          beginSceneTransform(event.clientX, event.clientY);
+          return;
+        }
         beginBrush(event.clientX, event.clientY, isRightClick ? "erase" : "paint");
       }
 
@@ -1623,6 +2164,14 @@
         state.pointer.inside = true;
 
         if (!state.interaction) {
+          if (state.activeTool === "transform" && activeScene()) {
+            const pointer = worldFromClient(event.clientX, event.clientY);
+            ui.overlayCanvas.style.cursor = cursorForSceneHit(sceneTransformHit(activeScene(), pointer.worldX, pointer.worldY));
+          } else if (state.activeTool === "brush") {
+            ui.overlayCanvas.style.cursor = "crosshair";
+          } else {
+            ui.overlayCanvas.style.cursor = "default";
+          }
           render({ overlay: true });
           return;
         }
@@ -1630,7 +2179,7 @@
         if (state.interaction.type === "pan") {
           state.viewport.x = state.interaction.startX + (event.clientX - state.interaction.originX);
           state.viewport.y = state.interaction.startY + (event.clientY - state.interaction.originY);
-          render({ static: true, content: true, overlay: true, rulers: true });
+          render({ static: true, scenes: true, content: true, overlay: true, rulers: true });
           return;
         }
 
@@ -1643,12 +2192,61 @@
             state.interaction.lastKey = key;
             render({ ui: changed, content: true, overlay: true });
           }
+          return;
+        }
+
+        if (state.interaction.sceneId) {
+          const scene = state.scenes.find((entry) => entry.id === state.interaction.sceneId);
+          if (!scene) return;
+          const pointer = worldFromClient(event.clientX, event.clientY);
+
+          if (state.interaction.type === "move") {
+            scene.x = state.interaction.startX + (pointer.worldX - state.interaction.pointerWorldX);
+            scene.y = state.interaction.startY + (pointer.worldY - state.interaction.pointerWorldY);
+            render({ scenes: true, overlay: true });
+            return;
+          }
+
+          if (state.interaction.type === "rotate") {
+            const currentAngle = Math.atan2(pointer.worldY - state.interaction.startCenterY, pointer.worldX - state.interaction.startCenterX);
+            scene.rotation = normalizeAngle(
+              state.interaction.startRotation + currentAngle - state.interaction.rotateStartAngle
+            );
+            render({ scenes: true, overlay: true });
+            return;
+          }
+
+          if (state.interaction.type === "scale") {
+            const localPointer = rotatePoint(
+              pointer.worldX - state.interaction.startCenterX,
+              pointer.worldY - state.interaction.startCenterY,
+              -state.interaction.startRotation
+            );
+            const anchor = state.interaction.anchorLocal;
+            const width = Math.max(CELL_SIZE, Math.abs(localPointer.x - anchor.x));
+            const height = Math.max(CELL_SIZE, Math.abs(localPointer.y - anchor.y));
+            const centerLocal = {
+              x: (localPointer.x + anchor.x) / 2,
+              y: (localPointer.y + anchor.y) / 2,
+            };
+            const worldCenterOffset = rotatePoint(centerLocal.x, centerLocal.y, state.interaction.startRotation);
+            const centerWorld = {
+              x: state.interaction.startCenterX + worldCenterOffset.x,
+              y: state.interaction.startCenterY + worldCenterOffset.y,
+            };
+            scene.width = width;
+            scene.height = height;
+            scene.x = centerWorld.x - width / 2;
+            scene.y = centerWorld.y - height / 2;
+            render({ scenes: true, overlay: true });
+          }
         }
       }
 
       function handlePointerUp() {
         if (!state.interaction) return;
         if (state.interaction.type === "pan") setStatus("Viewport updated.");
+        if (state.interaction.sceneId) setStatus("Scene transform updated.");
         state.interaction = null;
         render({ ui: true, overlay: true });
       }
@@ -1662,12 +2260,24 @@
         state.viewport.y = pointer.screenY - pointer.worldY * clamped;
         state.viewport.zoom = clamped;
         setStatus("Zoom " + Math.round(clamped * 100) + "%");
-        render({ static: true, content: true, overlay: true, rulers: true });
+        render({ static: true, scenes: true, content: true, overlay: true, rulers: true });
       }
 
       function activateTool(tool) {
+        if (tool === "select") {
+          clearActiveTarget();
+        } else if (tool === "brush") {
+          if (!activeLayer() && state.layers[0]) {
+            setActiveLayerById(state.layers[0].id);
+          } else {
+            state.activeSceneId = null;
+            state.activeTool = "brush";
+          }
+        }
         state.activeTool = tool;
-        setStatus(tool === "select" ? "Selection tool active." : "Brush tool active.");
+        setStatus(
+          tool === "select" ? "Selection tool active." : tool === "brush" ? "Brush tool active." : "Transform tool active."
+        );
         render({ ui: true, overlay: true });
       }
 
@@ -1695,11 +2305,15 @@
         });
       });
 
-      ui.addLayerButton.addEventListener("click", addLayer);
-      ui.panelToggle.addEventListener("click", () => {
-        state.panelCollapsed = !state.panelCollapsed;
-        render({ ui: true, static: true, content: true, overlay: true, rulers: true });
+      ui.sceneAddButton.addEventListener("click", () => {
+        ui.sceneImportInput.value = "";
+        ui.sceneImportInput.click();
       });
+      ui.sceneImportInput.addEventListener("change", () => {
+        const [file] = ui.sceneImportInput.files || [];
+        importSceneFile(file);
+      });
+      ui.addLayerButton.addEventListener("click", addLayer);
 
       ui.settingsButton.addEventListener("click", () => toggleModal(ui.settingsMenu));
 
@@ -1707,7 +2321,7 @@
         button.addEventListener("click", () => {
           state.theme = button.dataset.theme;
           setStatus((state.theme === "dark" ? "Dark" : "Light") + " mode active.");
-          render({ ui: true, static: true, content: true, overlay: true, rulers: true });
+          render({ ui: true, static: true, scenes: true, content: true, overlay: true, rulers: true });
         });
       });
 
@@ -1748,7 +2362,11 @@
           return;
         }
         if (event.code === "Space") state.spacePan = true;
-        if (event.key === "Escape") activateTool("select");
+        if (event.key === "Escape") {
+          clearActiveTarget();
+          setStatus("Selection tool active.");
+          render({ ui: true, overlay: true });
+        }
       });
       window.addEventListener("keyup", (event) => {
         if (event.code === "Space") state.spacePan = false;

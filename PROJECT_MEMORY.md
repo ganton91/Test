@@ -7,12 +7,18 @@ It is intended to preserve important product decisions, renderer invariants, and
 
 This document should be treated as authoritative unless the user explicitly changes direction.
 
+## Memory Maintenance Rule
+
+- Any significant product decision, UI system decision, renderer decision, workflow rule, or architectural change should be added to this file automatically as part of the work
+- Codex should not wait for a separate reminder before updating this memory when a change is important enough to affect future work
+
 ## Product Identity
 
 - Product name: `Milimetre`
 - Core concept: infinite measured drawing canvas
 - Base grid unit: each cell is `5 x 5 cm`
 - UX direction: minimal, quiet, precise, compact controls, compact typography
+- Avoid default helper/explanatory filler text in the UI unless the user explicitly asks for it
 
 ## Core Interaction Model
 
@@ -22,6 +28,12 @@ This document should be treated as authoritative unless the user explicitly chan
 - Right click erases
 - Space + drag pans
 - Mouse wheel zooms
+- `Scenes` and `Layers` use one shared active-state model:
+  - only one `Scene` or one `Layer` can be active at a time
+  - active `Layer` switches the app into `Brush`
+  - active `Scene` switches the app into scene transform mode
+  - `Escape`, clicking the same active card again, or manually choosing `Selection` clears all active state
+- In `Selection` mode, clicking a visible `Scene` on the canvas should select the topmost matching scene before checking painted layers underneath
 
 ## Layout Rules
 
@@ -29,6 +41,12 @@ This document should be treated as authoritative unless the user explicitly chan
 - The canvas begins immediately to the right of the sidebar
 - The app uses rulers on all four sides of the canvas
 - Ruler corner blocks should exist visually on all four corners
+- Panel section headers should follow one compact shared pattern by default:
+  - title on the left
+  - compact action button on the right
+  - tight row height and tight vertical padding
+  - action symbols/icons inside those buttons should use a dedicated inner icon wrapper, not raw text directly in the button
+  - if a new section header is added later, it should inherit this same visual system unless the user explicitly asks for a different treatment
 
 ## Modal Rules
 
@@ -72,6 +90,9 @@ Current renderer shape in [index.html](/workspaces/Test/index.html):
 - `staticCanvas`
   - renders static scene elements
   - currently includes grid and origin axes
+- `sceneCanvas`
+  - renders imported reference scenes/images
+  - remains separate from painted layer content
 - `contentCanvas`
   - renders painted drawing content
   - uses tile-based drawing
@@ -89,6 +110,9 @@ Current renderer shape in [index.html](/workspaces/Test/index.html):
 - Each tile is a `TILE_SIZE x TILE_SIZE` block
 - Each tile owns an offscreen canvas and a local pixel map
 - Only visible tiles should be drawn to the content canvas
+- Reference scenes/images are stored separately from painted layers
+- Scene opacity, visibility, ordering, and future transforms should remain outside the tile paint model
+- Scene transforms and transform handles should live in overlay/scene interaction logic, not in the paint tile model
 
 ## Renderer Scheduling Rules
 
