@@ -425,6 +425,11 @@
         color: var(--muted);
       }
 
+      .layer-meta-secondary {
+        font-size: 11px;
+        color: var(--muted);
+      }
+
       .layer-actions {
         display: flex;
         align-items: center;
@@ -1780,7 +1785,11 @@
 
           const meta = document.createElement("div");
           meta.className = "layer-meta";
-          meta.textContent = layer.cellCount + " painted cells";
+          meta.textContent = layer.cellCount + " cells";
+
+          const areaMeta = document.createElement("div");
+          areaMeta.className = "layer-meta-secondary";
+          areaMeta.textContent = (layer.cellCount * 0.0025).toFixed(2) + " m²";
 
           main.appendChild(nameField);
 
@@ -1858,6 +1867,7 @@
           card.appendChild(grip);
           main.appendChild(actions);
           main.appendChild(meta);
+          main.appendChild(areaMeta);
           main.appendChild(opacityField);
           card.appendChild(main);
           ui.layerList.appendChild(card);
