@@ -132,9 +132,7 @@
       .ghost-button,
       .layer-icon,
       .mode-button,
-      .floating-tool,
-      .tool-chip,
-      .add-layer {
+      .floating-tool {
         border: 1px solid var(--line);
         background: var(--surface);
         color: inherit;
@@ -146,9 +144,7 @@
       .ghost-button:hover,
       .layer-icon:hover,
       .mode-button:hover,
-      .floating-tool:hover,
-      .tool-chip:hover,
-      .add-layer:hover {
+      .floating-tool:hover {
         background: var(--surface-strong);
         border-color: var(--line-strong);
       }
@@ -861,17 +857,6 @@
         color: var(--text);
       }
 
-      .tool-chips {
-        display: flex;
-        gap: 8px;
-        margin-top: 10px;
-      }
-
-      .tool-chip {
-        padding: 7px 10px;
-        font-size: 11px;
-      }
-
       .status-pill {
         position: absolute;
         left: 50%;
@@ -996,7 +981,6 @@
                 <button class="section-header-action" id="sceneAddButton" aria-label="Import scene image"></button>
               </div>
               <div class="scene-list" id="sceneList"></div>
-              <div class="empty-state hidden" id="sceneEmptyState"></div>
             </div>
             <div class="panel-section" id="layerSection">
               <div class="section-header">
@@ -1158,7 +1142,6 @@
         sceneAddButton: document.getElementById("sceneAddButton"),
         sceneImportInput: document.getElementById("sceneImportInput"),
         sceneList: document.getElementById("sceneList"),
-        sceneEmptyState: document.getElementById("sceneEmptyState"),
         layerList: document.getElementById("layerList"),
         addLayerButton: document.getElementById("addLayerButton"),
         settingsButton: document.getElementById("settingsButton"),
@@ -1198,7 +1181,6 @@
       const state = {
         theme: "light",
         activeTool: "brush",
-        panelCollapsed: false,
         viewport: {
           x: window.innerWidth / 2 - 200,
           y: window.innerHeight / 2 - 200,
@@ -1835,7 +1817,6 @@
           ui.sceneCanvas.style.zIndex = "1";
           ui.contentCanvas.style.zIndex = "2";
           ui.overlayCanvas.style.zIndex = "4";
-          ui.layersPanel.classList.toggle("collapsed", state.panelCollapsed);
           ui.brushWidth.value = cellsToCentimeters(state.brush.width);
           ui.brushHeight.value = cellsToCentimeters(state.brush.height);
           state.renderState.uiDirty = false;
@@ -2082,7 +2063,6 @@
       function renderScenes() {
         ui.sceneList.innerHTML = "";
         const isEmpty = state.scenes.length === 0;
-        ui.sceneEmptyState.classList.toggle("hidden", !isEmpty);
         ui.sceneList.parentElement.classList.toggle("compact-empty", isEmpty);
 
         state.scenes.forEach((scene) => {
@@ -2702,7 +2682,7 @@
         render({ ui: true, content: true, overlay: true });
       }
 
-      function createSceneFromImage(file, image, previewUrl) {
+      function createSceneFromImage(image, previewUrl) {
         const visibleWorldWidth = ui.sceneCanvas.clientWidth / state.viewport.zoom;
         const visibleWorldHeight = ui.sceneCanvas.clientHeight / state.viewport.zoom;
         const scale = Math.min(
@@ -2728,7 +2708,6 @@
           y: Math.round(centerWorldY - height / 2),
           width,
           height,
-          dimensions: image.width + " x " + image.height,
         };
       }
 
@@ -2737,7 +2716,7 @@
         const previewUrl = URL.createObjectURL(file);
         const image = new Image();
         image.onload = () => {
-          const scene = createSceneFromImage(file, image, previewUrl);
+          const scene = createSceneFromImage(image, previewUrl);
           state.scenes.unshift(scene);
           setActiveSceneById(scene.id);
           setStatus("Imported scene image.");
