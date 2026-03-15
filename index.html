@@ -319,6 +319,16 @@
         background: var(--surface);
       }
 
+      .scene-card {
+        grid-template-columns: 16px minmax(0, 1fr);
+        align-items: start;
+      }
+
+      .layer-stack-card {
+        grid-template-columns: 16px minmax(0, 1fr);
+        align-items: start;
+      }
+
       .layer-card.active {
         background: var(--accent-soft);
         border-color: var(--line-strong);
@@ -338,6 +348,10 @@
 
       .layer-main {
         min-width: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
       }
 
       .layer-name {
@@ -371,7 +385,6 @@
       }
 
       .layer-meta {
-        margin-top: 4px;
         font-size: 11px;
         color: var(--muted);
       }
@@ -670,6 +683,14 @@
         border-radius: 50%;
         background: var(--text);
         box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+      }
+
+      .scene-card .field input[type="range"] {
+        max-width: 132px;
+      }
+
+      .layer-stack-card .field input[type="range"] {
+        max-width: 132px;
       }
 
       .dimension-row {
@@ -1625,7 +1646,7 @@
         ui.layerList.innerHTML = "";
         state.layers.forEach((layer) => {
           const card = document.createElement("div");
-          card.className = "layer-card" + (layer.id === state.activeLayerId ? " active" : "");
+          card.className = "layer-card layer-stack-card" + (layer.id === state.activeLayerId ? " active" : "");
           if (layer.id === state.dragLayerId) card.classList.add("dragging");
 
           const grip = document.createElement("div");
@@ -1688,11 +1709,9 @@
           meta.textContent = layer.cellCount + " painted cells";
 
           main.appendChild(nameField);
-          main.appendChild(meta);
 
           const opacityField = document.createElement("div");
           opacityField.className = "field";
-          opacityField.style.marginTop = "8px";
           opacityField.addEventListener("pointerdown", (event) => event.stopPropagation());
           opacityField.addEventListener("mousedown", (event) => event.stopPropagation());
 
@@ -1715,7 +1734,6 @@
 
           opacityField.appendChild(opacityLabel);
           opacityField.appendChild(opacitySlider);
-          main.appendChild(opacityField);
 
           const actions = document.createElement("div");
           actions.className = "layer-actions";
@@ -1764,8 +1782,10 @@
           });
 
           card.appendChild(grip);
+          main.appendChild(actions);
+          main.appendChild(meta);
+          main.appendChild(opacityField);
           card.appendChild(main);
-          card.appendChild(actions);
           ui.layerList.appendChild(card);
         });
       }
@@ -1778,7 +1798,7 @@
 
         state.scenes.forEach((scene) => {
           const card = document.createElement("div");
-          card.className = "layer-card" + (scene.id === state.activeSceneId ? " active" : "");
+          card.className = "layer-card scene-card" + (scene.id === state.activeSceneId ? " active" : "");
           if (scene.id === state.dragSceneId) card.classList.add("dragging");
 
           const grip = document.createElement("div");
@@ -1840,7 +1860,6 @@
 
           const opacityField = document.createElement("div");
           opacityField.className = "field";
-          opacityField.style.marginTop = "8px";
           opacityField.addEventListener("pointerdown", (event) => event.stopPropagation());
           opacityField.addEventListener("mousedown", (event) => event.stopPropagation());
 
@@ -1863,21 +1882,19 @@
 
           opacityField.appendChild(opacityLabel);
           opacityField.appendChild(opacitySlider);
-          main.appendChild(opacityField);
 
           const actions = document.createElement("div");
           actions.className = "layer-actions";
 
-          const visibility = document.createElement("button");
-          visibility.className = "layer-icon";
-          visibility.textContent = scene.visible ? "◉" : "○";
-          visibility.title = scene.visible ? "Hide scene" : "Show scene";
-          visibility.addEventListener("click", (event) => {
+          const calibrate = document.createElement("button");
+          calibrate.className = "layer-icon";
+          calibrate.textContent = "↔";
+          calibrate.title = "Set scene scale";
+          calibrate.addEventListener("click", (event) => {
             event.stopPropagation();
-            scene.visible = !scene.visible;
-            render({ ui: true, scenes: true });
+            startSceneCalibration(scene.id);
           });
-          actions.appendChild(visibility);
+          actions.appendChild(calibrate);
 
           const lock = document.createElement("button");
           lock.className = "layer-icon";
@@ -1894,15 +1911,16 @@
           });
           actions.appendChild(lock);
 
-          const calibrate = document.createElement("button");
-          calibrate.className = "layer-icon";
-          calibrate.textContent = "↔";
-          calibrate.title = "Set scene scale";
-          calibrate.addEventListener("click", (event) => {
+          const visibility = document.createElement("button");
+          visibility.className = "layer-icon";
+          visibility.textContent = scene.visible ? "◉" : "○";
+          visibility.title = scene.visible ? "Hide scene" : "Show scene";
+          visibility.addEventListener("click", (event) => {
             event.stopPropagation();
-            startSceneCalibration(scene.id);
+            scene.visible = !scene.visible;
+            render({ ui: true, scenes: true });
           });
-          actions.appendChild(calibrate);
+          actions.appendChild(visibility);
 
           const remove = document.createElement("button");
           remove.className = "layer-icon";
@@ -1936,9 +1954,10 @@
             render({ ui: true, scenes: true });
           });
 
+          main.appendChild(actions);
+          main.appendChild(opacityField);
           card.appendChild(grip);
           card.appendChild(main);
-          card.appendChild(actions);
           ui.sceneList.appendChild(card);
         });
       }
