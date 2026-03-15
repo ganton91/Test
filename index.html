@@ -676,12 +676,14 @@
         padding: 10px 12px;
         font-size: 12px;
         font-weight: 600;
+        color: var(--muted);
         background: var(--floating-surface);
         box-shadow: var(--shadow);
       }
 
       .floating-tool.active {
-        border-color: var(--line-strong);
+        border-color: color-mix(in srgb, var(--line-strong) 70%, var(--text) 30%);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line-strong) 72%, var(--text) 28%), var(--shadow);
       }
 
       .floating-tool-indicator {
@@ -1364,6 +1366,10 @@
           lengths: [],
           areas: [],
         };
+      }
+
+      function measurementAnnotationColor(entry, measurement) {
+        return (entry && entry.color) || (measurement && measurement.color) || state.brush.color;
       }
 
       function createTile(layer, tileX, tileY) {
@@ -2979,9 +2985,10 @@
         const start = worldToScreen(length.start.x, length.start.y);
         const end = worldToScreen(length.end.x, length.end.y);
         const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+        const color = measurementAnnotationColor(length, measurement);
         context.save();
-        context.strokeStyle = hexToRgba(measurement.color, Math.max(0, Math.min(1, measurement.opacity)));
-        context.fillStyle = hexToRgba(measurement.color, Math.max(0, Math.min(1, measurement.opacity)));
+        context.strokeStyle = hexToRgba(color, Math.max(0, Math.min(1, measurement.opacity)));
+        context.fillStyle = hexToRgba(color, Math.max(0, Math.min(1, measurement.opacity)));
         context.lineWidth = Math.max(1, measurement.width);
         context.beginPath();
         context.moveTo(start.x, start.y);
@@ -3002,9 +3009,10 @@
         const screenPoints = area.points.map((point) => worldToScreen(point.x, point.y));
         const centroidWorld = polygonCentroid(area.points);
         const centroid = worldToScreen(centroidWorld.x, centroidWorld.y);
+        const color = measurementAnnotationColor(area, measurement);
         context.save();
-        context.fillStyle = hexToRgba(measurement.color, Math.max(0, Math.min(1, measurement.opacity * 0.18)));
-        context.strokeStyle = hexToRgba(measurement.color, Math.max(0, Math.min(1, measurement.opacity)));
+        context.fillStyle = hexToRgba(color, Math.max(0, Math.min(1, measurement.opacity * 0.18)));
+        context.strokeStyle = hexToRgba(color, Math.max(0, Math.min(1, measurement.opacity)));
         context.lineWidth = Math.max(1, measurement.width);
         context.beginPath();
         context.moveTo(screenPoints[0].x, screenPoints[0].y);
@@ -3015,16 +3023,17 @@
         context.font = "600 11px IBM Plex Sans, Segoe UI, sans-serif";
         context.textAlign = "center";
         context.textBaseline = "middle";
-        context.fillStyle = hexToRgba(measurement.color, Math.max(0, Math.min(1, measurement.opacity)));
+        context.fillStyle = hexToRgba(color, Math.max(0, Math.min(1, measurement.opacity)));
         context.fillText(area.squareMeters.toFixed(2) + " m²", centroid.x, centroid.y);
         context.restore();
       }
 
       function drawMeasurementDraft(context, draft, measurement) {
         if (!draft || !measurement) return;
+        const color = state.brush.color;
         context.save();
-        context.strokeStyle = hexToRgba(measurement.color, Math.max(0.28, Math.min(1, measurement.opacity)));
-        context.fillStyle = hexToRgba(measurement.color, Math.max(0.16, measurement.opacity * 0.22));
+        context.strokeStyle = hexToRgba(color, Math.max(0.28, Math.min(1, measurement.opacity)));
+        context.fillStyle = hexToRgba(color, Math.max(0.16, measurement.opacity * 0.22));
         context.lineWidth = Math.max(1, measurement.width);
 
         if (draft.type === "length-click" || draft.type === "length-drag") {
@@ -3126,9 +3135,10 @@
               const worldPoint = measurementPointWorld(point);
               const screenPoint = worldToScreen(worldPoint.x, worldPoint.y);
               const radius = 2 + measurement.width * 0.65;
+              const color = measurementAnnotationColor(point, measurement);
               overlayCtx.save();
-              overlayCtx.strokeStyle = hexToRgba(measurement.color, Math.max(0, Math.min(1, measurement.opacity)));
-              overlayCtx.fillStyle = hexToRgba(measurement.color, Math.max(0, Math.min(1, measurement.opacity * 0.42)));
+              overlayCtx.strokeStyle = hexToRgba(color, Math.max(0, Math.min(1, measurement.opacity)));
+              overlayCtx.fillStyle = hexToRgba(color, Math.max(0, Math.min(1, measurement.opacity * 0.42)));
               overlayCtx.beginPath();
               overlayCtx.arc(screenPoint.x, screenPoint.y, radius, 0, Math.PI * 2);
               overlayCtx.fill();
@@ -3541,6 +3551,7 @@
           id: "point-" + Math.random().toString(36).slice(2, 9),
           cellX: cell.x,
           cellY: cell.y,
+          color: state.brush.color,
         });
         setStatus("Measurement point added.");
         render({ ui: true, overlay: true });
@@ -3553,6 +3564,7 @@
           start,
           end,
           meters: measurementLengthMeters(start, end),
+          color: state.brush.color,
         });
         return true;
       }
@@ -3610,6 +3622,7 @@
             id: "area-" + Math.random().toString(36).slice(2, 9),
             points,
             squareMeters: measurementAreaSquareMeters(points),
+            color: state.brush.color,
           });
           state.measurementDraft = null;
           setStatus("Measurement area added.");

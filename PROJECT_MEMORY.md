@@ -42,6 +42,9 @@ This document should be treated as authoritative unless the user explicitly chan
   - when eyedropper mode is active, the brush footprint preview is hidden and the browser pick cursor is used without any extra overlay marker
   - the `Color` panel is collapsible with the same arrow-toggle behavior used by the sidebar sections
 - `Measurements` is now a third annotation subsystem alongside `Scenes` and `Layers`
+- Measurements use the global `Color Palette` for new annotations:
+  - each new point / length / area stores its own color at creation time
+  - changing the global color affects the next measurement annotation, not existing ones
 - Measurement cards currently support the first safe phase:
   - section + cards + shared active-state integration
   - visible point annotations
