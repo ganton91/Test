@@ -330,7 +330,9 @@
       }
 
       .layer-name {
-        width: 100%;
+        width: auto;
+        max-width: 100%;
+        display: inline-block;
         padding: 0;
         border: 0;
         background: transparent;
@@ -341,6 +343,20 @@
 
       .layer-name:focus {
         outline: none;
+      }
+
+      .layer-name-label {
+        width: auto;
+        max-width: 100%;
+        display: inline-block;
+        font-size: 12px;
+        font-weight: 600;
+        color: inherit;
+        line-height: 1.35;
+        cursor: default;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .layer-meta {
@@ -935,11 +951,13 @@
         nextSceneNumber: 1,
         scenes: [],
         activeSceneId: null,
+        editingSceneId: null,
         dragSceneId: null,
         gridPosition: "below",
         dualStrokeGrid: false,
         layers: [createLayer("Layer 1")],
         activeLayerId: null,
+        editingLayerId: null,
         dragLayerId: null,
         interaction: null,
         spacePan: false,
@@ -1116,33 +1134,77 @@
       function clearActiveTarget() {
         state.activeLayerId = null;
         state.activeSceneId = null;
+        state.editingLayerId = null;
+        state.editingSceneId = null;
         state.activeTool = "select";
       }
 
       function toggleLayerActivation(layerId) {
         if (state.activeLayerId === layerId && !state.activeSceneId) {
+          state.editingLayerId = null;
+          state.editingSceneId = null;
           clearActiveTarget();
           setStatus("Selection tool active.");
           render({ ui: true, overlay: true });
           return;
         }
         if (setActiveLayerById(layerId)) {
+          state.editingLayerId = null;
+          state.editingSceneId = null;
           setStatus("Brush active on selected layer.");
           render({ ui: true, overlay: true });
         }
       }
 
+      function beginRenameLayer(layerId) {
+        state.editingLayerId = layerId;
+        state.editingSceneId = null;
+        render({ ui: true });
+      }
+
+      function endRenameLayer() {
+        state.editingLayerId = null;
+        render({ ui: true });
+      }
+
       function toggleSceneActivation(sceneId) {
         if (state.activeSceneId === sceneId && !state.activeLayerId) {
+          state.editingSceneId = null;
+          state.editingLayerId = null;
           clearActiveTarget();
           setStatus("Selection tool active.");
           render({ ui: true, overlay: true });
           return;
         }
         if (setActiveSceneById(sceneId)) {
+          state.editingSceneId = null;
+          state.editingLayerId = null;
           setStatus("Transform active on selected scene.");
           render({ ui: true, overlay: true });
         }
+      }
+
+      function beginRenameScene(sceneId) {
+        state.editingSceneId = sceneId;
+        state.editingLayerId = null;
+        render({ ui: true });
+      }
+
+      function endRenameScene() {
+        state.editingSceneId = null;
+        render({ ui: true });
+      }
+
+      function isEditingName() {
+        return !!(state.editingLayerId || state.editingSceneId);
+      }
+
+      function cancelRenameMode() {
+        if (!isEditingName()) return false;
+        state.editingLayerId = null;
+        state.editingSceneId = null;
+        render({ ui: true });
+        return true;
       }
 
       function strokeSceneLine(context, x1, y1, x2, y2, lineWidth, strokeColor, dualStrokeColor) {
@@ -1418,20 +1480,46 @@
             toggleLayerActivation(layer.id);
           });
 
-          const input = document.createElement("input");
-          input.className = "layer-name";
-          input.value = layer.name;
-          input.addEventListener("click", (event) => event.stopPropagation());
-          input.addEventListener("input", () => {
-            layer.name = input.value || layer.name;
-          });
-          input.addEventListener("change", () => render({ ui: true }));
+          let nameField;
+          if (state.editingLayerId === layer.id) {
+            const input = document.createElement("input");
+            input.className = "layer-name";
+            input.value = layer.name;
+            input.size = Math.max(1, layer.name.length);
+            input.addEventListener("click", (event) => event.stopPropagation());
+            input.addEventListener("pointerdown", (event) => event.stopPropagation());
+            input.addEventListener("input", () => {
+              layer.name = input.value || layer.name;
+              input.size = Math.max(1, input.value.length);
+            });
+            input.addEventListener("blur", endRenameLayer);
+            input.addEventListener("keydown", (event) => {
+              if (event.key === "Enter" || event.key === "Escape") {
+                input.blur();
+              }
+            });
+            queueMicrotask(() => {
+              input.focus();
+              input.select();
+            });
+            nameField = input;
+          } else {
+            const label = document.createElement("div");
+            label.className = "layer-name-label";
+            label.textContent = layer.name;
+            label.addEventListener("click", (event) => {
+              if (state.activeLayerId !== layer.id || state.activeSceneId) return;
+              event.stopPropagation();
+              beginRenameLayer(layer.id);
+            });
+            nameField = label;
+          }
 
           const meta = document.createElement("div");
           meta.className = "layer-meta";
           meta.textContent = layer.cellCount + " painted cells";
 
-          main.appendChild(input);
+          main.appendChild(nameField);
           main.appendChild(meta);
 
           const opacityField = document.createElement("div");
@@ -1471,9 +1559,6 @@
           visibility.addEventListener("click", (event) => {
             event.stopPropagation();
             layer.visible = !layer.visible;
-            if (!layer.visible && state.activeLayerId === layer.id) {
-              clearActiveTarget();
-            }
             render({ ui: true, content: true, overlay: true });
           });
           actions.appendChild(visibility);
@@ -1548,20 +1633,46 @@
             toggleSceneActivation(scene.id);
           });
 
-          const input = document.createElement("input");
-          input.className = "layer-name";
-          input.value = scene.name;
-          input.addEventListener("click", (event) => event.stopPropagation());
-          input.addEventListener("input", () => {
-            scene.name = input.value || scene.name;
-          });
-          input.addEventListener("change", () => render({ ui: true }));
+          let nameField;
+          if (state.editingSceneId === scene.id) {
+            const input = document.createElement("input");
+            input.className = "layer-name";
+            input.value = scene.name;
+            input.size = Math.max(1, scene.name.length);
+            input.addEventListener("click", (event) => event.stopPropagation());
+            input.addEventListener("pointerdown", (event) => event.stopPropagation());
+            input.addEventListener("input", () => {
+              scene.name = input.value || scene.name;
+              input.size = Math.max(1, input.value.length);
+            });
+            input.addEventListener("blur", endRenameScene);
+            input.addEventListener("keydown", (event) => {
+              if (event.key === "Enter" || event.key === "Escape") {
+                input.blur();
+              }
+            });
+            queueMicrotask(() => {
+              input.focus();
+              input.select();
+            });
+            nameField = input;
+          } else {
+            const label = document.createElement("div");
+            label.className = "layer-name-label";
+            label.textContent = scene.name;
+            label.addEventListener("click", (event) => {
+              if (state.activeSceneId !== scene.id || state.activeLayerId) return;
+              event.stopPropagation();
+              beginRenameScene(scene.id);
+            });
+            nameField = label;
+          }
 
           const meta = document.createElement("div");
           meta.className = "layer-meta";
           meta.textContent = scene.dimensions;
 
-          main.appendChild(input);
+          main.appendChild(nameField);
           main.appendChild(meta);
 
           const opacityField = document.createElement("div");
@@ -1601,9 +1712,6 @@
           visibility.addEventListener("click", (event) => {
             event.stopPropagation();
             scene.visible = !scene.visible;
-            if (!scene.visible && state.activeSceneId === scene.id) {
-              clearActiveTarget();
-            }
             render({ ui: true, scenes: true });
           });
           actions.appendChild(visibility);
@@ -2340,6 +2448,18 @@
           render({ ui: true, static: true });
         });
       });
+
+      document.addEventListener(
+        "pointerdown",
+        (event) => {
+          if (!isEditingName()) return;
+          if (event.target.closest(".layer-name")) return;
+          cancelRenameMode();
+          event.preventDefault();
+          event.stopPropagation();
+        },
+        true
+      );
 
       ui.modalBackdrop.addEventListener("click", () => {
         closeActiveModal();

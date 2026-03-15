@@ -33,6 +33,10 @@ This document should be treated as authoritative unless the user explicitly chan
   - active `Layer` switches the app into `Brush`
   - active `Scene` switches the app into scene transform mode
   - `Escape`, clicking the same active card again, or manually choosing `Selection` clears all active state
+- Card interaction pattern for `Scenes` and `Layers` is shared:
+  - click on an inactive card activates it
+  - click on the name of an already active card enters rename mode
+  - click elsewhere on an already active card deactivates it
 - In `Selection` mode, clicking a visible `Scene` on the canvas should select the topmost matching scene before checking painted layers underneath
 
 ## Layout Rules
