@@ -1034,7 +1034,6 @@
 
         <div class="tool-panel hidden" id="brushPanel">
           <div class="tool-title">Brush Settings</div>
-          <div class="tool-heading">Cell painter</div>
           <div class="tool-fields">
             <div class="field">
               <label for="brushColor">Color</label>
@@ -1042,19 +1041,14 @@
             </div>
             <div class="dimension-row">
               <div class="field">
-                <label for="brushWidth">Width cells</label>
-                <input id="brushWidth" type="number" min="1" max="12" value="1" />
+                <label for="brushWidth">Width cm</label>
+                <input id="brushWidth" type="number" min="5" max="500" step="5" value="5" />
               </div>
               <div class="field">
-                <label for="brushHeight">Height cells</label>
-                <input id="brushHeight" type="number" min="1" max="12" value="1" />
+                <label for="brushHeight">Height cm</label>
+                <input id="brushHeight" type="number" min="5" max="500" step="5" value="5" />
               </div>
             </div>
-          </div>
-          <div class="tool-chips">
-            <button class="tool-chip" data-size="1x1">1 x 1</button>
-            <button class="tool-chip" data-size="2x2">2 x 2</button>
-            <button class="tool-chip" data-size="4x2">4 x 2</button>
           </div>
         </div>
 
@@ -1420,6 +1414,15 @@
         return meters * CELLS_PER_METER * CELL_SIZE;
       }
 
+      function cellsToCentimeters(cells) {
+        return cells * CENTIMETERS_PER_CELL;
+      }
+
+      function centimetersToCells(value) {
+        const centimeters = Number(value) || CENTIMETERS_PER_CELL;
+        return Math.max(1, Math.round(centimeters / CENTIMETERS_PER_CELL));
+      }
+
       function cancelSceneCalibration() {
         if (!state.sceneCalibration) return false;
         state.sceneCalibration = null;
@@ -1735,8 +1738,8 @@
           ui.overlayCanvas.style.zIndex = "4";
           ui.layersPanel.classList.toggle("collapsed", state.panelCollapsed);
           ui.brushColor.value = state.brush.color;
-          ui.brushWidth.value = state.brush.width;
-          ui.brushHeight.value = state.brush.height;
+          ui.brushWidth.value = cellsToCentimeters(state.brush.width);
+          ui.brushHeight.value = cellsToCentimeters(state.brush.height);
           state.renderState.uiDirty = false;
         }
 
@@ -2827,11 +2830,11 @@
         render({ ui: true, overlay: true });
       });
       ui.brushWidth.addEventListener("input", () => {
-        state.brush.width = Math.max(1, Number(ui.brushWidth.value) || 1);
+        state.brush.width = centimetersToCells(ui.brushWidth.value);
         render({ ui: true, overlay: true });
       });
       ui.brushHeight.addEventListener("input", () => {
-        state.brush.height = Math.max(1, Number(ui.brushHeight.value) || 1);
+        state.brush.height = centimetersToCells(ui.brushHeight.value);
         render({ ui: true, overlay: true });
       });
 
