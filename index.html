@@ -31,6 +31,7 @@
         --grid-dual-stroke: #fcfcfb;
         --crosshair-dual-stroke: #fcfcfb;
         --shadow: 0 18px 48px rgba(17, 24, 39, 0.08);
+        --floating-shadow: 0 8px 22px rgba(15, 23, 42, 0.12), 0 2px 8px rgba(15, 23, 42, 0.08);
       }
 
       body.theme-dark {
@@ -59,6 +60,7 @@
         --grid-dual-stroke: #11161a;
         --crosshair-dual-stroke: #11161a;
         --shadow: 0 20px 56px rgba(0, 0, 0, 0.32);
+        --floating-shadow: 0 8px 22px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.18);
       }
 
       * {
@@ -688,6 +690,17 @@
         display: none;
       }
 
+      .canvas-shell.view-mode .ruler-corner,
+      .canvas-shell.view-mode .ruler-corner-top-right,
+      .canvas-shell.view-mode .ruler-corner-bottom-left,
+      .canvas-shell.view-mode .ruler-top,
+      .canvas-shell.view-mode .ruler-left,
+      .canvas-shell.view-mode .ruler-bottom,
+      .canvas-shell.view-mode .ruler-right,
+      .canvas-shell.view-mode .ruler-corner-bottom-right {
+        display: none;
+      }
+
       .canvas-shell.view-mode .floating-tools,
       .canvas-shell.view-mode .floating-panels-left {
         display: none;
@@ -704,7 +717,7 @@
         border: 1px solid var(--line);
         border-radius: 16px;
         background: var(--bg-strong);
-        box-shadow: var(--shadow);
+        box-shadow: var(--floating-shadow);
         transform: translateX(-50%);
         z-index: 11;
       }
@@ -761,6 +774,10 @@
 
       .canvas-shell.view-mode .view-output-shell {
         display: grid;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
       }
 
       .view-output-grid {
@@ -780,7 +797,7 @@
         gap: 8px;
         padding: 12px;
         border: 1px solid var(--line);
-        border-radius: 16px;
+        border-radius: 10px;
         background: var(--bg-strong);
       }
 
@@ -797,7 +814,7 @@
         min-height: 120px;
         display: grid;
         place-items: center;
-        border-radius: 12px;
+        border-radius: 8px;
         border: 1px dashed var(--line);
         background: var(--surface);
         color: var(--muted);
@@ -834,9 +851,14 @@
         position: absolute;
         left: 50%;
         top: 52px;
-        display: flex;
-        flex-direction: row;
-        gap: 10px;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--bg-strong);
+        box-shadow: var(--floating-shadow);
         z-index: 11;
         transform: translateX(-50%);
       }
@@ -845,18 +867,25 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-width: 96px;
-        padding: 8px 11px;
-        font-size: 12px;
+        min-width: 112px;
+        padding: 9px 14px;
+        border: 0;
+        border-radius: 12px;
+        font-size: 13px;
         font-weight: 600;
         color: var(--muted);
-        background: var(--floating-surface);
-        box-shadow: var(--shadow);
+        background: transparent;
+        box-shadow: none;
+      }
+
+      .floating-tool:hover {
+        background: var(--surface-strong);
+        color: var(--text);
       }
 
       .floating-tool.active {
-        border-color: color-mix(in srgb, var(--line-strong) 70%, var(--text) 30%);
-        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line-strong) 72%, var(--text) 28%), var(--shadow);
+        background: var(--accent-soft);
+        color: var(--text);
       }
 
       .floating-panels-left {
@@ -871,6 +900,7 @@
 
       .floating-panels-left .tool-panel {
         position: relative;
+        box-shadow: var(--floating-shadow);
       }
 
       .floating-panels-left .section-header {
@@ -1948,14 +1978,13 @@
         context.imageSmoothingEnabled = false;
       }
 
-      function applyViewDepthShading(color, depth, nearestDepth, farthestDepth) {
-        if (!Number.isFinite(depth) || !Number.isFinite(nearestDepth) || !Number.isFinite(farthestDepth) || farthestDepth <= nearestDepth) {
+      function applyViewDepthShading(color, depthOffsetCells) {
+        if (!Number.isFinite(depthOffsetCells) || depthOffsetCells <= 0) {
           return color;
         }
-        const relativeDepth = Math.max(0, Math.min(1, (depth - nearestDepth) / (farthestDepth - nearestDepth)));
         const hsv = hexToHsv(color);
-        const nextSaturation = hsv.s * (1 - relativeDepth * 0.22);
-        const nextBrightness = hsv.v * (1 - relativeDepth * 0.82);
+        const nextSaturation = hsv.s * Math.max(0.7, 1 - depthOffsetCells * 0.0005);
+        const nextBrightness = hsv.v * Math.max(0.2, 1 - depthOffsetCells * 0.00165);
         return hsvToHex(hsv.h, nextSaturation, nextBrightness);
       }
 
@@ -2025,18 +2054,10 @@
               !existing ||
               (config.frontBoundary === "min" ? depthValue < existing.depth : depthValue > existing.depth);
             if (isCloser) {
-              const outsideDepth = config.frontBoundary === "min" ? depthValue - 1 : depthValue + 1;
-              const isCut =
-                depthValue === frontBoundaryValue &&
-                !!getCellColor(
-                  layer,
-                  config.depthAxis === "x" ? outsideDepth : cellX,
-                  config.depthAxis === "y" ? outsideDepth : cellY
-                );
               columns.set(relativePrimary, {
                 color,
                 depth: depthValue,
-                isCut,
+                isCut: depthValue === frontBoundaryValue,
               });
             }
           }
@@ -2150,17 +2171,14 @@
         }
 
         let nearestVisibleDepth = directionConfig.frontBoundary === "min" ? Infinity : -Infinity;
-        let farthestVisibleDepth = directionConfig.frontBoundary === "min" ? -Infinity : Infinity;
         for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
           for (let columnIndex = 0; columnIndex < totalColumns; columnIndex += 1) {
             const cell = grid[rowIndex][columnIndex];
             if (!cell) continue;
             if (directionConfig.frontBoundary === "min") {
               nearestVisibleDepth = Math.min(nearestVisibleDepth, cell.depth);
-              farthestVisibleDepth = Math.max(farthestVisibleDepth, cell.depth);
             } else {
               nearestVisibleDepth = Math.max(nearestVisibleDepth, cell.depth);
-              farthestVisibleDepth = Math.min(farthestVisibleDepth, cell.depth);
             }
           }
         }
@@ -2169,9 +2187,10 @@
           for (let columnIndex = 0; columnIndex < totalColumns; columnIndex += 1) {
             const cell = grid[rowIndex][columnIndex];
             if (!cell) continue;
-            const shadedColor = directionConfig.frontBoundary === "min"
-              ? applyViewDepthShading(cell.color, cell.depth, nearestVisibleDepth, farthestVisibleDepth)
-              : applyViewDepthShading(cell.color, -cell.depth, -nearestVisibleDepth, -farthestVisibleDepth);
+            const depthOffsetCells = directionConfig.frontBoundary === "min"
+              ? cell.depth - nearestVisibleDepth
+              : nearestVisibleDepth - cell.depth;
+            const shadedColor = applyViewDepthShading(cell.color, depthOffsetCells);
             context.fillStyle = cell.isCut
               ? hexToRgba(getCssVar("--text"), cell.opacity)
               : hexToRgba(shadedColor, cell.opacity);
@@ -2250,15 +2269,19 @@
           render({ ui: true });
           return false;
         }
-        view.layerConfigs = {};
-        view.layerOrder = [];
+        const nextLayerConfigs = { ...(view.layerConfigs || {}) };
+        const currentLayerOrder = Array.isArray(view.layerOrder) ? view.layerOrder : [];
         draft.items.forEach((item) => {
-          view.layerConfigs[item.layerId] = {
+          nextLayerConfigs[item.layerId] = {
             baseElevation: Number.isFinite(item.baseElevation) ? item.baseElevation : 0,
-            height: Math.max(0, Number.isFinite(item.height) ? item.height : 1),
+            height: Math.max(0, Number.isFinite(item.height) ? item.height : 0),
           };
-          view.layerOrder.push(item.layerId);
         });
+        view.layerConfigs = nextLayerConfigs;
+        view.layerOrder = [
+          ...draft.items.map((item) => item.layerId),
+          ...currentLayerOrder.filter((layerId) => !draft.items.some((item) => item.layerId === layerId)),
+        ];
         closeViewEditModal();
         setStatus("View layers updated.");
         render({ ui: true, overlay: true });
