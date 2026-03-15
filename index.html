@@ -1,0 +1,1546 @@
+<!DOCTYPE html>
+<html lang="el">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Archigrid</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f4f1;
+        --bg-elevated: rgba(255, 255, 255, 0.82);
+        --bg-strong: #ffffff;
+        --surface: rgba(255, 255, 255, 0.7);
+        --surface-strong: rgba(255, 255, 255, 0.95);
+        --line: rgba(20, 24, 28, 0.1);
+        --line-strong: rgba(20, 24, 28, 0.18);
+        --text: #161b21;
+        --muted: #67707a;
+        --accent: #111827;
+        --accent-soft: rgba(17, 24, 39, 0.08);
+        --canvas-bg: #fcfcfb;
+        --ruler-bg: rgba(248, 248, 246, 0.95);
+        --grid-5cm: rgba(20, 24, 28, 0.06);
+        --grid-50cm: rgba(20, 24, 28, 0.11);
+        --grid-1m: rgba(20, 24, 28, 0.16);
+        --crosshair: rgba(210, 45, 78, 0.45);
+        --selection: rgba(17, 24, 39, 0.82);
+        --shadow: 0 18px 48px rgba(17, 24, 39, 0.08);
+      }
+
+      body.theme-dark {
+        color-scheme: dark;
+        --bg: #101316;
+        --bg-elevated: rgba(20, 24, 28, 0.82);
+        --bg-strong: #171b20;
+        --surface: rgba(24, 29, 35, 0.8);
+        --surface-strong: rgba(26, 31, 37, 0.94);
+        --line: rgba(255, 255, 255, 0.08);
+        --line-strong: rgba(255, 255, 255, 0.16);
+        --text: #edf1f7;
+        --muted: #98a4b3;
+        --accent: #f8fafc;
+        --accent-soft: rgba(248, 250, 252, 0.08);
+        --canvas-bg: #11161a;
+        --ruler-bg: rgba(20, 24, 28, 0.96);
+        --grid-5cm: rgba(255, 255, 255, 0.05);
+        --grid-50cm: rgba(255, 255, 255, 0.1);
+        --grid-1m: rgba(255, 255, 255, 0.16);
+        --crosshair: rgba(255, 111, 145, 0.5);
+        --selection: rgba(255, 255, 255, 0.86);
+        --shadow: 0 20px 56px rgba(0, 0, 0, 0.32);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at top, rgba(255, 255, 255, 0.32), transparent 28%),
+          linear-gradient(180deg, var(--bg), color-mix(in srgb, var(--bg) 86%, black 4%));
+        color: var(--text);
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      button {
+        color: inherit;
+      }
+
+      .app {
+        display: grid;
+        grid-template-rows: 56px 1fr;
+        height: 100vh;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--line);
+        background: var(--bg-elevated);
+        backdrop-filter: blur(18px);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: max-content;
+      }
+
+      .brand-mark {
+        display: grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 9px;
+        border: 1px solid var(--line-strong);
+        background: var(--surface-strong);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+      }
+
+      .brand-name {
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+
+      .separator {
+        width: 1px;
+        height: 20px;
+        background: var(--line-strong);
+      }
+
+      .toolbar-actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .ghost-button,
+      .layer-icon,
+      .mode-button,
+      .floating-tool,
+      .tool-chip,
+      .add-layer {
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: inherit;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: 140ms ease;
+      }
+
+      .ghost-button:hover,
+      .layer-icon:hover,
+      .mode-button:hover,
+      .floating-tool:hover,
+      .tool-chip:hover,
+      .add-layer:hover {
+        background: var(--surface-strong);
+        border-color: var(--line-strong);
+      }
+
+      .ghost-button {
+        padding: 8px 12px;
+        font-size: 12px;
+      }
+
+      .ghost-button.stub {
+        opacity: 0.82;
+      }
+
+      .ghost-button.active {
+        background: var(--accent-soft);
+        border-color: var(--line-strong);
+      }
+
+      .topbar-spacer {
+        flex: 1;
+      }
+
+      .workspace {
+        position: relative;
+        overflow: hidden;
+        display: grid;
+        grid-template-columns: auto 1fr;
+      }
+
+      .layers-panel {
+        position: relative;
+        top: auto;
+        left: auto;
+        bottom: auto;
+        width: 280px;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid var(--line);
+        border-bottom: 0;
+        border-left: 0;
+        border-top: 0;
+        border-radius: 0;
+        background: var(--bg-elevated);
+        backdrop-filter: blur(18px);
+        box-shadow: none;
+        z-index: 10;
+        transition: width 180ms ease;
+      }
+
+      .layers-panel.collapsed {
+        width: 54px;
+      }
+
+      .layers-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 12px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .layers-header-left {
+        min-width: 0;
+      }
+
+      .layers-title {
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .layers-subtitle {
+        margin-top: 3px;
+        font-size: 12px;
+      }
+
+      .panel-toggle {
+        width: 30px;
+        height: 30px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        cursor: pointer;
+      }
+
+      .layers-body {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+        min-height: 0;
+      }
+
+      .layers-panel.collapsed .layers-header-left,
+      .layers-panel.collapsed .layers-body {
+        display: none;
+      }
+
+      .add-layer {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 8px 10px;
+        font-size: 12px;
+      }
+
+      .layer-list {
+        flex: 1;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding-right: 2px;
+      }
+
+      .layer-card {
+        display: grid;
+        grid-template-columns: 16px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        padding: 10px;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+      }
+
+      .layer-card.active {
+        background: var(--accent-soft);
+        border-color: var(--line-strong);
+      }
+
+      .layer-card.dragging {
+        opacity: 0.55;
+      }
+
+      .drag-handle {
+        cursor: grab;
+        font-size: 14px;
+        color: var(--muted);
+        text-align: center;
+        user-select: none;
+      }
+
+      .layer-main {
+        min-width: 0;
+      }
+
+      .layer-name {
+        width: 100%;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .layer-name:focus {
+        outline: none;
+      }
+
+      .layer-meta {
+        margin-top: 4px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .layer-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .layer-icon {
+        width: 26px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        padding: 0;
+        border-radius: 9px;
+        font-size: 12px;
+      }
+
+      .layer-footer {
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .canvas-shell {
+        position: relative;
+        min-width: 0;
+      }
+
+      .ruler-corner,
+      .ruler-corner-top-right,
+      .ruler-corner-bottom-left,
+      .ruler-top,
+      .ruler-left,
+      .ruler-bottom,
+      .ruler-right,
+      .ruler-corner-bottom-right {
+        position: absolute;
+        background: var(--ruler-bg);
+        border-color: var(--line);
+        z-index: 2;
+      }
+
+      .ruler-corner {
+        top: 0;
+        left: 0;
+        width: 28px;
+        height: 28px;
+        background: var(--ruler-bg);
+        border-right: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        z-index: 3;
+      }
+
+      .ruler-top {
+        top: 0;
+        left: 28px;
+        right: 28px;
+        height: 28px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .ruler-left {
+        top: 28px;
+        left: 0;
+        bottom: 28px;
+        width: 28px;
+        border-right: 1px solid var(--line);
+      }
+
+      .ruler-bottom {
+        left: 28px;
+        right: 28px;
+        bottom: 0;
+        height: 28px;
+        border-top: 1px solid var(--line);
+      }
+
+      .ruler-right {
+        top: 28px;
+        right: 0;
+        bottom: 28px;
+        width: 28px;
+        border-left: 1px solid var(--line);
+      }
+
+      .ruler-corner-bottom-right {
+        right: 0;
+        bottom: 0;
+        width: 28px;
+        height: 28px;
+        background: var(--ruler-bg);
+        border-left: 1px solid var(--line);
+        border-top: 1px solid var(--line);
+        z-index: 3;
+      }
+
+      .ruler-corner-top-right {
+        top: 0;
+        right: 0;
+        width: 28px;
+        height: 28px;
+        background: var(--ruler-bg);
+        border-left: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        z-index: 3;
+      }
+
+      .ruler-corner-bottom-left {
+        left: 0;
+        bottom: 0;
+        width: 28px;
+        height: 28px;
+        background: var(--ruler-bg);
+        border-right: 1px solid var(--line);
+        border-top: 1px solid var(--line);
+        z-index: 3;
+      }
+
+      .canvas-wrap {
+        position: absolute;
+        top: 28px;
+        left: 28px;
+        right: 28px;
+        bottom: 28px;
+        overflow: hidden;
+        background: var(--canvas-bg);
+      }
+
+      canvas {
+        display: block;
+      }
+
+      .canvas-wrap canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      .floating-tools {
+        position: absolute;
+        right: 18px;
+        top: 52px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        z-index: 11;
+      }
+
+      .floating-tool {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 116px;
+        padding: 10px 12px;
+        font-size: 12px;
+        box-shadow: var(--shadow);
+      }
+
+      .floating-tool.active {
+        background: var(--surface-strong);
+        border-color: var(--line-strong);
+      }
+
+      .tool-panel,
+      .menu-panel {
+        position: absolute;
+        z-index: 12;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--bg-elevated);
+        backdrop-filter: blur(18px);
+        box-shadow: var(--shadow);
+      }
+
+      .tool-panel {
+        top: 144px;
+        right: 18px;
+        width: 220px;
+        padding: 12px;
+      }
+
+      .tool-panel.hidden,
+      .menu-panel.hidden {
+        display: none;
+      }
+
+      .tool-title,
+      .menu-title {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .tool-heading {
+        margin-top: 4px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .tool-fields {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .field label {
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .field input,
+      .field select {
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--surface-strong);
+        color: inherit;
+      }
+
+      .dimension-row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .tool-chips {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .tool-chip {
+        padding: 7px 10px;
+        font-size: 11px;
+      }
+
+      .status-pill {
+        position: absolute;
+        left: 50%;
+        bottom: 18px;
+        transform: translateX(-50%);
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--bg-elevated);
+        box-shadow: var(--shadow);
+        font-size: 11px;
+        color: var(--muted);
+        z-index: 11;
+      }
+
+      .menu-panel {
+        top: 50px;
+        left: 290px;
+        width: 170px;
+        padding: 12px;
+      }
+
+      .menu-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .mode-button {
+        padding: 9px 10px;
+        text-align: left;
+        font-size: 12px;
+      }
+
+      .mode-button.active {
+        background: var(--accent-soft);
+        border-color: var(--line-strong);
+      }
+
+      @media (max-width: 900px) {
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+
+        .layers-panel {
+          width: 240px;
+          position: absolute;
+          inset: 0 auto 0 0;
+          height: auto;
+          box-shadow: var(--shadow);
+          border-right: 1px solid var(--line);
+        }
+
+        .floating-tool {
+          min-width: 96px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">AG</div>
+          <div class="brand-name">Archigrid</div>
+        </div>
+        <div class="separator"></div>
+        <div class="toolbar-actions">
+          <button class="ghost-button stub" id="undoButton">Undo</button>
+          <button class="ghost-button stub" id="redoButton">Redo</button>
+          <button class="ghost-button" id="settingsButton">Settings</button>
+          <button class="ghost-button stub" id="exportButton">Export</button>
+          <button class="ghost-button stub" id="importButton">Import</button>
+        </div>
+        <div class="topbar-spacer"></div>
+        <button class="ghost-button active" id="scaleTag">5 x 5 cm grid</button>
+      </header>
+
+      <main class="workspace">
+        <aside class="layers-panel" id="layersPanel">
+          <div class="layers-header">
+            <div class="layers-header-left">
+              <div class="layers-title">Layers</div>
+              <div class="layers-subtitle">Stack, rename, reorder</div>
+            </div>
+            <button class="panel-toggle" id="panelToggle" aria-label="Toggle layers panel">←</button>
+          </div>
+          <div class="layers-body">
+            <button class="add-layer" id="addLayerButton">+ Add Layer</button>
+            <div class="layer-list" id="layerList"></div>
+            <div class="layer-footer">
+              Drag the grip to reorder. Selection clicks activate the top painted layer automatically.
+            </div>
+          </div>
+        </aside>
+
+        <div class="menu-panel hidden" id="settingsMenu">
+          <div class="menu-title">Appearance</div>
+          <div class="menu-actions">
+            <button class="mode-button active" data-theme="light">Light mode</button>
+            <button class="mode-button" data-theme="dark">Dark mode</button>
+          </div>
+        </div>
+
+        <div class="canvas-shell">
+          <div class="ruler-corner"></div>
+          <div class="ruler-corner-top-right"></div>
+          <div class="ruler-corner-bottom-left"></div>
+          <canvas class="ruler-top" id="rulerTop"></canvas>
+          <canvas class="ruler-left" id="rulerLeft"></canvas>
+          <canvas class="ruler-bottom" id="rulerBottom"></canvas>
+          <canvas class="ruler-right" id="rulerRight"></canvas>
+          <div class="ruler-corner-bottom-right"></div>
+          <div class="canvas-wrap">
+            <canvas id="staticCanvas"></canvas>
+            <canvas id="contentCanvas"></canvas>
+            <canvas id="overlayCanvas"></canvas>
+          </div>
+        </div>
+
+        <div class="floating-tools">
+          <button class="floating-tool active" id="selectionToolButton">
+            <span>✦</span>
+            <span>Selection</span>
+          </button>
+          <button class="floating-tool" id="brushToolButton">
+            <span>▦</span>
+            <span>Brush</span>
+          </button>
+        </div>
+
+        <div class="tool-panel hidden" id="brushPanel">
+          <div class="tool-title">Brush Settings</div>
+          <div class="tool-heading">Cell painter</div>
+          <div class="tool-fields">
+            <div class="field">
+              <label for="brushColor">Color</label>
+              <input id="brushColor" type="color" value="#111827" />
+            </div>
+            <div class="dimension-row">
+              <div class="field">
+                <label for="brushWidth">Width cells</label>
+                <input id="brushWidth" type="number" min="1" max="12" value="1" />
+              </div>
+              <div class="field">
+                <label for="brushHeight">Height cells</label>
+                <input id="brushHeight" type="number" min="1" max="12" value="1" />
+              </div>
+            </div>
+          </div>
+          <div class="tool-chips">
+            <button class="tool-chip" data-size="1x1">1 x 1</button>
+            <button class="tool-chip" data-size="2x2">2 x 2</button>
+            <button class="tool-chip" data-size="4x2">4 x 2</button>
+          </div>
+        </div>
+
+        <div class="status-pill" id="statusPill">
+          Esc switches to Selection. Left click paints, right click erases, wheel zooms, space + drag pans.
+        </div>
+      </main>
+    </div>
+
+    <script>
+      const CELL_SIZE = 20;
+      const CENTIMETERS_PER_CELL = 5;
+      const CELLS_PER_METER = 100 / CENTIMETERS_PER_CELL;
+      const CELLS_PER_HALF_METER = 50 / CENTIMETERS_PER_CELL;
+      const TILE_SIZE = 32;
+      const MIN_ZOOM = 0.12;
+      const MAX_ZOOM = 3.6;
+      const DEFAULT_COLOR = "#111827";
+
+      const ui = {
+        body: document.body,
+        staticCanvas: document.getElementById("staticCanvas"),
+        contentCanvas: document.getElementById("contentCanvas"),
+        overlayCanvas: document.getElementById("overlayCanvas"),
+        rulerTop: document.getElementById("rulerTop"),
+        rulerLeft: document.getElementById("rulerLeft"),
+        rulerBottom: document.getElementById("rulerBottom"),
+        rulerRight: document.getElementById("rulerRight"),
+        layersPanel: document.getElementById("layersPanel"),
+        panelToggle: document.getElementById("panelToggle"),
+        layerList: document.getElementById("layerList"),
+        addLayerButton: document.getElementById("addLayerButton"),
+        settingsButton: document.getElementById("settingsButton"),
+        settingsMenu: document.getElementById("settingsMenu"),
+        modeButtons: Array.from(document.querySelectorAll(".mode-button")),
+        selectionToolButton: document.getElementById("selectionToolButton"),
+        brushToolButton: document.getElementById("brushToolButton"),
+        brushPanel: document.getElementById("brushPanel"),
+        brushColor: document.getElementById("brushColor"),
+        brushWidth: document.getElementById("brushWidth"),
+        brushHeight: document.getElementById("brushHeight"),
+        sizeChips: Array.from(document.querySelectorAll(".tool-chip")),
+        statusPill: document.getElementById("statusPill"),
+      };
+
+      const staticCtx = ui.staticCanvas.getContext("2d");
+      const contentCtx = ui.contentCanvas.getContext("2d");
+      const overlayCtx = ui.overlayCanvas.getContext("2d");
+      const rulerTopCtx = ui.rulerTop.getContext("2d");
+      const rulerLeftCtx = ui.rulerLeft.getContext("2d");
+      const rulerBottomCtx = ui.rulerBottom.getContext("2d");
+      const rulerRightCtx = ui.rulerRight.getContext("2d");
+
+      const state = {
+        theme: "light",
+        activeTool: "select",
+        panelCollapsed: false,
+        viewport: {
+          x: window.innerWidth / 2 - 200,
+          y: window.innerHeight / 2 - 200,
+          zoom: 1,
+        },
+        pointer: {
+          clientX: 0,
+          clientY: 0,
+          inside: false,
+        },
+        brush: {
+          color: DEFAULT_COLOR,
+          width: 1,
+          height: 1,
+        },
+        layers: [createLayer("Layer 1")],
+        activeLayerId: null,
+        dragLayerId: null,
+        interaction: null,
+        spacePan: false,
+        renderState: {
+          frame: 0,
+          uiDirty: true,
+          staticDirty: true,
+          contentDirty: true,
+          overlayDirty: true,
+          rulersDirty: true,
+        },
+      };
+
+      state.activeLayerId = state.layers[0].id;
+
+      function createLayer(name) {
+        return {
+          id: "layer-" + Math.random().toString(36).slice(2, 10),
+          name,
+          visible: true,
+          tiles: {},
+          cellCount: 0,
+        };
+      }
+
+      function createTile(layer, tileX, tileY) {
+        const canvas = document.createElement("canvas");
+        canvas.width = TILE_SIZE;
+        canvas.height = TILE_SIZE;
+        const tileCtx = canvas.getContext("2d");
+        tileCtx.imageSmoothingEnabled = false;
+        const tile = {
+          id: tileKey(tileX, tileY),
+          tileX,
+          tileY,
+          pixels: new Map(),
+          canvas,
+          ctx: tileCtx,
+          dirty: true,
+        };
+        layer.tiles[tile.id] = tile;
+        return tile;
+      }
+
+      function tileKey(tileX, tileY) {
+        return tileX + ":" + tileY;
+      }
+
+      function localKey(localX, localY) {
+        return localX + ":" + localY;
+      }
+
+      function activeLayer() {
+        return state.layers.find((layer) => layer.id === state.activeLayerId) || null;
+      }
+
+      function getTileCoords(cellX, cellY) {
+        return {
+          tileX: Math.floor(cellX / TILE_SIZE),
+          tileY: Math.floor(cellY / TILE_SIZE),
+        };
+      }
+
+      function getLocalCoords(cellX, cellY, tileX, tileY) {
+        return {
+          x: cellX - tileX * TILE_SIZE,
+          y: cellY - tileY * TILE_SIZE,
+        };
+      }
+
+      function getTile(layer, cellX, cellY, createIfMissing) {
+        const coords = getTileCoords(cellX, cellY);
+        const key = tileKey(coords.tileX, coords.tileY);
+        return layer.tiles[key] || (createIfMissing ? createTile(layer, coords.tileX, coords.tileY) : null);
+      }
+
+      function getCellColor(layer, cellX, cellY) {
+        const tile = getTile(layer, cellX, cellY, false);
+        if (!tile) return null;
+        const coords = getTileCoords(cellX, cellY);
+        const local = getLocalCoords(cellX, cellY, coords.tileX, coords.tileY);
+        return tile.pixels.get(localKey(local.x, local.y)) || null;
+      }
+
+      function setCellColor(layer, cellX, cellY, color) {
+        const coords = getTileCoords(cellX, cellY);
+        const tile = getTile(layer, cellX, cellY, !!color);
+        if (!tile) return false;
+
+        const local = getLocalCoords(cellX, cellY, coords.tileX, coords.tileY);
+        const key = localKey(local.x, local.y);
+        const previous = tile.pixels.get(key);
+
+        if (color) {
+          if (previous === color) return false;
+          if (!previous) layer.cellCount += 1;
+          tile.pixels.set(key, color);
+          tile.dirty = true;
+          return true;
+        }
+
+        if (!previous) return false;
+        tile.pixels.delete(key);
+        layer.cellCount -= 1;
+        if (!tile.pixels.size) {
+          delete layer.tiles[tile.id];
+          return true;
+        }
+        tile.dirty = true;
+        return true;
+      }
+
+      function redrawTile(tile) {
+        if (!tile.dirty) return;
+        tile.ctx.clearRect(0, 0, TILE_SIZE, TILE_SIZE);
+        tile.pixels.forEach((color, key) => {
+          const [x, y] = key.split(":").map(Number);
+          tile.ctx.fillStyle = color;
+          tile.ctx.fillRect(x, y, 1, 1);
+        });
+        tile.dirty = false;
+      }
+
+      function worldFromClient(clientX, clientY) {
+        const rect = ui.overlayCanvas.getBoundingClientRect();
+        const screenX = clientX - rect.left;
+        const screenY = clientY - rect.top;
+        return {
+          screenX,
+          screenY,
+          worldX: (screenX - state.viewport.x) / state.viewport.zoom,
+          worldY: (screenY - state.viewport.y) / state.viewport.zoom,
+        };
+      }
+
+      function cellFromWorld(worldX, worldY) {
+        return {
+          x: Math.floor(worldX / CELL_SIZE),
+          y: Math.floor(worldY / CELL_SIZE),
+        };
+      }
+
+      function setStatus(message) {
+        ui.statusPill.textContent = message;
+      }
+
+      function render(flags) {
+        const full = !flags;
+        state.renderState.uiDirty = state.renderState.uiDirty || full || !!flags.ui;
+        state.renderState.staticDirty = state.renderState.staticDirty || full || !!flags.static;
+        state.renderState.contentDirty = state.renderState.contentDirty || full || !!flags.content;
+        state.renderState.overlayDirty = state.renderState.overlayDirty || full || !!flags.overlay;
+        state.renderState.rulersDirty = state.renderState.rulersDirty || full || !!flags.rulers;
+        if (state.renderState.frame) return;
+        state.renderState.frame = window.requestAnimationFrame(flushRender);
+      }
+
+      function flushRender() {
+        state.renderState.frame = 0;
+        ui.body.classList.toggle("theme-dark", state.theme === "dark");
+
+        if (state.renderState.uiDirty) {
+          updateThemeButtons();
+          renderToolState();
+          renderLayers();
+          ui.layersPanel.classList.toggle("collapsed", state.panelCollapsed);
+          ui.panelToggle.textContent = state.panelCollapsed ? "→" : "←";
+          ui.brushColor.value = state.brush.color;
+          ui.brushWidth.value = state.brush.width;
+          ui.brushHeight.value = state.brush.height;
+          state.renderState.uiDirty = false;
+        }
+
+        if (state.renderState.staticDirty) {
+          drawStaticScene();
+          state.renderState.staticDirty = false;
+        }
+
+        if (state.renderState.contentDirty) {
+          drawContentScene();
+          state.renderState.contentDirty = false;
+        }
+
+        if (state.renderState.overlayDirty) {
+          drawOverlayScene();
+          state.renderState.overlayDirty = false;
+        }
+
+        if (state.renderState.rulersDirty) {
+          drawRulers();
+          state.renderState.rulersDirty = false;
+        }
+      }
+
+      function updateThemeButtons() {
+        ui.modeButtons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.theme === state.theme);
+        });
+      }
+
+      function renderToolState() {
+        ui.selectionToolButton.classList.toggle("active", state.activeTool === "select");
+        ui.brushToolButton.classList.toggle("active", state.activeTool === "brush");
+        ui.brushPanel.classList.toggle("hidden", state.activeTool !== "brush");
+      }
+
+      function renderLayers() {
+        ui.layerList.innerHTML = "";
+        state.layers.forEach((layer) => {
+          const card = document.createElement("div");
+          card.className = "layer-card" + (layer.id === state.activeLayerId ? " active" : "");
+          if (layer.id === state.dragLayerId) card.classList.add("dragging");
+
+          const grip = document.createElement("div");
+          grip.className = "drag-handle";
+          grip.textContent = "⋮⋮";
+          grip.draggable = true;
+          grip.addEventListener("dragstart", (event) => {
+            state.dragLayerId = layer.id;
+            event.dataTransfer.effectAllowed = "move";
+            render({ ui: true });
+          });
+          grip.addEventListener("dragend", () => {
+            state.dragLayerId = null;
+            render({ ui: true });
+          });
+
+          const main = document.createElement("div");
+          main.className = "layer-main";
+          main.addEventListener("click", () => {
+            state.activeLayerId = layer.id;
+            render({ ui: true, overlay: true });
+          });
+
+          const input = document.createElement("input");
+          input.className = "layer-name";
+          input.value = layer.name;
+          input.addEventListener("click", (event) => event.stopPropagation());
+          input.addEventListener("input", () => {
+            layer.name = input.value || layer.name;
+          });
+          input.addEventListener("change", () => render({ ui: true }));
+
+          const meta = document.createElement("div");
+          meta.className = "layer-meta";
+          meta.textContent = layer.cellCount + " painted cells";
+
+          main.appendChild(input);
+          main.appendChild(meta);
+
+          const actions = document.createElement("div");
+          actions.className = "layer-actions";
+
+          const visibility = document.createElement("button");
+          visibility.className = "layer-icon";
+          visibility.textContent = layer.visible ? "◉" : "○";
+          visibility.title = layer.visible ? "Hide layer" : "Show layer";
+          visibility.addEventListener("click", (event) => {
+            event.stopPropagation();
+            layer.visible = !layer.visible;
+            render({ ui: true, content: true, overlay: true });
+          });
+          actions.appendChild(visibility);
+
+          if (layer.id === state.activeLayerId) {
+            const remove = document.createElement("button");
+            remove.className = "layer-icon";
+            remove.textContent = "×";
+            remove.title = "Delete active layer";
+            remove.disabled = state.layers.length === 1;
+            remove.addEventListener("click", (event) => {
+              event.stopPropagation();
+              if (state.layers.length === 1) return;
+              const index = state.layers.findIndex((entry) => entry.id === layer.id);
+              state.layers.splice(index, 1);
+              state.activeLayerId = state.layers[Math.max(0, index - 1)].id;
+              render({ ui: true, content: true, overlay: true });
+            });
+            actions.appendChild(remove);
+          }
+
+          card.addEventListener("dragover", (event) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+          });
+          card.addEventListener("drop", (event) => {
+            event.preventDefault();
+            if (!state.dragLayerId || state.dragLayerId === layer.id) return;
+            const from = state.layers.findIndex((entry) => entry.id === state.dragLayerId);
+            const to = state.layers.findIndex((entry) => entry.id === layer.id);
+            const [moved] = state.layers.splice(from, 1);
+            state.layers.splice(to, 0, moved);
+            state.dragLayerId = null;
+            render({ ui: true, content: true, overlay: true });
+          });
+
+          card.appendChild(grip);
+          card.appendChild(main);
+          card.appendChild(actions);
+          ui.layerList.appendChild(card);
+        });
+      }
+
+      function resizeCanvas(canvas, context) {
+        const ratio = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = Math.floor(rect.width * ratio);
+        canvas.height = Math.floor(rect.height * ratio);
+        context.setTransform(ratio, 0, 0, ratio, 0, 0);
+        context.imageSmoothingEnabled = false;
+      }
+
+      function snapPixel(value) {
+        return Math.round(value);
+      }
+
+      function resizeCanvases() {
+        resizeCanvas(ui.staticCanvas, staticCtx);
+        resizeCanvas(ui.contentCanvas, contentCtx);
+        resizeCanvas(ui.overlayCanvas, overlayCtx);
+        resizeCanvas(ui.rulerTop, rulerTopCtx);
+        resizeCanvas(ui.rulerLeft, rulerLeftCtx);
+        resizeCanvas(ui.rulerBottom, rulerBottomCtx);
+        resizeCanvas(ui.rulerRight, rulerRightCtx);
+        render({ ui: true, static: true, content: true, overlay: true, rulers: true });
+      }
+
+      function drawStaticScene() {
+        const width = ui.staticCanvas.clientWidth;
+        const height = ui.staticCanvas.clientHeight;
+        staticCtx.clearRect(0, 0, width, height);
+        staticCtx.fillStyle = getCssVar("--canvas-bg");
+        staticCtx.fillRect(0, 0, width, height);
+
+        const step = CELL_SIZE * state.viewport.zoom;
+        if (step <= 1) return;
+
+        const startX = state.viewport.x % step;
+        const startY = state.viewport.y % step;
+
+        for (let x = startX; x <= width; x += step) {
+          const cellIndex = Math.round((x - state.viewport.x) / step);
+          const major = cellIndex % CELLS_PER_METER === 0;
+          const halfMeter = cellIndex % CELLS_PER_HALF_METER === 0;
+          staticCtx.beginPath();
+          staticCtx.moveTo(x, 0);
+          staticCtx.lineTo(x, height);
+          staticCtx.strokeStyle = major ? getCssVar("--grid-1m") : halfMeter ? getCssVar("--grid-50cm") : getCssVar("--grid-5cm");
+          staticCtx.stroke();
+        }
+
+        for (let y = startY; y <= height; y += step) {
+          const cellIndex = Math.round((y - state.viewport.y) / step);
+          const major = cellIndex % CELLS_PER_METER === 0;
+          const halfMeter = cellIndex % CELLS_PER_HALF_METER === 0;
+          staticCtx.beginPath();
+          staticCtx.moveTo(0, y);
+          staticCtx.lineTo(width, y);
+          staticCtx.strokeStyle = major ? getCssVar("--grid-1m") : halfMeter ? getCssVar("--grid-50cm") : getCssVar("--grid-5cm");
+          staticCtx.stroke();
+        }
+
+        staticCtx.save();
+        staticCtx.strokeStyle = getCssVar("--crosshair");
+        staticCtx.beginPath();
+        staticCtx.moveTo(state.viewport.x, 0);
+        staticCtx.lineTo(state.viewport.x, height);
+        staticCtx.moveTo(0, state.viewport.y);
+        staticCtx.lineTo(width, state.viewport.y);
+        staticCtx.stroke();
+        staticCtx.restore();
+      }
+
+      function visibleTileBounds() {
+        const cellSpan = CELL_SIZE * state.viewport.zoom;
+        return {
+          minTileX: Math.floor(Math.floor((-state.viewport.x) / cellSpan) / TILE_SIZE) - 1,
+          maxTileX: Math.floor(Math.ceil((ui.contentCanvas.clientWidth - state.viewport.x) / cellSpan) / TILE_SIZE) + 1,
+          minTileY: Math.floor(Math.floor((-state.viewport.y) / cellSpan) / TILE_SIZE) - 1,
+          maxTileY: Math.floor(Math.ceil((ui.contentCanvas.clientHeight - state.viewport.y) / cellSpan) / TILE_SIZE) + 1,
+        };
+      }
+
+      function drawContentScene() {
+        const width = ui.contentCanvas.clientWidth;
+        const height = ui.contentCanvas.clientHeight;
+        const cellSpan = CELL_SIZE * state.viewport.zoom;
+        const tileSpan = TILE_SIZE * cellSpan;
+        const bounds = visibleTileBounds();
+        contentCtx.clearRect(0, 0, width, height);
+
+        state.layers.forEach((layer) => {
+          if (!layer.visible) return;
+          for (let tileY = bounds.minTileY; tileY <= bounds.maxTileY; tileY += 1) {
+            for (let tileX = bounds.minTileX; tileX <= bounds.maxTileX; tileX += 1) {
+              const tile = layer.tiles[tileKey(tileX, tileY)];
+              if (!tile) continue;
+              redrawTile(tile);
+              const screenX = snapPixel(state.viewport.x + tileX * tileSpan);
+              const screenY = snapPixel(state.viewport.y + tileY * tileSpan);
+              const snappedTileSpan = Math.max(1, snapPixel(tileSpan));
+              contentCtx.drawImage(tile.canvas, screenX, screenY, snappedTileSpan, snappedTileSpan);
+            }
+          }
+        });
+      }
+
+      function drawOverlayScene() {
+        const width = ui.overlayCanvas.clientWidth;
+        const height = ui.overlayCanvas.clientHeight;
+        overlayCtx.clearRect(0, 0, width, height);
+
+        if (state.pointer.inside && state.activeTool === "select") {
+          const pointer = worldFromClient(state.pointer.clientX, state.pointer.clientY);
+          const layer = topPaintedLayerAt(pointer.worldX, pointer.worldY);
+          if (layer) {
+            const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+              const color = getCellColor(layer, cell.x, cell.y);
+              if (color) {
+                const size = CELL_SIZE * state.viewport.zoom;
+                const x = snapPixel(state.viewport.x + cell.x * size);
+                const y = snapPixel(state.viewport.y + cell.y * size);
+                const snappedSize = Math.max(1, snapPixel(size));
+                overlayCtx.save();
+                overlayCtx.strokeStyle = getCssVar("--selection");
+                overlayCtx.lineWidth = 1;
+                overlayCtx.strokeRect(x + 0.5, y + 0.5, snappedSize - 1, snappedSize - 1);
+                overlayCtx.restore();
+              }
+            }
+        }
+
+        if (state.pointer.inside && state.activeTool === "brush") {
+          const pointer = worldFromClient(state.pointer.clientX, state.pointer.clientY);
+          const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+          const size = CELL_SIZE * state.viewport.zoom;
+          const x = snapPixel(state.viewport.x + cell.x * size);
+          const y = snapPixel(state.viewport.y + cell.y * size);
+          const snappedWidth = Math.max(1, snapPixel(state.brush.width * size));
+          const snappedHeight = Math.max(1, snapPixel(state.brush.height * size));
+          overlayCtx.save();
+          overlayCtx.fillStyle = hexToRgba(state.brush.color, 0.18);
+          overlayCtx.strokeStyle = hexToRgba(state.brush.color, 0.56);
+          overlayCtx.fillRect(x, y, snappedWidth, snappedHeight);
+          overlayCtx.strokeRect(x + 0.5, y + 0.5, snappedWidth - 1, snappedHeight - 1);
+          overlayCtx.restore();
+        }
+      }
+
+      function drawRulers() {
+        const width = ui.rulerTop.clientWidth;
+        const height = ui.rulerLeft.clientHeight;
+        [rulerTopCtx, rulerLeftCtx, rulerBottomCtx, rulerRightCtx].forEach((context, index) => {
+          const canvas = [ui.rulerTop, ui.rulerLeft, ui.rulerBottom, ui.rulerRight][index];
+          context.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+          context.fillStyle = getCssVar("--ruler-bg");
+          context.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+        });
+
+        const step = CELL_SIZE * state.viewport.zoom;
+        if (step <= 1) return;
+        const showCellLabels = step >= 28;
+        const showHalfMeterLabels = step * CELLS_PER_METER >= 72;
+        const topStart = state.viewport.x % step;
+        const leftStart = state.viewport.y % step;
+
+        for (let x = topStart; x <= width; x += step) {
+          const cellIndex = Math.round((x - state.viewport.x) / step);
+          const major = cellIndex % CELLS_PER_METER === 0;
+          const halfMeter = cellIndex % CELLS_PER_HALF_METER === 0;
+          drawHorizontalRulerMark(rulerTopCtx, x, cellIndex, major, halfMeter, false, showCellLabels, showHalfMeterLabels);
+          drawHorizontalRulerMark(rulerBottomCtx, x, cellIndex, major, halfMeter, true, showCellLabels, showHalfMeterLabels);
+        }
+
+        for (let y = leftStart; y <= height; y += step) {
+          const cellIndex = Math.round((y - state.viewport.y) / step);
+          const major = cellIndex % CELLS_PER_METER === 0;
+          const halfMeter = cellIndex % CELLS_PER_HALF_METER === 0;
+          drawVerticalRulerMark(rulerLeftCtx, y, cellIndex, major, halfMeter, false, showCellLabels, showHalfMeterLabels);
+          drawVerticalRulerMark(rulerRightCtx, y, cellIndex, major, halfMeter, true, showCellLabels, showHalfMeterLabels);
+        }
+      }
+
+      function drawHorizontalRulerMark(context, x, cellIndex, major, halfMeter, invert, showCellLabels, showHalfMeterLabels) {
+        const canvas = context.canvas;
+        context.beginPath();
+        context.moveTo(x + 0.5, invert ? 0 : canvas.clientHeight);
+        context.lineTo(x + 0.5, invert ? canvas.clientHeight - (major ? 7 : halfMeter ? 11 : 16) : major ? 7 : halfMeter ? 11 : 16);
+        context.strokeStyle = major ? getCssVar("--grid-1m") : halfMeter ? getCssVar("--grid-50cm") : getCssVar("--grid-5cm");
+        context.stroke();
+
+        const label = major ? formatMeters(cellIndex) : formatCentimeters(cellIndex);
+        const shouldLabel = major || (showHalfMeterLabels && halfMeter) || showCellLabels;
+        if (!shouldLabel) return;
+        context.fillStyle = getCssVar("--muted");
+        context.font = major || (showHalfMeterLabels && halfMeter) ? "10px IBM Plex Sans, Segoe UI, sans-serif" : "9px IBM Plex Sans, Segoe UI, sans-serif";
+        context.fillText(label, x + 4, invert ? 22 : 11);
+      }
+
+      function drawVerticalRulerMark(context, y, cellIndex, major, halfMeter, invert, showCellLabels, showHalfMeterLabels) {
+        const canvas = context.canvas;
+        context.beginPath();
+        context.moveTo(invert ? 0 : canvas.clientWidth, y + 0.5);
+        context.lineTo(invert ? canvas.clientWidth - (major ? 8 : halfMeter ? 11 : 16) : major ? 8 : halfMeter ? 11 : 16, y + 0.5);
+        context.strokeStyle = major ? getCssVar("--grid-1m") : halfMeter ? getCssVar("--grid-50cm") : getCssVar("--grid-5cm");
+        context.stroke();
+
+        const shouldLabel = major || (showHalfMeterLabels && halfMeter) || showCellLabels;
+        if (!shouldLabel) return;
+        context.save();
+        context.translate(invert ? 18 : 11, y - (major ? 4 : 3));
+        context.rotate(-Math.PI / 2);
+        context.fillStyle = getCssVar("--muted");
+        context.font = major || (showHalfMeterLabels && halfMeter) ? "10px IBM Plex Sans, Segoe UI, sans-serif" : "9px IBM Plex Sans, Segoe UI, sans-serif";
+        context.fillText(major ? formatMeters(cellIndex) : formatCentimeters(cellIndex), 0, 0);
+        context.restore();
+      }
+
+      function formatMeters(cellIndex) {
+        const meters = cellIndex / CELLS_PER_METER;
+        return meters.toFixed(Number.isInteger(meters) ? 0 : 1) + "m";
+      }
+
+      function formatCentimeters(cellIndex) {
+        return cellIndex * CENTIMETERS_PER_CELL + "cm";
+      }
+
+      function getCssVar(name) {
+        return getComputedStyle(document.body).getPropertyValue(name).trim();
+      }
+
+      function hexToRgba(hex, alpha) {
+        const clean = hex.replace("#", "");
+        const value = clean.length === 3 ? clean.split("").map((char) => char + char).join("") : clean;
+        const int = parseInt(value, 16);
+        return "rgba(" + ((int >> 16) & 255) + ", " + ((int >> 8) & 255) + ", " + (int & 255) + ", " + alpha + ")";
+      }
+
+      function addLayer() {
+        const layer = createLayer("Layer " + (state.layers.length + 1));
+        state.layers.unshift(layer);
+        state.activeLayerId = layer.id;
+        setStatus("New layer added.");
+        render({ ui: true, content: true, overlay: true });
+      }
+
+      function paintCells(cellX, cellY, mode) {
+        const layer = activeLayer();
+        if (!layer) return false;
+        let changed = false;
+        for (let y = 0; y < state.brush.height; y += 1) {
+          for (let x = 0; x < state.brush.width; x += 1) {
+            changed = setCellColor(layer, cellX + x, cellY + y, mode === "paint" ? state.brush.color : null) || changed;
+          }
+        }
+        return changed;
+      }
+
+      function topPaintedLayerAt(worldX, worldY) {
+        const cell = cellFromWorld(worldX, worldY);
+        for (const layer of state.layers) {
+          if (!layer.visible) continue;
+          if (getCellColor(layer, cell.x, cell.y)) return layer;
+        }
+        return null;
+      }
+
+      function beginPan(clientX, clientY) {
+        state.interaction = {
+          type: "pan",
+          originX: clientX,
+          originY: clientY,
+          startX: state.viewport.x,
+          startY: state.viewport.y,
+        };
+        setStatus("Panning canvas.");
+      }
+
+      function beginBrush(clientX, clientY, mode) {
+        const pointer = worldFromClient(clientX, clientY);
+        const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+        state.interaction = {
+          type: "brush",
+          mode,
+          lastKey: "",
+        };
+        const changed = paintCells(cell.x, cell.y, mode);
+        state.interaction.lastKey = cell.x + ":" + cell.y + ":" + mode;
+        setStatus(mode === "paint" ? "Painting active layer." : "Erasing from active layer.");
+        render({ ui: changed, content: true, overlay: true });
+      }
+
+      function beginSelection(clientX, clientY) {
+        const pointer = worldFromClient(clientX, clientY);
+        const layer = topPaintedLayerAt(pointer.worldX, pointer.worldY);
+        if (layer) {
+          state.activeLayerId = layer.id;
+          setStatus("Activated " + layer.name + " from painted selection.");
+          render({ ui: true, overlay: true });
+          return;
+        }
+        setStatus("No painted cell here. Selection stays idle.");
+        render({ overlay: true });
+      }
+
+      function handlePointerDown(event) {
+        const isRightClick = event.button === 2;
+        if (state.spacePan || event.button === 1) {
+          beginPan(event.clientX, event.clientY);
+          return;
+        }
+        if (state.activeTool === "select" && !isRightClick) {
+          beginSelection(event.clientX, event.clientY);
+          return;
+        }
+        beginBrush(event.clientX, event.clientY, isRightClick ? "erase" : "paint");
+      }
+
+      function handlePointerMove(event) {
+        state.pointer.clientX = event.clientX;
+        state.pointer.clientY = event.clientY;
+        state.pointer.inside = true;
+
+        if (!state.interaction) {
+          render({ overlay: true });
+          return;
+        }
+
+        if (state.interaction.type === "pan") {
+          state.viewport.x = state.interaction.startX + (event.clientX - state.interaction.originX);
+          state.viewport.y = state.interaction.startY + (event.clientY - state.interaction.originY);
+          render({ static: true, content: true, overlay: true, rulers: true });
+          return;
+        }
+
+        if (state.interaction.type === "brush") {
+          const pointer = worldFromClient(event.clientX, event.clientY);
+          const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+          const key = cell.x + ":" + cell.y + ":" + state.interaction.mode;
+          if (key !== state.interaction.lastKey) {
+            const changed = paintCells(cell.x, cell.y, state.interaction.mode);
+            state.interaction.lastKey = key;
+            render({ ui: changed, content: true, overlay: true });
+          }
+        }
+      }
+
+      function handlePointerUp() {
+        if (!state.interaction) return;
+        if (state.interaction.type === "pan") setStatus("Viewport updated.");
+        state.interaction = null;
+        render({ ui: true, overlay: true });
+      }
+
+      function handleWheel(event) {
+        event.preventDefault();
+        const pointer = worldFromClient(event.clientX, event.clientY);
+        const nextZoom = event.deltaY < 0 ? state.viewport.zoom * 1.08 : state.viewport.zoom / 1.08;
+        const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, nextZoom));
+        state.viewport.x = pointer.screenX - pointer.worldX * clamped;
+        state.viewport.y = pointer.screenY - pointer.worldY * clamped;
+        state.viewport.zoom = clamped;
+        setStatus("Zoom " + Math.round(clamped * 100) + "%");
+        render({ static: true, content: true, overlay: true, rulers: true });
+      }
+
+      function activateTool(tool) {
+        state.activeTool = tool;
+        setStatus(tool === "select" ? "Selection tool active." : "Brush tool active.");
+        render({ ui: true, overlay: true });
+      }
+
+      ui.selectionToolButton.addEventListener("click", () => activateTool("select"));
+      ui.brushToolButton.addEventListener("click", () => activateTool("brush"));
+      ui.brushColor.addEventListener("input", () => {
+        state.brush.color = ui.brushColor.value;
+        render({ ui: true, overlay: true });
+      });
+      ui.brushWidth.addEventListener("input", () => {
+        state.brush.width = Math.max(1, Number(ui.brushWidth.value) || 1);
+        render({ ui: true, overlay: true });
+      });
+      ui.brushHeight.addEventListener("input", () => {
+        state.brush.height = Math.max(1, Number(ui.brushHeight.value) || 1);
+        render({ ui: true, overlay: true });
+      });
+
+      ui.sizeChips.forEach((chip) => {
+        chip.addEventListener("click", () => {
+          const [width, height] = chip.dataset.size.split("x").map(Number);
+          state.brush.width = width;
+          state.brush.height = height;
+          render({ ui: true, overlay: true });
+        });
+      });
+
+      ui.addLayerButton.addEventListener("click", addLayer);
+      ui.panelToggle.addEventListener("click", () => {
+        state.panelCollapsed = !state.panelCollapsed;
+        render({ ui: true, static: true, content: true, overlay: true, rulers: true });
+      });
+
+      ui.settingsButton.addEventListener("click", () => {
+        ui.settingsMenu.classList.toggle("hidden");
+        ui.settingsButton.classList.toggle("active", !ui.settingsMenu.classList.contains("hidden"));
+      });
+
+      ui.modeButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          state.theme = button.dataset.theme;
+          setStatus((state.theme === "dark" ? "Dark" : "Light") + " mode active.");
+          render({ ui: true, static: true, content: true, overlay: true, rulers: true });
+        });
+      });
+
+      document.addEventListener("click", (event) => {
+        if (!ui.settingsMenu.contains(event.target) && event.target !== ui.settingsButton) {
+          ui.settingsMenu.classList.add("hidden");
+          ui.settingsButton.classList.remove("active");
+        }
+      });
+
+      ui.overlayCanvas.addEventListener("contextmenu", (event) => event.preventDefault());
+      ui.overlayCanvas.addEventListener("pointerdown", handlePointerDown);
+      ui.overlayCanvas.addEventListener("pointermove", handlePointerMove);
+      ui.overlayCanvas.addEventListener("pointerleave", () => {
+        state.pointer.inside = false;
+        render({ overlay: true });
+      });
+      ui.overlayCanvas.addEventListener("pointerup", handlePointerUp);
+      ui.overlayCanvas.addEventListener("pointercancel", handlePointerUp);
+      ui.overlayCanvas.addEventListener("wheel", handleWheel, { passive: false });
+      window.addEventListener("pointerup", handlePointerUp);
+
+      window.addEventListener("keydown", (event) => {
+        if (event.code === "Space") state.spacePan = true;
+        if (event.key === "Escape") activateTool("select");
+      });
+      window.addEventListener("keyup", (event) => {
+        if (event.code === "Space") state.spacePan = false;
+      });
+      window.addEventListener("resize", resizeCanvases);
+
+      resizeCanvases();
+      render();
+    </script>
+  </body>
+</html>
