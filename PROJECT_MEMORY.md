@@ -281,3 +281,14 @@ Exception:
 ## Current Goal
 
 The current goal is to keep building `Milimetre` as a strong, minimal infinite canvas editor without accidentally destabilizing the renderer foundation that is already working well.
+
+## Recent UI Behavior
+
+- In `Selection` mode, marquee selection now supports:
+  - left drag = intersection
+  - right drag = full containment
+- Marquee hits follow the shared selection priority:
+  - `Measurements`
+  - `Layers`
+  - `Scenes`
+- If marquee selection finds multiple hits, a contextual picker appears near the cursor so the user can choose the target item.
