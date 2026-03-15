@@ -19,6 +19,7 @@ This document should be treated as authoritative unless the user explicitly chan
 - Base grid unit: each cell is `5 x 5 cm`
 - UX direction: minimal, quiet, precise, compact controls, compact typography
 - Avoid default helper/explanatory filler text in the UI unless the user explicitly asks for it
+- Floating UI surfaces should use their own dedicated global tokens, separate from the shared `surface` / `bg-elevated` tokens used elsewhere
 
 ## Core Interaction Model
 

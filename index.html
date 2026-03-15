@@ -12,6 +12,9 @@
         --bg-strong: #ffffff;
         --surface: rgba(255, 255, 255, 0.7);
         --surface-strong: rgba(255, 255, 255, 0.95);
+        --floating-surface: #ffffff;
+        --floating-surface-strong: #f6f5f2;
+        --floating-panel: #ffffff;
         --line: rgba(20, 24, 28, 0.1);
         --line-strong: rgba(20, 24, 28, 0.18);
         --text: #161b21;
@@ -37,6 +40,9 @@
         --bg-strong: #171b20;
         --surface: rgba(24, 29, 35, 0.8);
         --surface-strong: rgba(26, 31, 37, 0.94);
+        --floating-surface: #1a2026;
+        --floating-surface-strong: #232a31;
+        --floating-panel: #171d23;
         --line: rgba(255, 255, 255, 0.08);
         --line-strong: rgba(255, 255, 255, 0.16);
         --text: #edf1f7;
@@ -214,30 +220,35 @@
       }
 
       .section-header-action {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-width: 26px;
-        min-height: 26px;
+        width: 26px;
+        height: 26px;
+        display: grid;
+        place-items: center;
+        position: relative;
         padding: 0;
         border-radius: 8px;
         border: 1px solid var(--line);
         background: var(--surface);
         cursor: pointer;
-        font-size: 15px;
-        font-weight: 500;
-        line-height: 1;
-        text-align: center;
+        color: inherit;
       }
 
-      .section-header-icon {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        height: 100%;
-        font-size: 17px;
-        line-height: 1;
+      .section-header-action::before,
+      .section-header-action::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 10px;
+        height: 1px;
+        border-radius: 999px;
+        background: currentColor;
+        transform: translate(-50%, -50%);
+      }
+
+      .section-header-action::after {
+        width: 1px;
+        height: 10px;
       }
 
       .layers-body {
@@ -517,16 +528,30 @@
       .floating-tool {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        justify-content: space-between;
         min-width: 116px;
         padding: 10px 12px;
         font-size: 12px;
+        background: var(--floating-surface);
         box-shadow: var(--shadow);
       }
 
       .floating-tool.active {
-        background: var(--surface-strong);
         border-color: var(--line-strong);
+      }
+
+      .floating-tool-indicator {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        border: 1px solid var(--line-strong);
+        background: transparent;
+        flex: 0 0 auto;
+      }
+
+      .floating-tool.active .floating-tool-indicator {
+        background: var(--text);
+        border-color: var(--text);
       }
 
       .tool-panel,
@@ -545,6 +570,7 @@
         right: 18px;
         width: 220px;
         padding: 12px;
+        background: var(--floating-panel);
       }
 
       .modal-panel {
@@ -770,9 +796,7 @@
                 <div class="section-header-left">
                   <div class="section-header-title">Scenes</div>
                 </div>
-                <button class="section-header-action" id="sceneAddButton" aria-label="Import scene image">
-                  <span class="section-header-icon">+</span>
-                </button>
+                <button class="section-header-action" id="sceneAddButton" aria-label="Import scene image"></button>
               </div>
               <div class="scene-list" id="sceneList"></div>
               <div class="empty-state hidden" id="sceneEmptyState"></div>
@@ -782,9 +806,7 @@
                 <div class="section-header-left">
                   <div class="section-header-title">Layers</div>
                 </div>
-                <button class="section-header-action" id="addLayerButton" aria-label="Add layer">
-                  <span class="section-header-icon">+</span>
-                </button>
+                <button class="section-header-action" id="addLayerButton" aria-label="Add layer"></button>
               </div>
             </div>
             <div class="layer-list" id="layerList"></div>
@@ -836,12 +858,12 @@
 
         <div class="floating-tools">
           <button class="floating-tool active" id="selectionToolButton">
-            <span>✦</span>
             <span>Selection</span>
+            <span class="floating-tool-indicator"></span>
           </button>
           <button class="floating-tool" id="brushToolButton">
-            <span>▦</span>
             <span>Brush</span>
+            <span class="floating-tool-indicator"></span>
           </button>
         </div>
 
