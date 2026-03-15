@@ -1520,6 +1520,23 @@
         ui.statusPill.textContent = message;
       }
 
+      function setCardDragPreview(event, card) {
+        if (!event.dataTransfer || !card) return;
+        const preview = card.cloneNode(true);
+        preview.style.position = "fixed";
+        preview.style.top = "-9999px";
+        preview.style.left = "-9999px";
+        preview.style.width = card.getBoundingClientRect().width + "px";
+        preview.style.pointerEvents = "none";
+        preview.style.opacity = "0.96";
+        preview.style.transform = "rotate(1.5deg)";
+        preview.style.boxShadow = getCssVar("--shadow");
+        preview.classList.remove("dragging");
+        document.body.appendChild(preview);
+        event.dataTransfer.setDragImage(preview, 24, 18);
+        requestAnimationFrame(() => preview.remove());
+      }
+
       function isModalOpen(modal) {
         return !modal.classList.contains("hidden");
       }
@@ -1656,6 +1673,7 @@
           grip.addEventListener("dragstart", (event) => {
             state.dragLayerId = layer.id;
             event.dataTransfer.effectAllowed = "move";
+            setCardDragPreview(event, card);
             render({ ui: true });
           });
           grip.addEventListener("dragend", () => {
@@ -1808,6 +1826,7 @@
           grip.addEventListener("dragstart", (event) => {
             state.dragSceneId = scene.id;
             event.dataTransfer.effectAllowed = "move";
+            setCardDragPreview(event, card);
             render({ ui: true });
           });
           grip.addEventListener("dragend", () => {
