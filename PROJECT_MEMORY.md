@@ -37,6 +37,7 @@ This document should be treated as authoritative unless the user explicitly chan
   - curated palette swatches in a single row and stretched across the full palette row width
   - one swatch is always the active palette slot
   - synchronized `HSB` sliders update the active swatch itself, not just a temporary brush color
+  - the active swatch also keeps a stable live `HSV` state so the sliders do not drift or jump when working near very low brightness
   - an eyedropper mode that samples only from painted cells on the canvas
   - the eyedropper also writes back into the active swatch
   - when eyedropper mode is active, the brush footprint preview is hidden and the browser pick cursor is used without any extra overlay marker

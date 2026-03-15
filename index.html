@@ -1297,6 +1297,7 @@
         },
         brush: {
           color: DEFAULT_COLOR,
+          hsv: hexToHsv(DEFAULT_COLOR),
           paletteColors: ui.brushPaletteButtons.map((button) => button.dataset.color),
           activeSwatchIndex: 0,
           width: 1,
@@ -1685,8 +1686,17 @@
         return Math.max(1, Math.round(centimeters / CENTIMETERS_PER_CELL));
       }
 
-      function setBrushColor(color) {
+      function setBrushColor(color, options = {}) {
         state.brush.color = color;
+        if (options.hsv) {
+          state.brush.hsv = {
+            h: Number(options.hsv.h),
+            s: Number(options.hsv.s),
+            v: Number(options.hsv.v),
+          };
+        } else {
+          state.brush.hsv = hexToHsv(color);
+        }
       }
 
       function setActiveBrushSwatch(index) {
@@ -1695,10 +1705,11 @@
         setBrushColor(state.brush.paletteColors[index]);
       }
 
-      function setBrushSwatchColor(index, color) {
+      function setBrushSwatchColor(index, color, options = {}) {
         if (index < 0 || index >= state.brush.paletteColors.length) return;
         state.brush.paletteColors[index] = color;
-        setActiveBrushSwatch(index);
+        state.brush.activeSwatchIndex = index;
+        setBrushColor(color, options);
       }
 
       function cancelSceneCalibration() {
@@ -2074,10 +2085,9 @@
         ui.brushLinkButton.setAttribute("aria-pressed", String(state.brush.linked));
         ui.brushLinkButton.title = state.brush.linked ? "Unlock width and height" : "Link width and height";
         ui.brushEyedropperButton.classList.toggle("active", state.brush.eyedropper);
-        const hsv = hexToHsv(state.brush.color);
-        ui.brushHue.value = hsv.h;
-        ui.brushSaturation.value = hsv.s;
-        ui.brushBrightness.value = hsv.v;
+        ui.brushHue.value = state.brush.hsv.h;
+        ui.brushSaturation.value = state.brush.hsv.s;
+        ui.brushBrightness.value = state.brush.hsv.v;
         ui.brushPaletteButtons.forEach((button, index) => {
           const color = state.brush.paletteColors[index];
           button.style.background = color;
@@ -3969,7 +3979,12 @@
         });
       });
       const syncBrushColorFromHsv = () => {
-        setBrushSwatchColor(state.brush.activeSwatchIndex, hsvToHex(ui.brushHue.value, ui.brushSaturation.value, ui.brushBrightness.value));
+        const nextHsv = {
+          h: Number(ui.brushHue.value),
+          s: Number(ui.brushSaturation.value),
+          v: Number(ui.brushBrightness.value),
+        };
+        setBrushSwatchColor(state.brush.activeSwatchIndex, hsvToHex(nextHsv.h, nextHsv.s, nextHsv.v), { hsv: nextHsv });
         render({ ui: true, overlay: true });
       };
       ui.brushHue.addEventListener("input", syncBrushColorFromHsv);
