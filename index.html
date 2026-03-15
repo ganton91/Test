@@ -728,8 +728,7 @@
         z-index: 12;
         border: 1px solid var(--line);
         border-radius: 16px;
-        background: var(--bg-elevated);
-        backdrop-filter: blur(18px);
+        background: var(--bg-strong);
         box-shadow: var(--shadow);
       }
 
@@ -1016,7 +1015,7 @@
       .modal-backdrop {
         position: fixed;
         inset: 0;
-        background: rgba(10, 14, 18, 0.08);
+        background: transparent;
         z-index: 29;
       }
 
@@ -1061,6 +1060,70 @@
         justify-content: flex-end;
         gap: 8px;
         margin-top: 14px;
+      }
+
+      .view-edit-modal {
+        width: min(620px, calc(100vw - 40px));
+      }
+
+      .view-edit-section-title {
+        margin-top: 2px;
+      }
+
+      .view-edit-column-headings,
+      .view-edit-layer-row {
+        display: grid;
+        grid-template-columns: 16px minmax(0, 1fr) 108px 108px;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .view-edit-column-headings {
+        padding: 0 2px;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .view-edit-column-headings.hidden {
+        display: none;
+      }
+
+      .view-edit-layer-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .view-edit-layer-row {
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+      }
+
+      .view-edit-layer-row.dragging {
+        opacity: 0.55;
+      }
+
+      .view-edit-layer-name {
+        min-width: 0;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .view-edit-field input {
+        padding: 7px 9px;
+      }
+
+      .view-edit-empty {
+        margin-top: 0;
+        padding: 2px 0;
       }
 
       @media (max-width: 900px) {
@@ -1198,6 +1261,27 @@
           <div class="calibration-actions">
             <button class="ghost-button" id="sceneScaleCancelButton">Cancel</button>
             <button class="ghost-button" id="sceneScaleApplyButton">Apply</button>
+          </div>
+        </div>
+        <div class="menu-panel modal-panel view-edit-modal hidden" id="viewEditModal">
+          <div class="menu-title">Edit View</div>
+          <div class="tool-heading" id="viewEditTitle">View</div>
+          <div class="tool-fields">
+            <div class="menu-title view-edit-section-title">Layers In View</div>
+            <div class="view-edit-column-headings" id="viewEditColumnHeadings">
+              <span></span>
+              <span>Layer</span>
+              <span>Base Elev.</span>
+              <span>Height</span>
+            </div>
+            <div class="view-edit-layer-list" id="viewEditLayerList"></div>
+            <div class="empty-state view-edit-empty hidden" id="viewEditEmptyState">
+              No Painted Layers Intersected This View Box Yet
+            </div>
+          </div>
+          <div class="calibration-actions">
+            <button class="ghost-button" id="viewEditCancelButton">Cancel</button>
+            <button class="ghost-button" id="viewEditApplyButton">Apply</button>
           </div>
         </div>
         <div class="modal-backdrop hidden" id="modalBackdrop"></div>
@@ -1348,6 +1432,13 @@
         sceneScaleMeters: document.getElementById("sceneScaleMeters"),
         sceneScaleCancelButton: document.getElementById("sceneScaleCancelButton"),
         sceneScaleApplyButton: document.getElementById("sceneScaleApplyButton"),
+        viewEditModal: document.getElementById("viewEditModal"),
+        viewEditTitle: document.getElementById("viewEditTitle"),
+        viewEditColumnHeadings: document.getElementById("viewEditColumnHeadings"),
+        viewEditLayerList: document.getElementById("viewEditLayerList"),
+        viewEditEmptyState: document.getElementById("viewEditEmptyState"),
+        viewEditCancelButton: document.getElementById("viewEditCancelButton"),
+        viewEditApplyButton: document.getElementById("viewEditApplyButton"),
         modalBackdrop: document.getElementById("modalBackdrop"),
         themeButtons: Array.from(document.querySelectorAll("[data-theme]")),
         gridPositionButtons: Array.from(document.querySelectorAll("[data-grid-position]")),
@@ -1421,6 +1512,7 @@
         editingViewId: null,
         dragViewId: null,
         viewSectionCollapsed: false,
+        viewEditDraft: null,
         colorPanelCollapsed: false,
         brushPanelCollapsed: false,
         measurementDraft: null,
@@ -1481,6 +1573,8 @@
           opacity: 1,
           pending: true,
           bounds: null,
+          layerConfigs: {},
+          layerOrder: [],
         };
       }
 
@@ -1529,6 +1623,116 @@
 
       function activeView() {
         return state.views.find((view) => view.id === state.activeViewId) || null;
+      }
+
+      function defaultViewLayerConfig(existingConfig = null) {
+        return {
+          baseElevation: Number.isFinite(existingConfig && existingConfig.baseElevation) ? existingConfig.baseElevation : 0,
+          height: Number.isFinite(existingConfig && existingConfig.height) ? existingConfig.height : 0,
+        };
+      }
+
+      function viewCellBounds(bounds) {
+        if (!bounds) return null;
+        return {
+          minX: Math.floor(bounds.minX / CELL_SIZE),
+          minY: Math.floor(bounds.minY / CELL_SIZE),
+          maxX: Math.ceil(bounds.maxX / CELL_SIZE) - 1,
+          maxY: Math.ceil(bounds.maxY / CELL_SIZE) - 1,
+        };
+      }
+
+      function layerIntersectsView(layer, view) {
+        if (!layer || !view || !view.bounds) return false;
+        const bounds = viewCellBounds(view.bounds);
+        if (!bounds || bounds.maxX < bounds.minX || bounds.maxY < bounds.minY) return false;
+        for (const tile of Object.values(layer.tiles)) {
+          const tileMinX = tile.tileX * TILE_SIZE;
+          const tileMinY = tile.tileY * TILE_SIZE;
+          const tileMaxX = tileMinX + TILE_SIZE - 1;
+          const tileMaxY = tileMinY + TILE_SIZE - 1;
+          if (tileMaxX < bounds.minX || tileMinX > bounds.maxX || tileMaxY < bounds.minY || tileMinY > bounds.maxY) continue;
+          for (const key of tile.pixels.keys()) {
+            const [localX, localY] = key.split(":").map(Number);
+            const cellX = tileMinX + localX;
+            const cellY = tileMinY + localY;
+            if (cellX >= bounds.minX && cellX <= bounds.maxX && cellY >= bounds.minY && cellY <= bounds.maxY) {
+              return true;
+            }
+          }
+        }
+        return false;
+      }
+
+      function intersectingLayersForView(view) {
+        if (!view || !view.bounds) return [];
+        return state.layers.filter((layer) => layerIntersectsView(layer, view));
+      }
+
+      function closeViewEditModal() {
+        if (!state.viewEditDraft && !isModalOpen(ui.viewEditModal)) return false;
+        state.viewEditDraft = null;
+        closeModal(ui.viewEditModal);
+        return true;
+      }
+
+      function openViewEditModal(viewId) {
+        const view = state.views.find((entry) => entry.id === viewId);
+        if (!view || view.pending || !view.bounds) {
+          setStatus("Finish the view box before editing its layers.");
+          render({ overlay: true });
+          return false;
+        }
+        const intersectingLayers = intersectingLayersForView(view);
+        const savedOrder = Array.isArray(view.layerOrder) ? view.layerOrder : [];
+        const savedOrderSet = new Set(savedOrder);
+        const orderedLayerIds = [
+          ...savedOrder.filter((layerId) => intersectingLayers.some((layer) => layer.id === layerId)),
+          ...intersectingLayers.filter((layer) => !savedOrderSet.has(layer.id)).map((layer) => layer.id),
+        ];
+
+        state.viewEditDraft = {
+          viewId,
+          dragLayerId: null,
+          items: orderedLayerIds.map((layerId) => {
+            const layer = state.layers.find((entry) => entry.id === layerId);
+            const config = defaultViewLayerConfig(view.layerConfigs && view.layerConfigs[layerId]);
+            return {
+              layerId,
+              baseElevation: config.baseElevation,
+              height: config.height,
+              name: layer ? layer.name : "Layer",
+            };
+          }),
+        };
+        openModal(ui.viewEditModal);
+        setStatus(intersectingLayers.length ? "View layers ready to edit." : "This view has no painted layers inside it yet.");
+        render({ ui: true, overlay: true });
+        return true;
+      }
+
+      function applyViewEditDraft() {
+        const draft = state.viewEditDraft;
+        if (!draft) return false;
+        const view = state.views.find((entry) => entry.id === draft.viewId);
+        if (!view) {
+          closeViewEditModal();
+          render({ ui: true });
+          return false;
+        }
+        view.layerConfigs = {};
+        view.layerOrder = [];
+        draft.items.forEach((item) => {
+          view.layerConfigs[item.layerId] = {
+            baseElevation: Number.isFinite(item.baseElevation) ? item.baseElevation : 0,
+            height: Math.max(0, Number.isFinite(item.height) ? item.height : 1),
+          };
+          view.layerOrder.push(item.layerId);
+        });
+        closeViewEditModal();
+        setStatus("View layers updated.");
+        render({ ui: true, overlay: true });
+        return true;
       }
 
       function getTileCoords(cellX, cellY) {
@@ -1895,6 +2099,9 @@
         const index = state.views.findIndex((entry) => entry.id === view.id);
         if (index === -1) return false;
         state.views.splice(index, 1);
+        if (state.viewEditDraft && state.viewEditDraft.viewId === view.id) {
+          closeViewEditModal();
+        }
         if (state.interaction && String(state.interaction.type || "").startsWith("viewbox-")) {
           state.interaction = null;
         }
@@ -2204,6 +2411,7 @@
       function openModal(modal) {
         ui.settingsMenu.classList.add("hidden");
         ui.sceneScaleModal.classList.add("hidden");
+        ui.viewEditModal.classList.add("hidden");
         modal.classList.remove("hidden");
         ui.modalBackdrop.classList.remove("hidden");
         if (modal === ui.settingsMenu) {
@@ -2231,6 +2439,12 @@
           render({ overlay: true });
           return true;
         }
+        if (isModalOpen(ui.viewEditModal)) {
+          closeViewEditModal();
+          setStatus("View layer edit cancelled.");
+          render({ ui: true });
+          return true;
+        }
         return false;
       }
 
@@ -2255,6 +2469,7 @@
           renderToolState();
           renderSectionState();
           renderSelectionPicker();
+          renderViewEditModal();
           renderScenes();
           renderMeasurements();
           renderViews();
@@ -2409,6 +2624,100 @@
         ui.selectionPicker.style.top = top + "px";
       }
 
+      function renderViewEditModal() {
+        const draft = state.viewEditDraft;
+        ui.viewEditLayerList.innerHTML = "";
+        if (!draft) {
+          ui.viewEditTitle.textContent = "View";
+          ui.viewEditColumnHeadings.classList.add("hidden");
+          ui.viewEditEmptyState.classList.add("hidden");
+          return;
+        }
+
+        const view = state.views.find((entry) => entry.id === draft.viewId);
+        ui.viewEditTitle.textContent = view ? view.name : "View";
+        const hasItems = draft.items.length > 0;
+        ui.viewEditColumnHeadings.classList.toggle("hidden", !hasItems);
+        ui.viewEditEmptyState.classList.toggle("hidden", hasItems);
+
+        draft.items.forEach((item) => {
+          const row = document.createElement("div");
+          row.className = "view-edit-layer-row";
+          if (draft.dragLayerId === item.layerId) row.classList.add("dragging");
+
+          const grip = document.createElement("div");
+          grip.className = "drag-handle";
+          grip.textContent = "⋮⋮";
+          grip.draggable = true;
+          grip.addEventListener("dragstart", (event) => {
+            draft.dragLayerId = item.layerId;
+            event.dataTransfer.effectAllowed = "move";
+            setCardDragPreview(event, row);
+            render({ ui: true });
+          });
+          grip.addEventListener("dragend", () => {
+            draft.dragLayerId = null;
+            render({ ui: true });
+          });
+          row.appendChild(grip);
+
+          const name = document.createElement("div");
+          name.className = "view-edit-layer-name";
+          name.textContent = item.name;
+          row.appendChild(name);
+
+          const baseField = document.createElement("div");
+          baseField.className = "field view-edit-field";
+          const baseInput = document.createElement("input");
+          baseInput.type = "number";
+          baseInput.step = "0.1";
+          baseInput.value = String(item.baseElevation);
+          baseInput.setAttribute("aria-label", item.name + " base elevation");
+          baseInput.addEventListener("click", (event) => event.stopPropagation());
+          baseInput.addEventListener("pointerdown", (event) => event.stopPropagation());
+          baseInput.addEventListener("input", () => {
+            item.baseElevation = Number(baseInput.value);
+          });
+          baseField.appendChild(baseInput);
+          row.appendChild(baseField);
+
+          const heightField = document.createElement("div");
+          heightField.className = "field view-edit-field";
+          const heightInput = document.createElement("input");
+          heightInput.type = "number";
+          heightInput.min = "0";
+          heightInput.step = "0.1";
+          heightInput.value = String(item.height);
+          heightInput.setAttribute("aria-label", item.name + " height");
+          heightInput.addEventListener("click", (event) => event.stopPropagation());
+          heightInput.addEventListener("pointerdown", (event) => event.stopPropagation());
+          heightInput.addEventListener("input", () => {
+            item.height = Number(heightInput.value);
+          });
+          heightField.appendChild(heightInput);
+          row.appendChild(heightField);
+
+          row.addEventListener("dragover", (event) => {
+            if (!draft.dragLayerId || draft.dragLayerId === item.layerId) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+          });
+          row.addEventListener("drop", (event) => {
+            event.preventDefault();
+            if (!draft.dragLayerId || draft.dragLayerId === item.layerId) return;
+            const from = draft.items.findIndex((entry) => entry.layerId === draft.dragLayerId);
+            const to = draft.items.findIndex((entry) => entry.layerId === item.layerId);
+            if (from === -1 || to === -1) return;
+            const [moved] = draft.items.splice(from, 1);
+            draft.items.splice(to, 0, moved);
+            draft.dragLayerId = null;
+            render({ ui: true });
+          });
+
+          ui.viewEditLayerList.appendChild(row);
+        });
+      }
+
       function renderSectionState() {
         ui.sceneSection.classList.toggle("collapsed", state.sceneSectionCollapsed);
         ui.measurementSection.classList.toggle("collapsed", state.measurementSectionCollapsed);
@@ -2521,6 +2830,9 @@
             const index = state.views.findIndex((entry) => entry.id === view.id);
             if (index === -1) return;
             state.views.splice(index, 1);
+            if (state.viewEditDraft && state.viewEditDraft.viewId === view.id) {
+              closeViewEditModal();
+            }
             if (state.activeViewId === view.id) clearActiveTarget();
             render({ ui: true, overlay: true });
           });
@@ -2538,8 +2850,7 @@
           editButton.title = "Edit view";
           editButton.addEventListener("click", (event) => {
             event.stopPropagation();
-            setStatus("View edit modal comes next.");
-            render({ overlay: true });
+            openViewEditModal(view.id);
           });
           actions.appendChild(editButton);
           main.appendChild(actions);
@@ -3540,7 +3851,18 @@
           right: view.bounds.maxX,
           bottom: view.bounds.maxY,
         };
-        return containment ? rectContainsRect(rect, viewRect) : rectsIntersect(viewRect, rect);
+        if (containment) return rectContainsRect(rect, viewRect);
+        const corners = [
+          { x: view.bounds.minX, y: view.bounds.minY },
+          { x: view.bounds.maxX, y: view.bounds.minY },
+          { x: view.bounds.maxX, y: view.bounds.maxY },
+          { x: view.bounds.minX, y: view.bounds.maxY },
+        ];
+        for (let index = 0; index < corners.length; index += 1) {
+          const next = corners[(index + 1) % corners.length];
+          if (segmentIntersectsRect(corners[index], next, rect)) return true;
+        }
+        return false;
       }
 
       function viewHitAt(clientX, clientY, worldX, worldY) {
@@ -5102,6 +5424,12 @@
         render({ overlay: true });
       });
       ui.sceneScaleApplyButton.addEventListener("click", applySceneCalibration);
+      ui.viewEditCancelButton.addEventListener("click", () => {
+        closeViewEditModal();
+        setStatus("View layer edit cancelled.");
+        render({ ui: true });
+      });
+      ui.viewEditApplyButton.addEventListener("click", applyViewEditDraft);
       ui.sceneScaleMeters.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();

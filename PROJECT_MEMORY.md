@@ -293,6 +293,22 @@ The current goal is to keep building `Milimetre` as a strong, minimal infinite c
   - `Scenes`
 - If marquee selection finds multiple hits, a contextual picker appears near the cursor so the user can choose the target item.
 
+## Views Subsystem
+
+- `Views` is now a first-class sidebar section below `Measurements`.
+- New views are created from the `+` button in the left panel and immediately enter first-box draw mode on the main canvas.
+- If the user cancels before completing the first rectangle, the empty pending view is removed completely.
+- Active view boxes use their own transform mode on the main canvas:
+  - move
+  - free resize from corner handles
+  - no rotation
+- In `Selection` mode, views can be selected from their outline or label, not from the box interior.
+- `Edit Layers` on a view card opens a modal that shows only the painted layers intersecting that view box.
+- The modal stores per-view layer settings:
+  - `Base Elevation`
+  - `Height`
+  - and view-specific layer reorder for future view rendering
+
 ## Renderer Note
 
 - Painted layer tiles on `contentCanvas` should be drawn from shared snapped tile boundaries:
