@@ -30,6 +30,15 @@ This document should be treated as authoritative unless the user explicitly chan
 - The app uses rulers on all four sides of the canvas
 - Ruler corner blocks should exist visually on all four corners
 
+## Modal Rules
+
+- Modal behavior is global, not per-modal by default
+- All true modals should open centered in the viewport
+- The first click outside a modal should close only the modal and should not pass through to the canvas or other UI
+- `Escape` should close the active modal before any lower-priority app shortcut runs
+- Modal backdrop blur is currently disabled and should remain off unless the user explicitly asks for it
+- If the user asks for a change to one modal, Codex should first ask whether that change is meant to become the global rule for all modals
+
 ## Ruler Rules
 
 - Major ruler marks are at `1m`

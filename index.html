@@ -59,6 +59,10 @@
         box-sizing: border-box;
       }
 
+      button:focus {
+        outline: none;
+      }
+
       html,
       body {
         margin: 0;
@@ -489,8 +493,17 @@
         padding: 12px;
       }
 
-      .tool-panel.hidden,
-      .menu-panel.hidden {
+      .modal-panel {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        width: min(540px, calc(100vw - 40px));
+        padding: 18px;
+        transform: translate(-50%, -50%);
+        z-index: 30;
+      }
+
+      .hidden {
         display: none;
       }
 
@@ -611,14 +624,11 @@
         z-index: 11;
       }
 
-      .menu-panel {
+      .modal-backdrop {
         position: fixed;
-        top: 50%;
-        left: 50%;
-        width: min(540px, calc(100vw - 40px));
-        padding: 18px;
-        transform: translate(-50%, -50%);
-        z-index: 30;
+        inset: 0;
+        background: rgba(10, 14, 18, 0.08);
+        z-index: 29;
       }
 
       .menu-actions {
@@ -716,7 +726,7 @@
           </div>
         </aside>
 
-        <div class="menu-panel hidden" id="settingsMenu">
+        <div class="menu-panel modal-panel hidden" id="settingsMenu">
           <div class="menu-section">
             <div class="menu-title">Appearance</div>
             <div class="menu-actions">
@@ -739,6 +749,7 @@
             </div>
           </div>
         </div>
+        <div class="modal-backdrop hidden" id="modalBackdrop"></div>
 
         <div class="canvas-shell">
           <div class="ruler-corner"></div>
@@ -824,6 +835,7 @@
         addLayerButton: document.getElementById("addLayerButton"),
         settingsButton: document.getElementById("settingsButton"),
         settingsMenu: document.getElementById("settingsMenu"),
+        modalBackdrop: document.getElementById("modalBackdrop"),
         themeButtons: Array.from(document.querySelectorAll("[data-theme]")),
         gridPositionButtons: Array.from(document.querySelectorAll("[data-grid-position]")),
         dualGridButtons: Array.from(document.querySelectorAll("[data-dual-grid]")),
@@ -1038,6 +1050,43 @@
 
       function setStatus(message) {
         ui.statusPill.textContent = message;
+      }
+
+      function isModalOpen(modal) {
+        return !modal.classList.contains("hidden");
+      }
+
+      function closeModal(modal) {
+        modal.classList.add("hidden");
+        ui.modalBackdrop.classList.add("hidden");
+        if (modal === ui.settingsMenu) {
+          ui.settingsButton.classList.remove("active");
+        }
+      }
+
+      function openModal(modal) {
+        ui.settingsMenu.classList.add("hidden");
+        modal.classList.remove("hidden");
+        ui.modalBackdrop.classList.remove("hidden");
+        if (modal === ui.settingsMenu) {
+          ui.settingsButton.classList.add("active");
+        }
+      }
+
+      function toggleModal(modal) {
+        if (isModalOpen(modal)) {
+          closeModal(modal);
+          return;
+        }
+        openModal(modal);
+      }
+
+      function closeActiveModal() {
+        if (isModalOpen(ui.settingsMenu)) {
+          closeModal(ui.settingsMenu);
+          return true;
+        }
+        return false;
       }
 
       function render(flags) {
@@ -1652,10 +1701,7 @@
         render({ ui: true, static: true, content: true, overlay: true, rulers: true });
       });
 
-      ui.settingsButton.addEventListener("click", () => {
-        ui.settingsMenu.classList.toggle("hidden");
-        ui.settingsButton.classList.toggle("active", !ui.settingsMenu.classList.contains("hidden"));
-      });
+      ui.settingsButton.addEventListener("click", () => toggleModal(ui.settingsMenu));
 
       ui.themeButtons.forEach((button) => {
         button.addEventListener("click", () => {
@@ -1681,11 +1727,8 @@
         });
       });
 
-      document.addEventListener("click", (event) => {
-        if (!ui.settingsMenu.contains(event.target) && event.target !== ui.settingsButton) {
-          ui.settingsMenu.classList.add("hidden");
-          ui.settingsButton.classList.remove("active");
-        }
+      ui.modalBackdrop.addEventListener("click", () => {
+        closeActiveModal();
       });
 
       ui.overlayCanvas.addEventListener("contextmenu", (event) => event.preventDefault());
@@ -1701,6 +1744,9 @@
       window.addEventListener("pointerup", handlePointerUp);
 
       window.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && closeActiveModal()) {
+          return;
+        }
         if (event.code === "Space") state.spacePan = true;
         if (event.key === "Escape") activateTool("select");
       });
