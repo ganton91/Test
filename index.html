@@ -1705,6 +1705,8 @@
           width: 1,
           height: 1,
           linked: false,
+          lastCellX: null,
+          lastCellY: null,
         },
         nextSceneNumber: 1,
         scenes: [],
@@ -5250,6 +5252,40 @@
         return changed;
       }
 
+      function paintBrushLine(startCellX, startCellY, endCellX, endCellY, mode) {
+        let x0 = startCellX;
+        let y0 = startCellY;
+        const x1 = endCellX;
+        const y1 = endCellY;
+        const deltaX = Math.abs(x1 - x0);
+        const deltaY = Math.abs(y1 - y0);
+        const stepX = x0 < x1 ? 1 : -1;
+        const stepY = y0 < y1 ? 1 : -1;
+        let error = deltaX - deltaY;
+        let changed = false;
+
+        while (true) {
+          changed = paintCells(x0, y0, mode) || changed;
+          if (x0 === x1 && y0 === y1) break;
+          const doubledError = error * 2;
+          if (doubledError > -deltaY) {
+            error -= deltaY;
+            x0 += stepX;
+          }
+          if (doubledError < deltaX) {
+            error += deltaX;
+            y0 += stepY;
+          }
+        }
+
+        return changed;
+      }
+
+      function rememberBrushPoint(cellX, cellY) {
+        state.brush.lastCellX = cellX;
+        state.brush.lastCellY = cellY;
+      }
+
       function samplePaintColorAt(worldX, worldY) {
         const layer = topPaintedLayerAt(worldX, worldY);
         if (!layer) return null;
@@ -5277,7 +5313,7 @@
         setStatus("Panning canvas.");
       }
 
-      function beginBrush(clientX, clientY, mode) {
+      function beginBrush(clientX, clientY, mode, shiftKey) {
         const pointer = worldFromClient(clientX, clientY);
         const cell = cellFromWorld(pointer.worldX, pointer.worldY);
         if (!activeLayer()) return;
@@ -5291,8 +5327,13 @@
           lockedAxis: null,
           lastKey: "",
         };
-        const changed = paintCells(cell.x, cell.y, mode);
+        const shouldDrawLine =
+          shiftKey && Number.isInteger(state.brush.lastCellX) && Number.isInteger(state.brush.lastCellY);
+        const changed = shouldDrawLine
+          ? paintBrushLine(state.brush.lastCellX, state.brush.lastCellY, cell.x, cell.y, mode)
+          : paintCells(cell.x, cell.y, mode);
         state.interaction.lastKey = cell.x + ":" + cell.y + ":" + mode;
+        rememberBrushPoint(cell.x, cell.y);
         setStatus(mode === "paint" ? "Painting active layer." : "Erasing from active layer.");
         render({ ui: changed, content: true, overlay: true });
       }
@@ -5663,7 +5704,7 @@
           beginSceneTransform(event.clientX, event.clientY);
           return;
         }
-        beginBrush(event.clientX, event.clientY, isRightClick ? "erase" : "paint");
+        beginBrush(event.clientX, event.clientY, isRightClick ? "erase" : "paint", event.shiftKey);
       }
 
       function handlePointerMove(event) {
@@ -5719,6 +5760,7 @@
           if (key !== state.interaction.lastKey) {
             const changed = paintCells(cell.x, cell.y, state.interaction.mode);
             state.interaction.lastKey = key;
+            rememberBrushPoint(cell.x, cell.y);
             render({ ui: changed, content: true, overlay: true });
           }
           return;
