@@ -24,13 +24,23 @@ This document should be treated as authoritative unless the user explicitly chan
 - Brush Settings includes a width/height link toggle:
   - when linked, width and height stay equal and update together
   - when unlinked, they can be edited independently
+- Brush Settings is now a standalone floating panel below the global `Color` panel:
+  - it is no longer attached to the `Brush` button
+  - it uses the same collapsible header/arrow behavior as the `Color` panel
+  - left-side floating panels should behave as one compact vertical stack, so lower panels move up automatically when upper panels collapse
+- Left floating panels such as `Color` and `Brush Settings` should reuse the same header format as sidebar sections:
+  - same arrow
+  - same title typography
+  - same compact header row treatment
 - Brush color is managed through a custom color UI:
+  - the color UI is now a global floating `Color` panel, not part of `Brush Settings`
   - curated palette swatches in a single row and stretched across the full palette row width
   - one swatch is always the active palette slot
   - synchronized `HSB` sliders update the active swatch itself, not just a temporary brush color
   - an eyedropper mode that samples only from painted cells on the canvas
   - the eyedropper also writes back into the active swatch
   - when eyedropper mode is active, the brush footprint preview is hidden and the browser pick cursor is used without any extra overlay marker
+  - the `Color` panel is collapsible with the same arrow-toggle behavior used by the sidebar sections
 - `Measurements` is now a third annotation subsystem alongside `Scenes` and `Layers`
 - Measurement cards currently support the first safe phase:
   - section + cards + shared active-state integration

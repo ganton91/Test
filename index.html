@@ -697,6 +697,20 @@
         border-color: var(--text);
       }
 
+      .floating-panels-left {
+        position: absolute;
+        top: 52px;
+        left: calc(280px + 42px);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        z-index: 12;
+      }
+
+      .floating-panels-left .tool-panel {
+        position: relative;
+      }
+
       .tool-panel,
       .menu-panel {
         position: absolute;
@@ -709,11 +723,49 @@
       }
 
       .tool-panel {
-        top: 144px;
-        right: 42px;
         width: 220px;
-        padding: 12px;
         background: var(--floating-panel);
+      }
+
+      .color-panel {
+        padding: 10px 12px 12px;
+      }
+
+      .brush-panel {
+        padding: 10px 12px 12px;
+      }
+
+      .tool-panel-header {
+        display: flex;
+        align-items: center;
+        min-height: 24px;
+      }
+
+      .tool-panel-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+      }
+
+      .tool-panel.collapsed .tool-fields {
+        display: none;
+      }
+
+      .tool-panel.collapsed {
+        padding-bottom: 10px;
+      }
+
+      .tool-panel.collapsed .tool-panel-header {
+        margin-bottom: 0;
+      }
+
+      .tool-panel.collapsed .tool-panel-toggle .section-toggle-arrow {
+        transform: translateY(-1px) rotate(-45deg);
       }
 
       .modal-panel {
@@ -1098,44 +1150,62 @@
           </button>
         </div>
 
-        <div class="tool-panel hidden" id="brushPanel">
-          <div class="tool-title">Brush Settings</div>
-          <div class="tool-fields">
-            <div class="field">
-              <label>Palette</label>
-              <div class="color-palette" id="brushPalette">
-                <button class="color-swatch" type="button" data-color="#111827" style="background:#111827" aria-label="Color #111827"></button>
-                <button class="color-swatch" type="button" data-color="#f97316" style="background:#f97316" aria-label="Color #f97316"></button>
-                <button class="color-swatch" type="button" data-color="#ef4444" style="background:#ef4444" aria-label="Color #ef4444"></button>
-                <button class="color-swatch" type="button" data-color="#eab308" style="background:#eab308" aria-label="Color #eab308"></button>
-                <button class="color-swatch" type="button" data-color="#22c55e" style="background:#22c55e" aria-label="Color #22c55e"></button>
-                <button class="color-swatch" type="button" data-color="#14b8a6" style="background:#14b8a6" aria-label="Color #14b8a6"></button>
-                <button class="color-swatch" type="button" data-color="#3b82f6" style="background:#3b82f6" aria-label="Color #3b82f6"></button>
-                <button class="color-swatch" type="button" data-color="#8b5cf6" style="background:#8b5cf6" aria-label="Color #8b5cf6"></button>
-              </div>
+        <div class="floating-panels-left">
+          <div class="tool-panel color-panel" id="colorPanel">
+            <div class="tool-panel-header">
+              <button class="tool-panel-toggle" id="colorPanelToggle" type="button" aria-expanded="true">
+                <span class="section-toggle-arrow" aria-hidden="true"></span>
+                <span class="tool-title">Color</span>
+              </button>
             </div>
-            <div class="field">
-              <label for="brushHue">Hue</label>
-              <input id="brushHue" type="range" min="0" max="360" step="1" value="0" />
-            </div>
-            <div class="field">
-              <label for="brushSaturation">Saturation</label>
-              <input id="brushSaturation" type="range" min="0" max="100" step="1" value="0" />
-            </div>
-            <div class="field">
-              <label for="brushBrightness">Brightness</label>
-              <input id="brushBrightness" type="range" min="0" max="100" step="1" value="0" />
-            </div>
-            <button class="ghost-button" id="brushEyedropperButton" type="button">Eyedropper Tool</button>
-            <div class="dimension-row">
+            <div class="tool-fields" id="colorPanelBody">
               <div class="field">
-                <label for="brushWidth">Width cm</label>
-                <input id="brushWidth" type="number" min="5" max="500" step="5" value="5" />
+                <label>Palette</label>
+                <div class="color-palette" id="brushPalette">
+                  <button class="color-swatch" type="button" data-color="#111827" style="background:#111827" aria-label="Color #111827"></button>
+                  <button class="color-swatch" type="button" data-color="#f97316" style="background:#f97316" aria-label="Color #f97316"></button>
+                  <button class="color-swatch" type="button" data-color="#ef4444" style="background:#ef4444" aria-label="Color #ef4444"></button>
+                  <button class="color-swatch" type="button" data-color="#eab308" style="background:#eab308" aria-label="Color #eab308"></button>
+                  <button class="color-swatch" type="button" data-color="#22c55e" style="background:#22c55e" aria-label="Color #22c55e"></button>
+                  <button class="color-swatch" type="button" data-color="#14b8a6" style="background:#14b8a6" aria-label="Color #14b8a6"></button>
+                  <button class="color-swatch" type="button" data-color="#3b82f6" style="background:#3b82f6" aria-label="Color #3b82f6"></button>
+                  <button class="color-swatch" type="button" data-color="#8b5cf6" style="background:#8b5cf6" aria-label="Color #8b5cf6"></button>
+                </div>
               </div>
-              <button class="dimension-link" id="brushLinkButton" type="button" aria-pressed="false" title="Link width and height">⛓</button>
               <div class="field">
-                <label for="brushHeight">Height cm</label>
-                <input id="brushHeight" type="number" min="5" max="500" step="5" value="5" />
+                <label for="brushHue">Hue</label>
+                <input id="brushHue" type="range" min="0" max="360" step="1" value="0" />
+              </div>
+              <div class="field">
+                <label for="brushSaturation">Saturation</label>
+                <input id="brushSaturation" type="range" min="0" max="100" step="1" value="0" />
+              </div>
+              <div class="field">
+                <label for="brushBrightness">Brightness</label>
+                <input id="brushBrightness" type="range" min="0" max="100" step="1" value="0" />
+              </div>
+              <button class="ghost-button" id="brushEyedropperButton" type="button">Eyedropper Tool</button>
+            </div>
+          </div>
+
+          <div class="tool-panel brush-panel" id="brushPanel">
+            <div class="tool-panel-header">
+              <button class="tool-panel-toggle" id="brushPanelToggle" type="button" aria-expanded="true">
+                <span class="section-toggle-arrow" aria-hidden="true"></span>
+                <span class="tool-title">Brush Settings</span>
+              </button>
+            </div>
+            <div class="tool-fields" id="brushPanelBody">
+              <div class="dimension-row">
+                <div class="field">
+                  <label for="brushWidth">Width cm</label>
+                  <input id="brushWidth" type="number" min="5" max="500" step="5" value="5" />
+                </div>
+                <button class="dimension-link" id="brushLinkButton" type="button" aria-pressed="false" title="Link width and height">⛓</button>
+                <div class="field">
+                  <label for="brushHeight">Height cm</label>
+                  <input id="brushHeight" type="number" min="5" max="500" step="5" value="5" />
+                </div>
               </div>
             </div>
           </div>
@@ -1174,6 +1244,9 @@
         sceneSectionToggle: document.getElementById("sceneSectionToggle"),
         layerSectionToggle: document.getElementById("layerSectionToggle"),
         measurementSectionToggle: document.getElementById("measurementSectionToggle"),
+        colorPanel: document.getElementById("colorPanel"),
+        colorPanelToggle: document.getElementById("colorPanelToggle"),
+        brushPanelToggle: document.getElementById("brushPanelToggle"),
         sceneAddButton: document.getElementById("sceneAddButton"),
         sceneImportInput: document.getElementById("sceneImportInput"),
         sceneList: document.getElementById("sceneList"),
@@ -1250,6 +1323,8 @@
         editingMeasurementId: null,
         dragMeasurementId: null,
         measurementSectionCollapsed: false,
+        colorPanelCollapsed: false,
+        brushPanelCollapsed: false,
         measurementDraft: null,
         gridPosition: "below",
         dualStrokeGrid: false,
@@ -1997,7 +2072,6 @@
       function renderToolState() {
         ui.selectionToolButton.classList.toggle("active", state.activeTool === "select");
         ui.brushToolButton.classList.toggle("active", state.activeTool === "brush");
-        ui.brushPanel.classList.toggle("hidden", state.activeTool !== "brush");
         ui.brushLinkButton.classList.toggle("active", state.brush.linked);
         ui.brushLinkButton.setAttribute("aria-pressed", String(state.brush.linked));
         ui.brushLinkButton.title = state.brush.linked ? "Unlock width and height" : "Link width and height";
@@ -2029,9 +2103,13 @@
         ui.sceneSection.classList.toggle("collapsed", state.sceneSectionCollapsed);
         ui.measurementSection.classList.toggle("collapsed", state.measurementSectionCollapsed);
         ui.layerSection.classList.toggle("collapsed", state.layerSectionCollapsed);
+        ui.colorPanel.classList.toggle("collapsed", state.colorPanelCollapsed);
+        ui.brushPanel.classList.toggle("collapsed", state.brushPanelCollapsed);
         ui.sceneSectionToggle.setAttribute("aria-expanded", String(!state.sceneSectionCollapsed));
         ui.measurementSectionToggle.setAttribute("aria-expanded", String(!state.measurementSectionCollapsed));
         ui.layerSectionToggle.setAttribute("aria-expanded", String(!state.layerSectionCollapsed));
+        ui.colorPanelToggle.setAttribute("aria-expanded", String(!state.colorPanelCollapsed));
+        ui.brushPanelToggle.setAttribute("aria-expanded", String(!state.brushPanelCollapsed));
       }
 
       function renderMeasurements() {
@@ -3931,6 +4009,14 @@
       });
       ui.measurementSectionToggle.addEventListener("click", () => {
         state.measurementSectionCollapsed = !state.measurementSectionCollapsed;
+        render({ ui: true });
+      });
+      ui.colorPanelToggle.addEventListener("click", () => {
+        state.colorPanelCollapsed = !state.colorPanelCollapsed;
+        render({ ui: true });
+      });
+      ui.brushPanelToggle.addEventListener("click", () => {
+        state.brushPanelCollapsed = !state.brushPanelCollapsed;
         render({ ui: true });
       });
       ui.layerSectionToggle.addEventListener("click", () => {
