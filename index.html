@@ -1582,6 +1582,13 @@
                 </div>
               </div>
               <div class="tool-fields">
+                <div class="field">
+                  <label>Shape Type</label>
+                  <div class="tool-row">
+                    <button class="ghost-button active" id="brushRectButton" type="button">Rectangular</button>
+                    <button class="ghost-button" id="brushCircularButton" type="button">Circular</button>
+                  </div>
+                </div>
                 <div class="dimension-row">
                   <div class="field">
                     <label for="brushWidth">Width cm</label>
@@ -1767,6 +1774,8 @@
         brushWidth: document.getElementById("brushWidth"),
         brushLinkButton: document.getElementById("brushLinkButton"),
         brushHeight: document.getElementById("brushHeight"),
+        brushRectButton: document.getElementById("brushRectButton"),
+        brushCircularButton: document.getElementById("brushCircularButton"),
         outlineWidth: document.getElementById("outlineWidth"),
         outlineInsideButton: document.getElementById("outlineInsideButton"),
         outlineOutsideButton: document.getElementById("outlineOutsideButton"),
@@ -1824,6 +1833,7 @@
           width: 1,
           height: 1,
           linked: true,
+          shape: "rect",
           lastCellX: null,
           lastCellY: null,
         },
@@ -3941,7 +3951,15 @@
         ui.shapeToolButton.classList.toggle("active", state.activeTool === "shape");
         ui.brushLinkButton.classList.toggle("active", state.brush.linked);
         ui.brushLinkButton.setAttribute("aria-pressed", String(state.brush.linked));
-        ui.brushLinkButton.title = state.brush.linked ? "Unlock width and height" : "Link width and height";
+        ui.brushLinkButton.disabled = state.brush.shape === "circle";
+        ui.brushLinkButton.title =
+          state.brush.shape === "circle"
+            ? "Circular brush keeps width and height linked"
+            : state.brush.linked
+            ? "Unlock width and height"
+            : "Link width and height";
+        ui.brushRectButton.classList.toggle("active", state.brush.shape === "rect");
+        ui.brushCircularButton.classList.toggle("active", state.brush.shape === "circle");
         ui.shapeRectButton.classList.toggle("active", state.shape.type === "rect");
         ui.shapeEllipticalButton.classList.toggle("active", state.shape.type === "ellipse");
         ui.shapeCircularButton.classList.toggle("active", state.shape.type === "circle");
@@ -6080,17 +6098,32 @@
                   state.pointer.shiftKey
                 )
               : rawCell;
-          const origin = brushOriginFromCell(cell.x, cell.y);
+          const bounds = brushFootprintBounds(cell.x, cell.y);
           const size = CELL_SIZE * state.viewport.zoom;
-          const x = snapPixel(state.viewport.x + origin.x * size);
-          const y = snapPixel(state.viewport.y + origin.y * size);
-          const snappedWidth = Math.max(1, snapPixel(state.brush.width * size));
-          const snappedHeight = Math.max(1, snapPixel(state.brush.height * size));
+          const x = snapPixel(state.viewport.x + bounds.minX * size);
+          const y = snapPixel(state.viewport.y + bounds.minY * size);
+          const snappedWidth = Math.max(1, snapPixel((bounds.maxX - bounds.minX + 1) * size));
+          const snappedHeight = Math.max(1, snapPixel((bounds.maxY - bounds.minY + 1) * size));
           overlayCtx.save();
           overlayCtx.fillStyle = hexToRgba(state.color.active, 0.18);
           overlayCtx.strokeStyle = hexToRgba(state.color.active, 0.56);
-          overlayCtx.fillRect(x, y, snappedWidth, snappedHeight);
-          overlayCtx.strokeRect(x + 0.5, y + 0.5, snappedWidth - 1, snappedHeight - 1);
+          if (state.brush.shape === "circle") {
+            overlayCtx.beginPath();
+            overlayCtx.ellipse(
+              x + snappedWidth / 2,
+              y + snappedHeight / 2,
+              Math.max(1, snappedWidth / 2),
+              Math.max(1, snappedHeight / 2),
+              0,
+              0,
+              Math.PI * 2
+            );
+            overlayCtx.fill();
+            overlayCtx.stroke();
+          } else {
+            overlayCtx.fillRect(x, y, snappedWidth, snappedHeight);
+            overlayCtx.strokeRect(x + 0.5, y + 0.5, snappedWidth - 1, snappedHeight - 1);
+          }
           overlayCtx.restore();
         }
 
@@ -6493,15 +6526,24 @@
         image.src = previewUrl;
       }
 
-      function paintCells(cellX, cellY, mode) {
+      function brushFootprintBounds(cellX, cellY) {
         const origin = brushOriginFromCell(cellX, cellY);
+        return {
+          minX: origin.x,
+          minY: origin.y,
+          maxX: origin.x + state.brush.width - 1,
+          maxY: origin.y + state.brush.height - 1,
+        };
+      }
+
+      function brushPreviewCells(cellX, cellY) {
+        const bounds = brushFootprintBounds(cellX, cellY);
+        return state.brush.shape === "circle" ? cellsFromEllipseBounds(bounds) : cellsFromRectBounds(bounds);
+      }
+
+      function paintCells(cellX, cellY, mode) {
         return applyOutlineAwarePaint(
-          cellsFromRectBounds({
-            minX: origin.x,
-            minY: origin.y,
-            maxX: origin.x + state.brush.width - 1,
-            maxY: origin.y + state.brush.height - 1,
-          }),
+          brushPreviewCells(cellX, cellY),
           mode
         );
       }
@@ -8269,7 +8311,7 @@
       ui.brushWidth.addEventListener("input", () => {
         const nextWidth = centimetersToCells(ui.brushWidth.value);
         state.brush.width = nextWidth;
-        if (state.brush.linked) {
+        if (state.brush.linked || state.brush.shape === "circle") {
           state.brush.height = nextWidth;
         }
         render({ ui: true, overlay: true });
@@ -8277,16 +8319,30 @@
       ui.brushHeight.addEventListener("input", () => {
         const nextHeight = centimetersToCells(ui.brushHeight.value);
         state.brush.height = nextHeight;
-        if (state.brush.linked) {
+        if (state.brush.linked || state.brush.shape === "circle") {
           state.brush.width = nextHeight;
         }
         render({ ui: true, overlay: true });
       });
       ui.brushLinkButton.addEventListener("click", () => {
+        if (state.brush.shape === "circle") {
+          render({ ui: true, overlay: true });
+          return;
+        }
         state.brush.linked = !state.brush.linked;
         if (state.brush.linked) {
           state.brush.height = state.brush.width;
         }
+        render({ ui: true, overlay: true });
+      });
+      ui.brushRectButton.addEventListener("click", () => {
+        state.brush.shape = "rect";
+        render({ ui: true, overlay: true });
+      });
+      ui.brushCircularButton.addEventListener("click", () => {
+        state.brush.shape = "circle";
+        state.brush.linked = true;
+        state.brush.height = state.brush.width;
         render({ ui: true, overlay: true });
       });
       ui.shapeRectButton.addEventListener("click", () => {
