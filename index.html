@@ -1823,7 +1823,7 @@
         brush: {
           width: 1,
           height: 1,
-          linked: false,
+          linked: true,
           lastCellX: null,
           lastCellY: null,
         },
@@ -8136,6 +8136,19 @@
 
       function handleWheel(event) {
         event.preventDefault();
+        if (event.shiftKey && state.activeTool === "brush" && activeLayer()) {
+          const wheelDelta = Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+          if (wheelDelta !== 0) {
+            const nextWidth = Math.max(1, state.brush.width + (wheelDelta < 0 ? 1 : -1));
+            state.brush.width = nextWidth;
+            if (state.brush.linked) {
+              state.brush.height = nextWidth;
+            }
+            setStatus("Brush width " + cellsToCentimeters(state.brush.width) + " cm");
+            render({ ui: true, overlay: true });
+          }
+          return;
+        }
         const pointer = worldFromClient(event.clientX, event.clientY);
         const nextZoom = event.deltaY < 0 ? state.viewport.zoom * 1.08 : state.viewport.zoom / 1.08;
         const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, nextZoom));
