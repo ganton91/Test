@@ -935,6 +935,15 @@
         display: none;
       }
 
+      .tool-row {
+        display: flex;
+        gap: 8px;
+      }
+
+      .tool-row > * {
+        flex: 1;
+      }
+
       .tool-panel.collapsed {
         padding-bottom: 6px;
       }
@@ -1513,6 +1522,9 @@
             <button class="floating-tool" id="brushToolButton">
               <span>Brush</span>
             </button>
+            <button class="floating-tool" id="shapeToolButton">
+              <span>Shape</span>
+            </button>
           </div>
 
           <div class="floating-panels-left">
@@ -1578,6 +1590,26 @@
                 </div>
               </div>
             </div>
+
+            <div class="tool-panel brush-panel" id="shapePanel">
+              <div class="section-header">
+                <div class="section-header-left">
+                  <button class="section-toggle" id="shapePanelToggle" type="button" aria-expanded="true">
+                    <span class="section-toggle-arrow" aria-hidden="true"></span>
+                    <span class="section-header-title">Shape Settings</span>
+                  </button>
+                </div>
+              </div>
+              <div class="tool-fields">
+                <div class="field">
+                  <label>Shape Type</label>
+                  <div class="tool-row">
+                    <button class="ghost-button" id="shapeRectButton" type="button">Rectangular</button>
+                    <button class="ghost-button stub" id="shapeCircleButton" type="button" disabled aria-disabled="true">Circular</button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1627,6 +1659,7 @@
         colorPanel: document.getElementById("colorPanel"),
         colorPanelToggle: document.getElementById("colorPanelToggle"),
         brushPanelToggle: document.getElementById("brushPanelToggle"),
+        shapePanelToggle: document.getElementById("shapePanelToggle"),
         sceneAddButton: document.getElementById("sceneAddButton"),
         sceneImportInput: document.getElementById("sceneImportInput"),
         sceneList: document.getElementById("sceneList"),
@@ -1656,7 +1689,9 @@
         dualGridButtons: Array.from(document.querySelectorAll("[data-dual-grid]")),
         selectionToolButton: document.getElementById("selectionToolButton"),
         brushToolButton: document.getElementById("brushToolButton"),
+        shapeToolButton: document.getElementById("shapeToolButton"),
         brushPanel: document.getElementById("brushPanel"),
+        shapePanel: document.getElementById("shapePanel"),
         colorPalette: document.getElementById("colorPalette"),
         colorPaletteButtons: Array.from(document.querySelectorAll(".color-swatch")),
         colorHue: document.getElementById("colorHue"),
@@ -1666,6 +1701,8 @@
         brushWidth: document.getElementById("brushWidth"),
         brushLinkButton: document.getElementById("brushLinkButton"),
         brushHeight: document.getElementById("brushHeight"),
+        shapeRectButton: document.getElementById("shapeRectButton"),
+        shapeCircleButton: document.getElementById("shapeCircleButton"),
         selectionPicker: document.getElementById("selectionPicker"),
         viewSwitcher: document.getElementById("viewSwitcher"),
         viewOutputShell: document.getElementById("viewOutputShell"),
@@ -1708,6 +1745,9 @@
           lastCellX: null,
           lastCellY: null,
         },
+        shape: {
+          type: "rect",
+        },
         nextSceneNumber: 1,
         scenes: [],
         activeSceneId: null,
@@ -1732,6 +1772,7 @@
         viewEditDraft: null,
         colorPanelCollapsed: false,
         brushPanelCollapsed: false,
+        shapePanelCollapsed: false,
         measurementDraft: null,
         selectionPicker: null,
         gridPosition: "below",
@@ -3101,9 +3142,12 @@
       function renderToolState() {
         ui.selectionToolButton.classList.toggle("active", state.activeTool === "select");
         ui.brushToolButton.classList.toggle("active", state.activeTool === "brush");
+        ui.shapeToolButton.classList.toggle("active", state.activeTool === "shape");
         ui.brushLinkButton.classList.toggle("active", state.brush.linked);
         ui.brushLinkButton.setAttribute("aria-pressed", String(state.brush.linked));
         ui.brushLinkButton.title = state.brush.linked ? "Unlock width and height" : "Link width and height";
+        ui.shapeRectButton.classList.toggle("active", state.shape.type === "rect");
+        ui.shapeCircleButton.classList.toggle("active", state.shape.type === "circle");
         ui.colorEyedropperButton.classList.toggle("active", state.color.eyedropper);
         ui.colorHue.value = state.color.hsv.h;
         ui.colorSaturation.value = state.color.hsv.s;
@@ -3120,6 +3164,8 @@
             ? state.color.eyedropper
               ? "copy"
               : "crosshair"
+            : state.activeTool === "shape"
+            ? "crosshair"
             : state.activeTool === "measure"
             ? "crosshair"
             : state.activeTool === "viewbox"
@@ -3302,12 +3348,14 @@
         ui.layerSection.classList.toggle("collapsed", state.layerSectionCollapsed);
         ui.colorPanel.classList.toggle("collapsed", state.colorPanelCollapsed);
         ui.brushPanel.classList.toggle("collapsed", state.brushPanelCollapsed);
+        ui.shapePanel.classList.toggle("collapsed", state.shapePanelCollapsed);
         ui.sceneSectionToggle.setAttribute("aria-expanded", String(!state.sceneSectionCollapsed));
         ui.measurementSectionToggle.setAttribute("aria-expanded", String(!state.measurementSectionCollapsed));
         ui.viewSectionToggle.setAttribute("aria-expanded", String(!state.viewSectionCollapsed));
         ui.layerSectionToggle.setAttribute("aria-expanded", String(!state.layerSectionCollapsed));
         ui.colorPanelToggle.setAttribute("aria-expanded", String(!state.colorPanelCollapsed));
         ui.brushPanelToggle.setAttribute("aria-expanded", String(!state.brushPanelCollapsed));
+        ui.shapePanelToggle.setAttribute("aria-expanded", String(!state.shapePanelCollapsed));
       }
 
       function renderViews() {
@@ -4972,6 +5020,28 @@
           overlayCtx.strokeRect(x + 0.5, y + 0.5, snappedWidth - 1, snappedHeight - 1);
           overlayCtx.restore();
         }
+
+        if (state.interaction && state.interaction.type === "shape" && state.interaction.shapeType === "rect") {
+          const bounds = normalizeShapeBounds(
+            state.interaction.startCellX,
+            state.interaction.startCellY,
+            state.interaction.currentCellX,
+            state.interaction.currentCellY
+          );
+          const size = CELL_SIZE * state.viewport.zoom;
+          const x = snapPixel(state.viewport.x + bounds.minX * size);
+          const y = snapPixel(state.viewport.y + bounds.minY * size);
+          const width = Math.max(1, snapPixel((bounds.maxX - bounds.minX + 1) * size));
+          const height = Math.max(1, snapPixel((bounds.maxY - bounds.minY + 1) * size));
+          overlayCtx.save();
+          overlayCtx.fillStyle =
+            state.interaction.mode === "paint" ? hexToRgba(state.color.active, 0.18) : hexToRgba(getCssVar("--text"), 0.12);
+          overlayCtx.strokeStyle =
+            state.interaction.mode === "paint" ? hexToRgba(state.color.active, 0.56) : hexToRgba(getCssVar("--text"), 0.42);
+          overlayCtx.fillRect(x, y, width, height);
+          overlayCtx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+          overlayCtx.restore();
+        }
       }
 
       function drawRulers() {
@@ -5286,6 +5356,25 @@
         state.brush.lastCellY = cellY;
       }
 
+      function normalizeShapeBounds(startCellX, startCellY, endCellX, endCellY) {
+        return {
+          minX: Math.min(startCellX, endCellX),
+          minY: Math.min(startCellY, endCellY),
+          maxX: Math.max(startCellX, endCellX),
+          maxY: Math.max(startCellY, endCellY),
+        };
+      }
+
+      function paintRectShape(bounds, mode) {
+        let changed = false;
+        for (let cellY = bounds.minY; cellY <= bounds.maxY; cellY += 1) {
+          for (let cellX = bounds.minX; cellX <= bounds.maxX; cellX += 1) {
+            changed = paintCells(cellX, cellY, mode) || changed;
+          }
+        }
+        return changed;
+      }
+
       function samplePaintColorAt(worldX, worldY) {
         const layer = topPaintedLayerAt(worldX, worldY);
         if (!layer) return null;
@@ -5336,6 +5425,23 @@
         rememberBrushPoint(cell.x, cell.y);
         setStatus(mode === "paint" ? "Painting active layer." : "Erasing from active layer.");
         render({ ui: changed, content: true, overlay: true });
+      }
+
+      function beginShape(clientX, clientY, mode) {
+        const pointer = worldFromClient(clientX, clientY);
+        const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+        if (!activeLayer()) return;
+        state.interaction = {
+          type: "shape",
+          mode,
+          shapeType: state.shape.type,
+          startCellX: cell.x,
+          startCellY: cell.y,
+          currentCellX: cell.x,
+          currentCellY: cell.y,
+        };
+        setStatus(mode === "paint" ? "Drag to paint a shape." : "Drag to erase a shape.");
+        render({ overlay: true });
       }
 
       function brushCellWithAxisLock(interaction, clientX, clientY, cellX, cellY, shiftKey) {
@@ -5684,6 +5790,10 @@
           else if (measurement.mode === "area") beginMeasurementArea(event.clientX, event.clientY);
           return;
         }
+        if (state.activeTool === "shape") {
+          beginShape(event.clientX, event.clientY, isRightClick ? "erase" : "paint");
+          return;
+        }
         if (state.activeTool === "view" && !isRightClick) {
           if (beginViewTransform(event.clientX, event.clientY)) {
             return;
@@ -5736,6 +5846,8 @@
             }
           } else if (state.activeTool === "brush") {
             ui.overlayCanvas.style.cursor = state.color.eyedropper ? "copy" : "crosshair";
+          } else if (state.activeTool === "shape") {
+            ui.overlayCanvas.style.cursor = "crosshair";
           } else if (state.activeTool === "viewbox") {
             ui.overlayCanvas.style.cursor = "crosshair";
           } else {
@@ -5763,6 +5875,15 @@
             rememberBrushPoint(cell.x, cell.y);
             render({ ui: changed, content: true, overlay: true });
           }
+          return;
+        }
+
+        if (state.interaction.type === "shape") {
+          const pointer = worldFromClient(event.clientX, event.clientY);
+          const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+          state.interaction.currentCellX = cell.x;
+          state.interaction.currentCellY = cell.y;
+          render({ overlay: true });
           return;
         }
 
@@ -5968,6 +6089,21 @@
           }
           setStatus("View box needs a larger drag.");
         }
+        if (state.interaction.type === "shape") {
+          const interaction = state.interaction;
+          if (interaction.shapeType === "rect") {
+            const bounds = normalizeShapeBounds(
+              interaction.startCellX,
+              interaction.startCellY,
+              interaction.currentCellX,
+              interaction.currentCellY
+            );
+            const changed = paintRectShape(bounds, interaction.mode);
+            state.interaction = null;
+            render({ ui: changed, content: true, overlay: true });
+            return;
+          }
+        }
         if (state.interaction.type === "view-move" || state.interaction.type === "view-resize") {
           setStatus("View box updated.");
         }
@@ -6003,18 +6139,34 @@
             state.activeViewId = null;
             state.activeTool = "brush";
           }
+        } else if (tool === "shape") {
+          if (!activeLayer() && state.layers[0]) {
+            setActiveLayerById(state.layers[0].id);
+          } else {
+            state.activeSceneId = null;
+            state.activeMeasurementId = null;
+            state.activeViewId = null;
+            state.activeTool = "shape";
+          }
         } else {
           state.color.eyedropper = false;
         }
         state.activeTool = tool;
         setStatus(
-          tool === "select" ? "Selection tool active." : tool === "brush" ? "Brush tool active." : "Transform tool active."
+          tool === "select"
+            ? "Selection tool active."
+            : tool === "brush"
+            ? "Brush tool active."
+            : tool === "shape"
+            ? "Shape tool active."
+            : "Transform tool active."
         );
         render({ ui: true, overlay: true });
       }
 
       ui.selectionToolButton.addEventListener("click", () => activateTool("select"));
       ui.brushToolButton.addEventListener("click", () => activateTool("brush"));
+      ui.shapeToolButton.addEventListener("click", () => activateTool("shape"));
       ui.colorPaletteButtons.forEach((button, index) => {
         button.addEventListener("click", () => {
           setActiveColorSwatch(index);
@@ -6061,6 +6213,10 @@
         }
         render({ ui: true, overlay: true });
       });
+      ui.shapeRectButton.addEventListener("click", () => {
+        state.shape.type = "rect";
+        render({ ui: true, overlay: true });
+      });
 
       ui.sceneAddButton.addEventListener("click", () => {
         ui.sceneImportInput.value = "";
@@ -6084,6 +6240,10 @@
       });
       ui.brushPanelToggle.addEventListener("click", () => {
         state.brushPanelCollapsed = !state.brushPanelCollapsed;
+        render({ ui: true });
+      });
+      ui.shapePanelToggle.addEventListener("click", () => {
+        state.shapePanelCollapsed = !state.shapePanelCollapsed;
         render({ ui: true });
       });
       ui.layerSectionToggle.addEventListener("click", () => {
