@@ -408,6 +408,12 @@
         opacity: 0.55;
       }
 
+      .view-card-dimensions {
+        margin-top: -2px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
       .drag-handle {
         cursor: grab;
         font-size: 14px;
@@ -1284,7 +1290,7 @@
       .view-edit-column-headings,
       .view-edit-layer-row {
         display: grid;
-        grid-template-columns: 16px minmax(0, 1fr) 108px 108px;
+        grid-template-columns: 16px minmax(0, 1fr) 88px 88px 88px;
         gap: 10px;
         align-items: center;
       }
@@ -1330,6 +1336,19 @@
 
       .view-edit-field input {
         padding: 7px 9px;
+      }
+
+      .view-edit-derived {
+        display: flex;
+        align-items: center;
+        padding: 7px 9px;
+        min-height: 33px;
+        box-sizing: border-box;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface-strong);
+        color: var(--muted);
+        font-size: 13px;
       }
 
       .view-edit-empty {
@@ -1515,8 +1534,9 @@
             <div class="view-edit-column-headings" id="viewEditColumnHeadings">
               <span></span>
               <span>Layer</span>
-              <span>Base Elev.</span>
               <span>Height</span>
+              <span>Start</span>
+              <span>End</span>
             </div>
             <div class="view-edit-layer-list" id="viewEditLayerList"></div>
             <div class="empty-state view-edit-empty hidden" id="viewEditEmptyState">
@@ -2880,15 +2900,7 @@
           orderIndex,
         }));
 
-        const occupiedColumns = [];
-        columnsByLayer.forEach((entry) => {
-          if (!entry.heightCells || !entry.colorByColumn.size) return;
-          entry.colorByColumn.forEach((_, columnIndex) => occupiedColumns.push(columnIndex));
-        });
-
-        const minOccupiedColumn = occupiedColumns.length ? Math.min(...occupiedColumns) : 0;
-        const maxOccupiedColumn = occupiedColumns.length ? Math.max(...occupiedColumns) : -1;
-        const totalColumns = maxOccupiedColumn >= minOccupiedColumn ? maxOccupiedColumn - minOccupiedColumn + 1 : 0;
+        const totalColumns = bounds[directionConfig.primaryMaxKey] - bounds[directionConfig.primaryMinKey] + 1;
         const minBaseCells = columnsByLayer.reduce((min, entry) => {
           if (!entry.heightCells || !entry.colorByColumn.size) return min;
           return Math.min(min, entry.baseCells);
@@ -2927,7 +2939,7 @@
         for (const entry of columnsByLayer) {
           if (!entry.heightCells || !entry.colorByColumn.size) continue;
           entry.colorByColumn.forEach((column, columnIndex) => {
-            const projectedColumnIndex = directionConfig.mirrorColumns ? maxOccupiedColumn - columnIndex : columnIndex - minOccupiedColumn;
+            const projectedColumnIndex = directionConfig.mirrorColumns ? totalColumns - 1 - columnIndex : columnIndex;
             for (let z = entry.baseCells; z < entry.baseCells + entry.heightCells; z += 1) {
               if (z < minBaseCells || z >= maxTopCells) continue;
               const rowIndex = totalRows - 1 - (z - minBaseCells);
@@ -4290,6 +4302,18 @@
         return units / (CELLS_PER_METER * CELL_SIZE);
       }
 
+      function formatMetersValue(value) {
+        if (!Number.isFinite(value)) return "0.00m";
+        return value.toFixed(Math.abs(value - Math.round(value)) < 0.001 ? 0 : 2) + "m";
+      }
+
+      function viewBoxDimensionsText(view) {
+        if (!view || !view.bounds) return "";
+        const widthMeters = metersFromWorldUnits(view.bounds.maxX - view.bounds.minX);
+        const heightMeters = metersFromWorldUnits(view.bounds.maxY - view.bounds.minY);
+        return formatMetersValue(widthMeters) + " × " + formatMetersValue(heightMeters);
+      }
+
       function cellsToCentimeters(cells) {
         return cells * CENTIMETERS_PER_CELL;
       }
@@ -5027,21 +5051,6 @@
           name.textContent = item.name;
           row.appendChild(name);
 
-          const baseField = document.createElement("div");
-          baseField.className = "field view-edit-field";
-          const baseInput = document.createElement("input");
-          baseInput.type = "number";
-          baseInput.step = "0.1";
-          baseInput.value = String(item.baseElevation);
-          baseInput.setAttribute("aria-label", item.name + " base elevation");
-          baseInput.addEventListener("click", (event) => event.stopPropagation());
-          baseInput.addEventListener("pointerdown", (event) => event.stopPropagation());
-          baseInput.addEventListener("input", () => {
-            item.baseElevation = Number(baseInput.value);
-          });
-          baseField.appendChild(baseInput);
-          row.appendChild(baseField);
-
           const heightField = document.createElement("div");
           heightField.className = "field view-edit-field";
           const heightInput = document.createElement("input");
@@ -5052,11 +5061,36 @@
           heightInput.setAttribute("aria-label", item.name + " height");
           heightInput.addEventListener("click", (event) => event.stopPropagation());
           heightInput.addEventListener("pointerdown", (event) => event.stopPropagation());
+          const endingField = document.createElement("div");
+          endingField.className = "view-edit-derived";
+          const updateEndingField = () => {
+            endingField.textContent = String(((Number(item.baseElevation) || 0) + (Number(item.height) || 0)).toFixed(2)).replace(/\.00$/, "");
+          };
           heightInput.addEventListener("input", () => {
             item.height = Number(heightInput.value);
+            updateEndingField();
           });
           heightField.appendChild(heightInput);
           row.appendChild(heightField);
+
+          const baseField = document.createElement("div");
+          baseField.className = "field view-edit-field";
+          const baseInput = document.createElement("input");
+          baseInput.type = "number";
+          baseInput.step = "0.1";
+          baseInput.value = String(item.baseElevation);
+          baseInput.setAttribute("aria-label", item.name + " start elevation");
+          baseInput.addEventListener("click", (event) => event.stopPropagation());
+          baseInput.addEventListener("pointerdown", (event) => event.stopPropagation());
+          baseInput.addEventListener("input", () => {
+            item.baseElevation = Number(baseInput.value);
+            updateEndingField();
+          });
+          baseField.appendChild(baseInput);
+          row.appendChild(baseField);
+
+          updateEndingField();
+          row.appendChild(endingField);
 
           row.addEventListener("dragover", (event) => {
             if (!draft.dragLayerId || draft.dragLayerId === item.layerId) return;
@@ -5221,11 +5255,16 @@
           header.appendChild(inlineControls);
           main.appendChild(header);
 
+          const dimensions = document.createElement("div");
+          dimensions.className = "view-card-dimensions";
+          dimensions.textContent = viewBoxDimensionsText(view);
+          main.appendChild(dimensions);
+
           const actions = document.createElement("div");
           actions.className = "layer-actions";
           const editButton = document.createElement("button");
           editButton.className = "layer-icon";
-          editButton.textContent = "Edit Layers";
+          editButton.textContent = "Edit Layer Elevations";
           editButton.title = "Edit view";
           editButton.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -6061,6 +6100,16 @@
           minY: Math.min(a.y, b.y),
           maxX: Math.max(a.x, b.x),
           maxY: Math.max(a.y, b.y),
+        };
+      }
+
+      function constrainViewBoxSquare(anchor, point) {
+        const deltaX = point.x - anchor.x;
+        const deltaY = point.y - anchor.y;
+        const size = Math.max(Math.abs(deltaX), Math.abs(deltaY));
+        return {
+          x: anchor.x + (deltaX < 0 ? -size : size),
+          y: anchor.y + (deltaY < 0 ? -size : size),
         };
       }
 
@@ -9097,10 +9146,13 @@
 
         if (state.interaction.type === "viewbox-draw") {
           const pointer = worldFromClient(event.clientX, event.clientY);
-          state.interaction.current = {
+          const current = {
             x: viewBoxBoundaryFromWorld(pointer.worldX),
             y: viewBoxBoundaryFromWorld(pointer.worldY),
           };
+          state.interaction.current = event.shiftKey
+            ? constrainViewBoxSquare(state.interaction.start, current)
+            : current;
           render({ overlay: true });
           return;
         }
@@ -9135,8 +9187,21 @@
           const view = state.views.find((entry) => entry.id === state.interaction.viewId);
           if (!view || !view.bounds) return;
           const pointer = worldFromClient(event.clientX, event.clientY);
-          const snappedX = viewBoxBoundaryFromWorld(pointer.worldX);
-          const snappedY = viewBoxBoundaryFromWorld(pointer.worldY);
+          let snappedX = viewBoxBoundaryFromWorld(pointer.worldX);
+          let snappedY = viewBoxBoundaryFromWorld(pointer.worldY);
+          if (event.shiftKey) {
+            const anchor = {
+              x: state.interaction.handle === "nw" || state.interaction.handle === "sw"
+                ? state.interaction.startBounds.maxX
+                : state.interaction.startBounds.minX,
+              y: state.interaction.handle === "nw" || state.interaction.handle === "ne"
+                ? state.interaction.startBounds.maxY
+                : state.interaction.startBounds.minY,
+            };
+            const constrained = constrainViewBoxSquare(anchor, { x: snappedX, y: snappedY });
+            snappedX = constrained.x;
+            snappedY = constrained.y;
+          }
           const nextBounds = { ...state.interaction.startBounds };
 
           if (state.interaction.handle === "nw" || state.interaction.handle === "sw") {
