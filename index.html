@@ -3200,6 +3200,35 @@
                   context.fillRect(x + cellPixelSize, y, strokeThickness, cellPixelSize);
                 }
               }
+              if (topBoundary && leftBoundary) {
+                context.fillRect(x, y, strokeThickness, strokeThickness);
+              }
+              if (topBoundary && rightBoundary) {
+                context.fillRect(x + cellPixelSize - strokeThickness, y, strokeThickness, strokeThickness);
+              }
+              if (bottomBoundary && leftBoundary) {
+                context.fillRect(x, y + cellPixelSize - strokeThickness, strokeThickness, strokeThickness);
+              }
+              if (bottomBoundary && rightBoundary) {
+                context.fillRect(
+                  x + cellPixelSize - strokeThickness,
+                  y + cellPixelSize - strokeThickness,
+                  strokeThickness,
+                  strokeThickness
+                );
+              }
+              if (topBoundary && leftBoundary) {
+                context.fillRect(x - strokeThickness, y - strokeThickness, strokeThickness, strokeThickness);
+              }
+              if (topBoundary && rightBoundary) {
+                context.fillRect(x + cellPixelSize, y - strokeThickness, strokeThickness, strokeThickness);
+              }
+              if (bottomBoundary && leftBoundary) {
+                context.fillRect(x - strokeThickness, y + cellPixelSize, strokeThickness, strokeThickness);
+              }
+              if (bottomBoundary && rightBoundary) {
+                context.fillRect(x + cellPixelSize, y + cellPixelSize, strokeThickness, strokeThickness);
+              }
             }
           }
           context.restore();
