@@ -2625,6 +2625,55 @@
         state.activeTool = "select";
       }
 
+      function deleteActiveTarget() {
+        if (state.activeSceneId) {
+          const index = state.scenes.findIndex((entry) => entry.id === state.activeSceneId);
+          if (index === -1) return false;
+          const [scene] = state.scenes.splice(index, 1);
+          if (scene?.previewUrl) URL.revokeObjectURL(scene.previewUrl);
+          clearActiveTarget();
+          render({ ui: true, scenes: true });
+          return true;
+        }
+        if (state.activeLayerId) {
+          const index = state.layers.findIndex((entry) => entry.id === state.activeLayerId);
+          if (index === -1) return false;
+          state.layers.splice(index, 1);
+          clearActiveTarget();
+          render({ ui: true, content: true, overlay: true });
+          return true;
+        }
+        if (state.activeMeasurementId) {
+          const index = state.measurements.findIndex((entry) => entry.id === state.activeMeasurementId);
+          if (index === -1) return false;
+          state.measurements.splice(index, 1);
+          clearActiveTarget();
+          render({ ui: true, overlay: true });
+          return true;
+        }
+        if (state.activeViewId) {
+          const index = state.views.findIndex((entry) => entry.id === state.activeViewId);
+          if (index === -1) return false;
+          const view = state.views[index];
+          if (view.pending) {
+            cancelPendingView();
+            render({ ui: true, overlay: true });
+            return true;
+          }
+          state.views.splice(index, 1);
+          if (state.activeCanvasViewTab === view.id) {
+            state.activeCanvasViewTab = "main";
+          }
+          if (state.viewEditDraft && state.viewEditDraft.viewId === view.id) {
+            closeViewEditModal();
+          }
+          clearActiveTarget();
+          render({ ui: true, overlay: true });
+          return true;
+        }
+        return false;
+      }
+
       function toggleLayerActivation(layerId) {
         if (state.activeLayerId === layerId && !state.activeSceneId && !state.activeMeasurementId && !state.activeViewId) {
           state.editingLayerId = null;
@@ -4670,10 +4719,8 @@
           removeInline.className = "inline-icon delete-mark";
           removeInline.textContent = "×";
           removeInline.title = "Delete layer";
-          removeInline.disabled = state.layers.length === 1;
           removeInline.addEventListener("click", (event) => {
             event.stopPropagation();
-            if (state.layers.length === 1) return;
             const index = state.layers.findIndex((entry) => entry.id === layer.id);
             state.layers.splice(index, 1);
             if (state.activeLayerId === layer.id) {
@@ -8554,6 +8601,19 @@
           resetBrushAxisLockAnchor(state.pointer.clientX, state.pointer.clientY);
           if (state.pointer.inside && state.activeTool === "brush") render({ overlay: true });
         }
+        const target = event.target;
+        const isEditableTarget = target instanceof HTMLInputElement
+          || target instanceof HTMLTextAreaElement
+          || target instanceof HTMLSelectElement
+          || target?.isContentEditable;
+        const hasOpenModal = isModalOpen(ui.settingsMenu) || isModalOpen(ui.sceneScaleModal) || isModalOpen(ui.viewEditModal);
+        if (event.key === "Delete" && state.activeTool === "select" && !hasOpenModal && !isEditableTarget) {
+          if (deleteActiveTarget()) {
+            event.preventDefault();
+            setStatus("Active item deleted.");
+          }
+          return;
+        }
         if (event.key === "Escape" && state.sceneCalibration) {
           cancelSceneCalibration();
           setStatus("Scene scale setup cancelled.");
@@ -8600,6 +8660,16 @@
         if (event.key === "Escape" && state.outline.eyedropper) {
           state.outline.eyedropper = false;
           setStatus("Outline eyedropper off.");
+          render({ ui: true, overlay: true });
+          return;
+        }
+        if (
+          event.key === "Escape"
+          && state.activeLayerId
+          && (state.activeTool === "brush" || state.activeTool === "shape")
+        ) {
+          setActiveLayerById(state.activeLayerId, { tool: "select" });
+          setStatus("Layer selected.");
           render({ ui: true, overlay: true });
           return;
         }
