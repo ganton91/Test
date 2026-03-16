@@ -3281,12 +3281,22 @@
         };
         const rotateOffset = 28 / state.viewport.zoom;
         const rotateHandle = rotatePoint(0, -halfHeight - rotateOffset, rotation);
+        const tangentOffset = 18 / state.viewport.zoom;
+        const tangent = rotatePoint(1, 0, rotation);
         return {
           nw: { x: center.x + corners.nw.x, y: center.y + corners.nw.y },
           ne: { x: center.x + corners.ne.x, y: center.y + corners.ne.y },
           se: { x: center.x + corners.se.x, y: center.y + corners.se.y },
           sw: { x: center.x + corners.sw.x, y: center.y + corners.sw.y },
           rotate: { x: center.x + rotateHandle.x, y: center.y + rotateHandle.y },
+          flipHorizontal: {
+            x: center.x + rotateHandle.x - tangent.x * tangentOffset,
+            y: center.y + rotateHandle.y - tangent.y * tangentOffset,
+          },
+          flipVertical: {
+            x: center.x + rotateHandle.x + tangent.x * tangentOffset,
+            y: center.y + rotateHandle.y + tangent.y * tangentOffset,
+          },
           center,
         };
       }
@@ -3294,6 +3304,12 @@
       function sceneTransformHit(scene, worldX, worldY) {
         const handles = sceneHandleWorldPositions(scene);
         const radius = 10 / state.viewport.zoom;
+        if (Math.hypot(worldX - handles.flipHorizontal.x, worldY - handles.flipHorizontal.y) <= radius) {
+          return { type: "flip-horizontal", handle: null };
+        }
+        if (Math.hypot(worldX - handles.flipVertical.x, worldY - handles.flipVertical.y) <= radius) {
+          return { type: "flip-vertical", handle: null };
+        }
         for (const key of ["rotate", "nw", "ne", "se", "sw"]) {
           const handle = handles[key];
           const dx = worldX - handle.x;
@@ -3326,6 +3342,7 @@
         if (!hit) return "default";
         if (hit.type === "rotate") return "grab";
         if (hit.type === "move") return "move";
+        if (hit.type === "flip-horizontal" || hit.type === "flip-vertical") return "pointer";
         return "nwse-resize";
       }
 
@@ -4542,6 +4559,7 @@
           sceneCtx.globalAlpha = scene.opacity;
           sceneCtx.translate(snapPixel(screenCenter.x), snapPixel(screenCenter.y));
           sceneCtx.rotate(scene.rotation || 0);
+          sceneCtx.scale(scene.flipX ? -1 : 1, scene.flipY ? -1 : 1);
           sceneCtx.drawImage(scene.image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
           sceneCtx.restore();
         });
@@ -5206,6 +5224,8 @@
             });
           } else {
             const rotateHandle = worldToScreen(handles.rotate.x, handles.rotate.y);
+            const flipHorizontalHandle = worldToScreen(handles.flipHorizontal.x, handles.flipHorizontal.y);
+            const flipVerticalHandle = worldToScreen(handles.flipVertical.x, handles.flipVertical.y);
             const topCenter = worldToScreen((handles.nw.x + handles.ne.x) / 2, (handles.nw.y + handles.ne.y) / 2);
 
             overlayCtx.beginPath();
@@ -5221,6 +5241,8 @@
               overlayCtx.fill();
               overlayCtx.stroke();
             });
+            drawLayerFlipIcon(overlayCtx, flipHorizontalHandle, "horizontal");
+            drawLayerFlipIcon(overlayCtx, flipVerticalHandle, "vertical");
           }
           overlayCtx.restore();
         }
@@ -5793,6 +5815,8 @@
           locked: false,
           opacity: 1,
           rotation: 0,
+          flipX: false,
+          flipY: false,
           x: Math.round(centerWorldX - width / 2),
           y: Math.round(centerWorldY - height / 2),
           width,
@@ -6640,6 +6664,17 @@
           clearActiveTarget();
           setStatus("Selection tool active.");
           render({ ui: true, overlay: true });
+          return;
+        }
+        if (hit.type === "flip-horizontal" || hit.type === "flip-vertical") {
+          if (hit.type === "flip-horizontal") {
+            scene.flipX = !scene.flipX;
+            setStatus("Scene flipped horizontally.");
+          } else {
+            scene.flipY = !scene.flipY;
+            setStatus("Scene flipped vertically.");
+          }
+          render({ scenes: true, overlay: true });
           return;
         }
 
