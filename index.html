@@ -1606,6 +1606,7 @@
                   <div class="tool-row">
                     <button class="ghost-button" id="shapeRectButton" type="button">Rectangular</button>
                     <button class="ghost-button" id="shapeEllipticalButton" type="button">Elliptical</button>
+                    <button class="ghost-button" id="shapeCircularButton" type="button">Circular</button>
                   </div>
                 </div>
               </div>
@@ -1703,6 +1704,7 @@
         brushHeight: document.getElementById("brushHeight"),
         shapeRectButton: document.getElementById("shapeRectButton"),
         shapeEllipticalButton: document.getElementById("shapeEllipticalButton"),
+        shapeCircularButton: document.getElementById("shapeCircularButton"),
         selectionPicker: document.getElementById("selectionPicker"),
         viewSwitcher: document.getElementById("viewSwitcher"),
         viewOutputShell: document.getElementById("viewOutputShell"),
@@ -3147,7 +3149,8 @@
         ui.brushLinkButton.setAttribute("aria-pressed", String(state.brush.linked));
         ui.brushLinkButton.title = state.brush.linked ? "Unlock width and height" : "Link width and height";
         ui.shapeRectButton.classList.toggle("active", state.shape.type === "rect");
-        ui.shapeEllipticalButton.classList.toggle("active", state.shape.type === "circle");
+        ui.shapeEllipticalButton.classList.toggle("active", state.shape.type === "ellipse");
+        ui.shapeCircularButton.classList.toggle("active", state.shape.type === "circle");
         ui.colorEyedropperButton.classList.toggle("active", state.color.eyedropper);
         ui.colorHue.value = state.color.hsv.h;
         ui.colorSaturation.value = state.color.hsv.s;
@@ -5022,25 +5025,37 @@
         }
 
         if (state.interaction && state.interaction.type === "shape") {
-          const bounds = shapeBoundsFromInteraction(state.interaction);
-          const size = CELL_SIZE * state.viewport.zoom;
-          const x = snapPixel(state.viewport.x + bounds.minX * size);
-          const y = snapPixel(state.viewport.y + bounds.minY * size);
-          const width = Math.max(1, snapPixel((bounds.maxX - bounds.minX + 1) * size));
-          const height = Math.max(1, snapPixel((bounds.maxY - bounds.minY + 1) * size));
           overlayCtx.save();
           overlayCtx.fillStyle =
             state.interaction.mode === "paint" ? hexToRgba(state.color.active, 0.18) : hexToRgba(getCssVar("--text"), 0.12);
           overlayCtx.strokeStyle =
             state.interaction.mode === "paint" ? hexToRgba(state.color.active, 0.56) : hexToRgba(getCssVar("--text"), 0.42);
           if (state.interaction.shapeType === "circle") {
+            const spec = circleSpecFromInteraction(state.interaction);
+            const size = CELL_SIZE * state.viewport.zoom;
+            const centerX = snapPixel(state.viewport.x + (spec.centerX + 0.5) * size);
+            const centerY = snapPixel(state.viewport.y + (spec.centerY + 0.5) * size);
+            const radius = Math.max(size / 2, spec.radius * size);
             overlayCtx.beginPath();
-            overlayCtx.ellipse(x + width / 2, y + height / 2, Math.max(0.5, width / 2), Math.max(0.5, height / 2), 0, 0, Math.PI * 2);
+            overlayCtx.ellipse(centerX, centerY, radius, radius, 0, 0, Math.PI * 2);
             overlayCtx.fill();
             overlayCtx.stroke();
           } else {
-            overlayCtx.fillRect(x, y, width, height);
-            overlayCtx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+            const bounds = shapeBoundsFromInteraction(state.interaction);
+            const size = CELL_SIZE * state.viewport.zoom;
+            const x = snapPixel(state.viewport.x + bounds.minX * size);
+            const y = snapPixel(state.viewport.y + bounds.minY * size);
+            const width = Math.max(1, snapPixel((bounds.maxX - bounds.minX + 1) * size));
+            const height = Math.max(1, snapPixel((bounds.maxY - bounds.minY + 1) * size));
+            if (state.interaction.shapeType === "ellipse") {
+              overlayCtx.beginPath();
+              overlayCtx.ellipse(x + width / 2, y + height / 2, Math.max(0.5, width / 2), Math.max(0.5, height / 2), 0, 0, Math.PI * 2);
+              overlayCtx.fill();
+              overlayCtx.stroke();
+            } else {
+              overlayCtx.fillRect(x, y, width, height);
+              overlayCtx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+            }
           }
           overlayCtx.restore();
         }
@@ -5378,14 +5393,41 @@
         };
       }
 
+      function circleSpecFromInteraction(interaction) {
+        if (interaction.centered) {
+          return {
+            centerX: interaction.startCellX,
+            centerY: interaction.startCellY,
+            radius: Math.hypot(interaction.currentCellX - interaction.startCellX, interaction.currentCellY - interaction.startCellY),
+          };
+        }
+        return {
+          centerX: (interaction.startCellX + interaction.currentCellX) / 2,
+          centerY: (interaction.startCellY + interaction.currentCellY) / 2,
+          radius: Math.hypot(interaction.currentCellX - interaction.startCellX, interaction.currentCellY - interaction.startCellY) / 2,
+        };
+      }
+
+      function circleBoundsFromSpec(spec) {
+        return {
+          minX: Math.floor(spec.centerX - spec.radius),
+          minY: Math.floor(spec.centerY - spec.radius),
+          maxX: Math.ceil(spec.centerX + spec.radius),
+          maxY: Math.ceil(spec.centerY + spec.radius),
+        };
+      }
+
       function shapeBoundsFromInteraction(interaction) {
-        if (interaction.shapeType === "circle" && interaction.centered) {
+        if (interaction.shapeType === "ellipse" && interaction.centered) {
           return centeredShapeBounds(
             interaction.startCellX,
             interaction.startCellY,
             interaction.currentCellX,
             interaction.currentCellY
           );
+        }
+        if (interaction.shapeType === "circle") {
+          return circleBoundsFromSpec(circleSpecFromInteraction(interaction));
         }
         return normalizeShapeBounds(
           interaction.startCellX,
@@ -5417,6 +5459,23 @@
             const normalizedX = (cellX - centerX) / Math.max(radiusX, 0.5);
             const normalizedY = (cellY - centerY) / Math.max(radiusY, 0.5);
             if (normalizedX * normalizedX + normalizedY * normalizedY <= 1) {
+              changed = paintCells(cellX, cellY, mode) || changed;
+            }
+          }
+        }
+
+        return changed;
+      }
+
+      function paintCircularShape(interaction, mode) {
+        const spec = circleSpecFromInteraction(interaction);
+        const bounds = circleBoundsFromSpec(spec);
+        let changed = false;
+
+        for (let cellY = bounds.minY; cellY <= bounds.maxY; cellY += 1) {
+          for (let cellX = bounds.minX; cellX <= bounds.maxX; cellX += 1) {
+            const distance = Math.hypot(cellX - spec.centerX, cellY - spec.centerY);
+            if (distance <= spec.radius) {
               changed = paintCells(cellX, cellY, mode) || changed;
             }
           }
@@ -5485,7 +5544,7 @@
           type: "shape",
           mode,
           shapeType: state.shape.type,
-          centered: centered && state.shape.type === "circle",
+          centered: centered && (state.shape.type === "ellipse" || state.shape.type === "circle"),
           startCellX: cell.x,
           startCellY: cell.y,
           currentCellX: cell.x,
@@ -5932,7 +5991,7 @@
         if (state.interaction.type === "shape") {
           const pointer = worldFromClient(event.clientX, event.clientY);
           const cell = cellFromWorld(pointer.worldX, pointer.worldY);
-          state.interaction.centered = event.shiftKey && state.interaction.shapeType === "circle";
+          state.interaction.centered = event.shiftKey && (state.interaction.shapeType === "ellipse" || state.interaction.shapeType === "circle");
           state.interaction.currentCellX = cell.x;
           state.interaction.currentCellY = cell.y;
           render({ overlay: true });
@@ -6143,11 +6202,12 @@
         }
         if (state.interaction.type === "shape") {
           const interaction = state.interaction;
-          const bounds = shapeBoundsFromInteraction(interaction);
           const changed =
             interaction.shapeType === "circle"
-              ? paintCircleShape(bounds, interaction.mode)
-              : paintRectShape(bounds, interaction.mode);
+              ? paintCircularShape(interaction, interaction.mode)
+              : interaction.shapeType === "ellipse"
+              ? paintCircleShape(shapeBoundsFromInteraction(interaction), interaction.mode)
+              : paintRectShape(shapeBoundsFromInteraction(interaction), interaction.mode);
           state.interaction = null;
           render({ ui: changed, content: true, overlay: true });
           return;
@@ -6266,6 +6326,10 @@
         render({ ui: true, overlay: true });
       });
       ui.shapeEllipticalButton.addEventListener("click", () => {
+        state.shape.type = "ellipse";
+        render({ ui: true, overlay: true });
+      });
+      ui.shapeCircularButton.addEventListener("click", () => {
         state.shape.type = "circle";
         render({ ui: true, overlay: true });
       });
