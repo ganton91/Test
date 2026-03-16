@@ -1498,27 +1498,26 @@
               </div>
             </div>
             <div class="menu-section">
-              <div class="menu-title">View Outline</div>
+              <div class="menu-title">Outline</div>
               <div class="menu-actions">
                 <button class="mode-button active" data-view-outline="on">On</button>
                 <button class="mode-button" data-view-outline="off">Off</button>
+                <input id="viewOutlineColor" type="color" value="#111827" />
               </div>
             </div>
             <div class="menu-section">
-              <div class="menu-title">Outline Thickness</div>
-              <div class="menu-actions" style="min-width: 180px;">
-                <input id="viewOutlineThickness" type="range" min="1" max="6" step="1" value="1" />
-              </div>
-            </div>
-            <div class="menu-section">
-              <div class="menu-title">Sky Color</div>
-              <div class="menu-actions" style="min-width: 180px;">
+              <div class="menu-title">Sky</div>
+              <div class="menu-actions">
+                <button class="mode-button active" data-view-sky="on">On</button>
+                <button class="mode-button" data-view-sky="off">Off</button>
                 <input id="viewSkyColor" type="color" value="#f8fafc" />
               </div>
             </div>
             <div class="menu-section">
-              <div class="menu-title">Ground Color</div>
-              <div class="menu-actions" style="min-width: 180px;">
+              <div class="menu-title">Ground</div>
+              <div class="menu-actions">
+                <button class="mode-button active" data-view-ground="on">On</button>
+                <button class="mode-button" data-view-ground="off">Off</button>
                 <input id="viewGroundColor" type="color" value="#d4d0c8" />
               </div>
             </div>
@@ -1861,8 +1860,10 @@
         dualGridButtons: Array.from(document.querySelectorAll("[data-dual-grid]")),
         viewDepthButtons: Array.from(document.querySelectorAll("[data-view-depth]")),
         viewOutlineButtons: Array.from(document.querySelectorAll("[data-view-outline]")),
+        viewSkyButtons: Array.from(document.querySelectorAll("[data-view-sky]")),
+        viewGroundButtons: Array.from(document.querySelectorAll("[data-view-ground]")),
         viewDepthStrength: document.getElementById("viewDepthStrength"),
-        viewOutlineThickness: document.getElementById("viewOutlineThickness"),
+        viewOutlineColor: document.getElementById("viewOutlineColor"),
         viewSkyColor: document.getElementById("viewSkyColor"),
         viewGroundColor: document.getElementById("viewGroundColor"),
         selectionToolButton: document.getElementById("selectionToolButton"),
@@ -1998,9 +1999,12 @@
         viewOutlineEffect: {
           enabled: true,
           thickness: 1,
+          color: "#111827",
         },
         viewEnvironment: {
+          skyEnabled: true,
           skyColor: "#f8fafc",
+          groundEnabled: true,
           groundColor: "#d4d0c8",
         },
         layers: [createLayer("Layer 1")],
@@ -2407,9 +2411,12 @@
           viewOutlineEffect: {
             enabled: !!state.viewOutlineEffect.enabled,
             thickness: state.viewOutlineEffect.thickness,
+            color: state.viewOutlineEffect.color,
           },
           viewEnvironment: {
+            skyEnabled: !!state.viewEnvironment.skyEnabled,
             skyColor: state.viewEnvironment.skyColor,
+            groundEnabled: !!state.viewEnvironment.groundEnabled,
             groundColor: state.viewEnvironment.groundColor,
           },
           sceneSectionCollapsed: state.sceneSectionCollapsed,
@@ -2506,7 +2513,10 @@
           state.viewDepthEffect.strength = Math.max(0, Math.min(100, Number(project.viewDepthEffect?.strength) || 50));
           state.viewOutlineEffect.enabled = project.viewOutlineEffect?.enabled !== false;
           state.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(project.viewOutlineEffect?.thickness) || 1));
+          state.viewOutlineEffect.color = typeof project.viewOutlineEffect?.color === "string" ? project.viewOutlineEffect.color : defaultViewOutlineColor();
+          state.viewEnvironment.skyEnabled = project.viewEnvironment?.skyEnabled !== false;
           state.viewEnvironment.skyColor = typeof project.viewEnvironment?.skyColor === "string" ? project.viewEnvironment.skyColor : "#f8fafc";
+          state.viewEnvironment.groundEnabled = project.viewEnvironment?.groundEnabled !== false;
           state.viewEnvironment.groundColor = typeof project.viewEnvironment?.groundColor === "string" ? project.viewEnvironment.groundColor : "#d4d0c8";
           state.sceneSectionCollapsed = !!project.sceneSectionCollapsed;
           state.layerSectionCollapsed = !!project.layerSectionCollapsed;
@@ -2956,12 +2966,8 @@
         const zeroLineY = offsetY + (maxTopCells - 0) * cellPixelSize + 0.5;
 
         context.clearRect(0, 0, surfaceWidth, surfaceHeight);
-        context.fillStyle = state.viewEnvironment.skyColor;
+        context.fillStyle = activeViewSkyColor();
         context.fillRect(0, 0, surfaceWidth, surfaceHeight);
-        if (zeroLineY < surfaceHeight) {
-          context.fillStyle = state.viewEnvironment.groundColor;
-          context.fillRect(0, Math.max(0, zeroLineY), surfaceWidth, surfaceHeight - Math.max(0, zeroLineY));
-        }
 
         const grid = Array.from({ length: totalRows }, () => Array(totalColumns).fill(null));
         for (const entry of columnsByLayer) {
@@ -3021,8 +3027,8 @@
 
         if (state.viewOutlineEffect.enabled) {
           context.save();
-          context.fillStyle = getCssVar("--text");
-          const strokeThickness = Math.max(1, Math.min(6, state.viewOutlineEffect.thickness || 1));
+          context.fillStyle = state.viewOutlineEffect.color;
+          const strokeThickness = 1;
           for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
             for (let columnIndex = 0; columnIndex < totalColumns; columnIndex += 1) {
               const cell = grid[rowIndex][columnIndex];
@@ -3072,12 +3078,19 @@
           context.restore();
         }
 
-        context.strokeStyle = getCssVar("--text");
-        context.lineWidth = 2.5;
-        context.beginPath();
-        context.moveTo(0, zeroLineY);
-        context.lineTo(surfaceWidth, zeroLineY);
-        context.stroke();
+        if (zeroLineY < surfaceHeight) {
+          context.fillStyle = activeViewGroundColor();
+          context.fillRect(0, Math.max(0, zeroLineY), surfaceWidth, surfaceHeight - Math.max(0, zeroLineY));
+        }
+
+        if (state.viewOutlineEffect.enabled) {
+          context.strokeStyle = state.viewOutlineEffect.color;
+          context.lineWidth = 2.5;
+          context.beginPath();
+          context.moveTo(0, zeroLineY);
+          context.lineTo(surfaceWidth, zeroLineY);
+          context.stroke();
+        }
       }
 
       function renderViewOutputs() {
@@ -4330,6 +4343,26 @@
         return value.toFixed(Math.abs(value - Math.round(value)) < 0.001 ? 0 : 2) + "m";
       }
 
+      function defaultViewOutlineColor() {
+        return state.theme === "dark" ? "#ffffff" : "#111827";
+      }
+
+      function defaultViewSkyColor() {
+        return state.theme === "dark" ? "#000000" : "#ffffff";
+      }
+
+      function defaultViewGroundColor() {
+        return state.theme === "dark" ? "#000000" : "#ffffff";
+      }
+
+      function activeViewSkyColor() {
+        return state.viewEnvironment.skyEnabled ? state.viewEnvironment.skyColor : defaultViewSkyColor();
+      }
+
+      function activeViewGroundColor() {
+        return state.viewEnvironment.groundEnabled ? state.viewEnvironment.groundColor : defaultViewGroundColor();
+      }
+
       function viewBoxDimensionsText(view) {
         if (!view || !view.bounds) return "";
         const widthMeters = metersFromWorldUnits(view.bounds.maxX - view.bounds.minX);
@@ -4878,10 +4911,15 @@
         ui.viewOutlineButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewOutline === (state.viewOutlineEffect.enabled ? "on" : "off"));
         });
+        ui.viewSkyButtons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.viewSky === (state.viewEnvironment.skyEnabled ? "on" : "off"));
+        });
+        ui.viewGroundButtons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.viewGround === (state.viewEnvironment.groundEnabled ? "on" : "off"));
+        });
         ui.viewDepthStrength.value = String(state.viewDepthEffect.strength);
         ui.viewDepthStrength.disabled = !state.viewDepthEffect.enabled;
-        ui.viewOutlineThickness.value = String(state.viewOutlineEffect.thickness);
-        ui.viewOutlineThickness.disabled = !state.viewOutlineEffect.enabled;
+        ui.viewOutlineColor.value = state.viewOutlineEffect.color;
         ui.viewSkyColor.value = state.viewEnvironment.skyColor;
         ui.viewGroundColor.value = state.viewEnvironment.groundColor;
       }
@@ -9884,14 +9922,14 @@
       ui.viewOutlineButtons.forEach((button) => {
         button.addEventListener("click", () => {
           state.viewOutlineEffect.enabled = button.dataset.viewOutline === "on";
-          setStatus(state.viewOutlineEffect.enabled ? "View outline enabled." : "View outline disabled.");
+          setStatus(state.viewOutlineEffect.enabled ? "Custom outline color enabled." : "Outline using theme default.");
           render({ ui: true, content: true });
         });
       });
 
-      ui.viewOutlineThickness.addEventListener("input", () => {
-        state.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(ui.viewOutlineThickness.value) || 1));
-        setStatus("View outline thickness " + state.viewOutlineEffect.thickness + ".");
+      ui.viewOutlineColor.addEventListener("input", () => {
+        state.viewOutlineEffect.color = ui.viewOutlineColor.value || "#111827";
+        setStatus("View outline color updated.");
         render({ ui: true, content: true });
       });
 
@@ -9901,10 +9939,26 @@
         render({ ui: true, content: true });
       });
 
+      ui.viewSkyButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          state.viewEnvironment.skyEnabled = button.dataset.viewSky === "on";
+          setStatus(state.viewEnvironment.skyEnabled ? "Custom sky color enabled." : "Sky using theme default.");
+          render({ ui: true, content: true });
+        });
+      });
+
       ui.viewGroundColor.addEventListener("input", () => {
         state.viewEnvironment.groundColor = ui.viewGroundColor.value || "#d4d0c8";
         setStatus("View ground color updated.");
         render({ ui: true, content: true });
+      });
+
+      ui.viewGroundButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          state.viewEnvironment.groundEnabled = button.dataset.viewGround === "on";
+          setStatus(state.viewEnvironment.groundEnabled ? "Custom ground color enabled." : "Ground using theme default.");
+          render({ ui: true, content: true });
+        });
       });
 
       ui.viewDepthStrength.addEventListener("input", () => {
