@@ -1381,7 +1381,7 @@
       }
 
       .view-edit-modal {
-        width: min(620px, calc(100vw - 40px));
+        width: min(760px, calc(100vw - 40px));
       }
 
       .view-edit-section-title {
@@ -1391,7 +1391,7 @@
       .view-edit-column-headings,
       .view-edit-layer-row {
         display: grid;
-        grid-template-columns: 16px minmax(0, 1fr) 56px 88px 88px 88px;
+        grid-template-columns: 16px minmax(0, 1fr) 56px 132px 88px 88px 88px;
         gap: 10px;
         align-items: center;
       }
@@ -1450,6 +1450,25 @@
         background: var(--surface-strong);
         color: var(--muted);
         font-size: 13px;
+      }
+
+      .view-edit-opacity {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .view-edit-opacity input[type="range"] {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .view-edit-opacity-value {
+        width: 40px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        text-align: right;
       }
 
       .view-edit-color-input {
@@ -1690,6 +1709,7 @@
               <span></span>
               <span>Layer</span>
               <span>Color</span>
+              <span>Opacity</span>
               <span>Height</span>
               <span>Start</span>
               <span>End</span>
@@ -2996,6 +3016,10 @@
           baseElevation: Number.isFinite(existingConfig && existingConfig.baseElevation) ? existingConfig.baseElevation : 0,
           height: Number.isFinite(existingConfig && existingConfig.height) ? existingConfig.height : 0,
           color: typeof (existingConfig && existingConfig.color) === "string" ? existingConfig.color : null,
+          opacity:
+            Number.isFinite(existingConfig && existingConfig.opacity)
+              ? Math.max(0, Math.min(1, existingConfig.opacity))
+              : 1,
         };
       }
 
@@ -3221,7 +3245,7 @@
           layerId: layer.id,
           colorByColumn: collectLayerProjectedColumns(layer, bounds, direction),
           overrideColor: state.viewColorOverride ? config.color || layerRepresentativeColor(layer) : null,
-          opacity: Math.max(0, Math.min(1, layer.opacity)),
+          opacity: Math.max(0, Math.min(1, state.viewColorOverride ? config.opacity : layer.opacity)),
           baseCells: Math.round(config.baseElevation * CELLS_PER_METER),
           heightCells: Math.max(0, Math.round(config.height * CELLS_PER_METER)),
           orderIndex,
@@ -3465,6 +3489,7 @@
               baseElevation: config.baseElevation,
               height: config.height,
               color: config.color || (layer ? layerRepresentativeColor(layer) : DEFAULT_COLOR),
+              opacity: config.opacity,
               name: layer ? layer.name : "Layer",
             };
           }),
@@ -3491,6 +3516,7 @@
             baseElevation: Number.isFinite(item.baseElevation) ? item.baseElevation : 0,
             height: Math.max(0, Number.isFinite(item.height) ? item.height : 0),
             color: typeof item.color === "string" ? item.color : DEFAULT_COLOR,
+            opacity: Math.max(0, Math.min(1, Number.isFinite(item.opacity) ? item.opacity : 1)),
           };
         });
         view.layerConfigs = nextLayerConfigs;
@@ -5497,6 +5523,31 @@
             item.color = colorInput.value || DEFAULT_COLOR;
           });
           row.appendChild(colorInput);
+
+          const opacityField = document.createElement("div");
+          opacityField.className = "view-edit-opacity";
+          const opacityInput = document.createElement("input");
+          opacityInput.type = "range";
+          opacityInput.min = "0";
+          opacityInput.max = "100";
+          opacityInput.step = "1";
+          opacityInput.value = String(Math.round((Number(item.opacity) || 0) * 100));
+          opacityInput.setAttribute("aria-label", item.name + " opacity override");
+          opacityInput.addEventListener("click", (event) => event.stopPropagation());
+          opacityInput.addEventListener("pointerdown", (event) => event.stopPropagation());
+          const opacityValue = document.createElement("div");
+          opacityValue.className = "view-edit-opacity-value";
+          const updateOpacityValue = () => {
+            opacityValue.textContent = String(Math.round((Number(item.opacity) || 0) * 100)) + "%";
+          };
+          opacityInput.addEventListener("input", () => {
+            item.opacity = Math.max(0, Math.min(1, Number(opacityInput.value) / 100));
+            updateOpacityValue();
+          });
+          opacityField.appendChild(opacityInput);
+          updateOpacityValue();
+          opacityField.appendChild(opacityValue);
+          row.appendChild(opacityField);
 
           const heightField = document.createElement("div");
           heightField.className = "field view-edit-field";
