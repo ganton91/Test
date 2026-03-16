@@ -7057,10 +7057,17 @@
       function addMeasurement() {
         state.measurementSectionCollapsed = false;
         const measurement = createMeasurement("Measurement " + state.nextMeasurementNumber++);
+        measurement.mode = ["points", "length", "area"].includes(state.lastMeasurementMode) ? state.lastMeasurementMode : "points";
         state.measurements.unshift(measurement);
-        setActiveMeasurementById(measurement.id);
+        setActiveMeasurementById(measurement.id, { tool: "measure" });
         commitHistory("Create Measurement");
-        setStatus("New measurement added.");
+        setStatus(
+          measurement.mode === "points"
+            ? "Points mode active."
+            : measurement.mode === "length"
+            ? "Length mode active."
+            : "Area mode active."
+        );
         render({ ui: true, overlay: true });
       }
 
@@ -7084,9 +7091,10 @@
         state.layerSectionCollapsed = false;
         const layer = createLayer("Layer " + (state.layers.length + 1));
         state.layers.unshift(layer);
-        setActiveLayerById(layer.id);
+        const nextTool = state.lastLayerAuthoringTool === "shape" ? "shape" : "brush";
+        setActiveLayerById(layer.id, { tool: nextTool });
         commitHistory("Create Layer");
-        setStatus("New layer added.");
+        setStatus(nextTool === "shape" ? "Shape tool active." : "Brush tool active.");
         render({ ui: true, content: true, overlay: true });
       }
 
