@@ -1903,6 +1903,7 @@
           width: 3,
           defaultColor: state.color.active,
           mode: "points",
+          rotationQuarterTurns: 0,
           points: [],
           lengths: [],
           areas: [],
@@ -2018,6 +2019,14 @@
           text = "Drag to create view box";
         } else if (state.sceneCalibration && !isModalOpen(ui.sceneScaleModal)) {
           text = "Pick two points to set scale";
+        } else if (state.activeTool === "measure" && activeMeasurement()) {
+          if (activeMeasurement().mode === "points") {
+            text = "Click on canvas to add a point";
+          } else if (activeMeasurement().mode === "length") {
+            text = "Click or click and drag to add a length";
+          } else if (activeMeasurement().mode === "area") {
+            text = "Click points to trace an area and close the shape";
+          }
         }
         ui.canvasModeHint.textContent = text;
         ui.canvasModeHint.classList.toggle("hidden", !text);
@@ -2537,7 +2546,7 @@
         return true;
       }
 
-      function setActiveMeasurementById(measurementId) {
+      function setActiveMeasurementById(measurementId, options = {}) {
         const measurement = state.measurements.find((entry) => entry.id === measurementId);
         if (!measurement) return false;
         cancelSceneCalibration();
@@ -2547,7 +2556,7 @@
         state.activeSceneId = null;
         state.activeViewId = null;
         state.color.eyedropper = false;
-        state.activeTool = "measure";
+        state.activeTool = options.tool || "measure";
         return true;
       }
 
@@ -2809,6 +2818,304 @@
         return null;
       }
 
+      function snapMeasurementCoordinate(value) {
+        const step = CELL_SIZE / 2;
+        return Math.round(value / step) * step;
+      }
+
+      function measurementPointFromWorld(worldPoint, sourcePoint = {}) {
+        const snappedX = snapMeasurementCoordinate(worldPoint.x);
+        const snappedY = snapMeasurementCoordinate(worldPoint.y);
+        return {
+          id: sourcePoint.id || "point-" + Math.random().toString(36).slice(2, 9),
+          cellX: Math.round(snappedX / CELL_SIZE - 0.5),
+          cellY: Math.round(snappedY / CELL_SIZE - 0.5),
+          color: sourcePoint.color || state.color.active,
+        };
+      }
+
+      function measurementVertexPointFromWorld(worldPoint) {
+        return {
+          x: snapMeasurementCoordinate(worldPoint.x),
+          y: snapMeasurementCoordinate(worldPoint.y),
+        };
+      }
+
+      function collectMeasurementSnapshot(measurement) {
+        if (!measurement) return null;
+        return {
+          points: measurement.points.map((point) => ({ ...point })),
+          lengths: measurement.lengths.map((length) => ({
+            ...length,
+            start: { ...length.start },
+            end: { ...length.end },
+          })),
+          areas: measurement.areas.map((area) => ({
+            ...area,
+            points: area.points.map((point) => ({ ...point })),
+          })),
+        };
+      }
+
+      function measurementSnapshotGeometry(snapshot) {
+        if (!snapshot) return [];
+        const geometry = [];
+        snapshot.points.forEach((point) => {
+          geometry.push({ kind: "point", point: measurementPointWorld(point), source: point });
+        });
+        snapshot.lengths.forEach((length) => {
+          geometry.push({ kind: "vertex", point: { ...length.start } });
+          geometry.push({ kind: "vertex", point: { ...length.end } });
+        });
+        snapshot.areas.forEach((area) => {
+          area.points.forEach((point) => {
+            geometry.push({ kind: "vertex", point: { ...point } });
+          });
+        });
+        return geometry;
+      }
+
+      function measurementSnapshotBounds(snapshot) {
+        const geometry = measurementSnapshotGeometry(snapshot);
+        if (!geometry.length) return null;
+        const bounds = geometry.reduce(
+          (result, entry) => ({
+            minX: Math.min(result.minX, entry.point.x),
+            minY: Math.min(result.minY, entry.point.y),
+            maxX: Math.max(result.maxX, entry.point.x),
+            maxY: Math.max(result.maxY, entry.point.y),
+          }),
+          {
+            minX: geometry[0].point.x,
+            minY: geometry[0].point.y,
+            maxX: geometry[0].point.x,
+            maxY: geometry[0].point.y,
+          }
+        );
+        return {
+          minWorldX: bounds.minX - CELL_SIZE / 2,
+          minWorldY: bounds.minY - CELL_SIZE / 2,
+          maxWorldX: bounds.maxX + CELL_SIZE / 2,
+          maxWorldY: bounds.maxY + CELL_SIZE / 2,
+        };
+      }
+
+      function measurementBounds(measurement) {
+        return measurementSnapshotBounds(collectMeasurementSnapshot(measurement));
+      }
+
+      function mapMeasurementSnapshot(snapshot, transformPoint) {
+        if (!snapshot) return null;
+        return {
+          points: snapshot.points.map((point) => measurementPointFromWorld(transformPoint(measurementPointWorld(point)), point)),
+          lengths: snapshot.lengths.map((length) => {
+            const start = measurementVertexPointFromWorld(transformPoint(length.start));
+            const end = measurementVertexPointFromWorld(transformPoint(length.end));
+            return {
+              ...length,
+              start,
+              end,
+              meters: measurementLengthMeters(start, end),
+            };
+          }),
+          areas: snapshot.areas.map((area) => {
+            const points = area.points.map((point) => measurementVertexPointFromWorld(transformPoint(point)));
+            return {
+              ...area,
+              points,
+              squareMeters: measurementAreaSquareMeters(points),
+            };
+          }),
+        };
+      }
+
+      function applyMeasurementSnapshot(measurement, snapshot) {
+        if (!measurement || !snapshot) return false;
+        measurement.points = snapshot.points.map((point) => ({ ...point }));
+        measurement.lengths = snapshot.lengths.map((length) => ({
+          ...length,
+          start: { ...length.start },
+          end: { ...length.end },
+          meters: measurementLengthMeters(length.start, length.end),
+        }));
+        measurement.areas = snapshot.areas.map((area) => ({
+          ...area,
+          points: area.points.map((point) => ({ ...point })),
+          squareMeters: measurementAreaSquareMeters(area.points),
+        }));
+        return true;
+      }
+
+      function moveMeasurementSnapshot(snapshot, deltaWorldX, deltaWorldY) {
+        return mapMeasurementSnapshot(snapshot, (point) => ({
+          x: point.x + deltaWorldX,
+          y: point.y + deltaWorldY,
+        }));
+      }
+
+      function rotateMeasurementSnapshot(snapshot, quarterTurns) {
+        const turns = normalizedQuarterTurns(quarterTurns);
+        if (!snapshot) return null;
+        if (!turns) {
+          return {
+            points: snapshot.points.map((point) => ({ ...point })),
+            lengths: snapshot.lengths.map((length) => ({
+              ...length,
+              start: { ...length.start },
+              end: { ...length.end },
+            })),
+            areas: snapshot.areas.map((area) => ({
+              ...area,
+              points: area.points.map((point) => ({ ...point })),
+            })),
+          };
+        }
+        const bounds = measurementSnapshotBounds(snapshot);
+        if (!bounds) return rotateMeasurementSnapshot(snapshot, 0);
+        const centerX = (bounds.minWorldX + bounds.maxWorldX) / 2;
+        const centerY = (bounds.minWorldY + bounds.maxWorldY) / 2;
+        return mapMeasurementSnapshot(snapshot, (point) => {
+          let pointX = point.x;
+          let pointY = point.y;
+          for (let index = 0; index < turns; index += 1) {
+            const dx = pointX - centerX;
+            const dy = pointY - centerY;
+            pointX = centerX - dy;
+            pointY = centerY + dx;
+          }
+          return { x: pointX, y: pointY };
+        });
+      }
+
+      function mirrorMeasurementSnapshot(snapshot, axis) {
+        const bounds = measurementSnapshotBounds(snapshot);
+        if (!bounds) return rotateMeasurementSnapshot(snapshot, 0);
+        const centerX = (bounds.minWorldX + bounds.maxWorldX) / 2;
+        const centerY = (bounds.minWorldY + bounds.maxWorldY) / 2;
+        return mapMeasurementSnapshot(snapshot, (point) => ({
+          x: axis === "horizontal" ? centerX - (point.x - centerX) : point.x,
+          y: axis === "vertical" ? centerY - (point.y - centerY) : point.y,
+        }));
+      }
+
+      function measurementHandleWorldPositions(measurement) {
+        const bounds = measurementBounds(measurement);
+        if (!bounds) return null;
+        const centerX = (bounds.minWorldX + bounds.maxWorldX) / 2;
+        const centerY = (bounds.minWorldY + bounds.maxWorldY) / 2;
+        const rotateOffset = 28 / state.viewport.zoom;
+        const quarterTurns = normalizedQuarterTurns(measurement.rotationQuarterTurns || 0);
+        let rotateX = centerX;
+        let rotateY = bounds.minWorldY - rotateOffset;
+        let anchorX = centerX;
+        let anchorY = bounds.minWorldY;
+        if (quarterTurns === 1) {
+          rotateX = bounds.maxWorldX + rotateOffset;
+          rotateY = centerY;
+          anchorX = bounds.maxWorldX;
+          anchorY = centerY;
+        } else if (quarterTurns === 2) {
+          rotateX = centerX;
+          rotateY = bounds.maxWorldY + rotateOffset;
+          anchorX = centerX;
+          anchorY = bounds.maxWorldY;
+        } else if (quarterTurns === 3) {
+          rotateX = bounds.minWorldX - rotateOffset;
+          rotateY = centerY;
+          anchorX = bounds.minWorldX;
+          anchorY = centerY;
+        }
+        const normalX = rotateX - anchorX;
+        const normalY = rotateY - anchorY;
+        const normalLength = Math.hypot(normalX, normalY) || 1;
+        const tangentX = -normalY / normalLength;
+        const tangentY = normalX / normalLength;
+        const flipOffset = 18 / state.viewport.zoom;
+        return {
+          bounds,
+          center: { x: centerX, y: centerY },
+          rotateAnchor: { x: anchorX, y: anchorY },
+          rotate: { x: rotateX, y: rotateY },
+          flipHorizontal: {
+            x: rotateX - tangentX * flipOffset,
+            y: rotateY - tangentY * flipOffset,
+          },
+          flipVertical: {
+            x: rotateX + tangentX * flipOffset,
+            y: rotateY + tangentY * flipOffset,
+          },
+        };
+      }
+
+      function measurementTransformHit(measurement, worldX, worldY) {
+        const handles = measurementHandleWorldPositions(measurement);
+        if (!handles) return null;
+        const radius = 10 / state.viewport.zoom;
+        if (Math.hypot(worldX - handles.flipHorizontal.x, worldY - handles.flipHorizontal.y) <= radius) {
+          return { type: "flip-horizontal" };
+        }
+        if (Math.hypot(worldX - handles.flipVertical.x, worldY - handles.flipVertical.y) <= radius) {
+          return { type: "flip-vertical" };
+        }
+        if (Math.hypot(worldX - handles.rotate.x, worldY - handles.rotate.y) <= radius) {
+          return { type: "rotate" };
+        }
+        if (
+          worldX >= handles.bounds.minWorldX &&
+          worldX <= handles.bounds.maxWorldX &&
+          worldY >= handles.bounds.minWorldY &&
+          worldY <= handles.bounds.maxWorldY
+        ) {
+          return { type: "move" };
+        }
+        return null;
+      }
+
+      function beginMeasurementTransform(clientX, clientY) {
+        const measurement = activeMeasurement();
+        if (!measurement) return false;
+        const pointer = worldFromClient(clientX, clientY);
+        const hit = measurementTransformHit(measurement, pointer.worldX, pointer.worldY);
+        if (!hit) return false;
+        const snapshot = collectMeasurementSnapshot(measurement);
+        if (hit.type === "flip-horizontal" || hit.type === "flip-vertical") {
+          const requestedAxis = hit.type === "flip-horizontal" ? "horizontal" : "vertical";
+          const effectiveAxis = layerFlipAxis(requestedAxis, measurement.rotationQuarterTurns || 0);
+          applyMeasurementSnapshot(measurement, mirrorMeasurementSnapshot(snapshot, effectiveAxis));
+          setStatus(hit.type === "flip-horizontal" ? "Measurement flipped horizontally." : "Measurement flipped vertically.");
+          render({ overlay: true, ui: true });
+          return true;
+        }
+        if (hit.type === "rotate") {
+          const handles = measurementHandleWorldPositions(measurement);
+          if (!handles) return false;
+          state.interaction = {
+            type: "measurement-rotate",
+            measurementId: measurement.id,
+            snapshot,
+            quarterTurns: 0,
+            startQuarterTurns: normalizedQuarterTurns(measurement.rotationQuarterTurns || 0),
+            centerWorldX: handles.center.x,
+            centerWorldY: handles.center.y,
+            startAngle: Math.atan2(pointer.worldY - handles.center.y, pointer.worldX - handles.center.x),
+          };
+          setStatus("Rotating active measurement.");
+          return true;
+        }
+        const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+        state.interaction = {
+          type: "measurement-move",
+          measurementId: measurement.id,
+          snapshot,
+          startCellX: cell.x,
+          startCellY: cell.y,
+          deltaX: 0,
+          deltaY: 0,
+        };
+        setStatus("Moving active measurement.");
+        return true;
+      }
+
       function beginRenameLayer(layerId) {
         state.editingLayerId = layerId;
         state.editingSceneId = null;
@@ -2852,12 +3159,12 @@
           render({ ui: true, overlay: true });
           return;
         }
-        if (setActiveMeasurementById(measurementId)) {
+        if (setActiveMeasurementById(measurementId, { tool: "select" })) {
           state.editingMeasurementId = null;
           state.editingLayerId = null;
           state.editingSceneId = null;
           state.editingViewId = null;
-          setStatus("Measurement active.");
+          setStatus("Measurement selected.");
           render({ ui: true, overlay: true });
         }
       }
@@ -3898,6 +4205,7 @@
       function renderMeasurements() {
         ui.measurementList.innerHTML = "";
         state.measurements.forEach((measurement) => {
+          const measurementToolActive = measurement.id === state.activeMeasurementId && state.activeTool === "measure";
           const card = document.createElement("div");
           card.className = "layer-card measurement-card" + (measurement.id === state.activeMeasurementId ? " active" : "");
           if (measurement.id !== state.activeMeasurementId) card.classList.add("inactive-collapsed");
@@ -4000,42 +4308,42 @@
           modes.className = "layer-actions";
 
           const pointMode = document.createElement("button");
-          pointMode.className = "layer-icon" + (measurement.mode === "points" ? " active" : "");
+          pointMode.className = "layer-icon" + (measurementToolActive && measurement.mode === "points" ? " active" : "");
           pointMode.textContent = "Points";
           pointMode.title = "Point measurements";
           pointMode.addEventListener("click", (event) => {
             event.stopPropagation();
             cancelMeasurementDraft();
             measurement.mode = "points";
-            if (measurement.id !== state.activeMeasurementId) setActiveMeasurementById(measurement.id);
+            setActiveMeasurementById(measurement.id, { tool: "measure" });
             setStatus("Points mode active.");
             render({ ui: true, overlay: true });
           });
           modes.appendChild(pointMode);
 
           const lengthMode = document.createElement("button");
-          lengthMode.className = "layer-icon" + (measurement.mode === "length" ? " active" : "");
+          lengthMode.className = "layer-icon" + (measurementToolActive && measurement.mode === "length" ? " active" : "");
           lengthMode.textContent = "Length";
           lengthMode.title = "Length measurements";
           lengthMode.addEventListener("click", (event) => {
             event.stopPropagation();
             cancelMeasurementDraft();
             measurement.mode = "length";
-            if (measurement.id !== state.activeMeasurementId) setActiveMeasurementById(measurement.id);
+            setActiveMeasurementById(measurement.id, { tool: "measure" });
             setStatus("Length mode active.");
             render({ ui: true, overlay: true });
           });
           modes.appendChild(lengthMode);
 
           const areaMode = document.createElement("button");
-          areaMode.className = "layer-icon" + (measurement.mode === "area" ? " active" : "");
+          areaMode.className = "layer-icon" + (measurementToolActive && measurement.mode === "area" ? " active" : "");
           areaMode.textContent = "Area";
           areaMode.title = "Area measurements";
           areaMode.addEventListener("click", (event) => {
             event.stopPropagation();
             cancelMeasurementDraft();
             measurement.mode = "area";
-            if (measurement.id !== state.activeMeasurementId) setActiveMeasurementById(measurement.id);
+            setActiveMeasurementById(measurement.id, { tool: "measure" });
             setStatus("Area mode active.");
             render({ ui: true, overlay: true });
           });
@@ -4980,8 +5288,8 @@
           return;
         }
         if (candidate.kind === "measurement") {
-          setActiveMeasurementById(candidate.id);
-          setStatus("Measurement active.");
+          setActiveMeasurementById(candidate.id, { tool: "select" });
+          setStatus("Measurement selected.");
           return;
         }
         if (candidate.kind === "layer") {
@@ -5321,6 +5629,50 @@
             measurement.lengths.forEach((length) => drawMeasurementLength(overlayCtx, measurement, length));
             measurement.areas.forEach((area) => drawMeasurementArea(overlayCtx, measurement, area));
           });
+
+        const activeMeasurementEntity = state.activeTool === "select" ? activeMeasurement() : null;
+        if (activeMeasurementEntity) {
+          const handles = measurementHandleWorldPositions(activeMeasurementEntity);
+          if (handles) {
+            const x = snapPixel(state.viewport.x + handles.bounds.minWorldX * state.viewport.zoom);
+            const y = snapPixel(state.viewport.y + handles.bounds.minWorldY * state.viewport.zoom);
+            const boxWidth = Math.max(1, snapPixel((handles.bounds.maxWorldX - handles.bounds.minWorldX) * state.viewport.zoom));
+            const boxHeight = Math.max(1, snapPixel((handles.bounds.maxWorldY - handles.bounds.minWorldY) * state.viewport.zoom));
+            const rotateHandle = worldToScreen(handles.rotate.x, handles.rotate.y);
+            const rotateAnchor = worldToScreen(handles.rotateAnchor.x, handles.rotateAnchor.y);
+            const flipHorizontalHandle = worldToScreen(handles.flipHorizontal.x, handles.flipHorizontal.y);
+            const flipVerticalHandle = worldToScreen(handles.flipVertical.x, handles.flipVertical.y);
+            overlayCtx.save();
+            overlayCtx.strokeStyle = getCssVar("--selection");
+            overlayCtx.lineWidth = 1;
+            overlayCtx.setLineDash([6, 4]);
+            overlayCtx.strokeRect(x + 0.5, y + 0.5, boxWidth - 1, boxHeight - 1);
+            overlayCtx.setLineDash([]);
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(rotateAnchor.x, rotateAnchor.y);
+            overlayCtx.lineTo(rotateHandle.x, rotateHandle.y);
+            overlayCtx.stroke();
+            overlayCtx.beginPath();
+            overlayCtx.fillStyle = getCssVar("--crosshair");
+            overlayCtx.strokeStyle = getCssVar("--selection");
+            overlayCtx.arc(rotateHandle.x, rotateHandle.y, 5, 0, Math.PI * 2);
+            overlayCtx.fill();
+            overlayCtx.stroke();
+            overlayCtx.restore();
+            drawLayerFlipIcon(
+              overlayCtx,
+              flipHorizontalHandle,
+              "horizontal",
+              normalizedQuarterTurns(activeMeasurementEntity.rotationQuarterTurns || 0) * (Math.PI / 2)
+            );
+            drawLayerFlipIcon(
+              overlayCtx,
+              flipVerticalHandle,
+              "vertical",
+              normalizedQuarterTurns(activeMeasurementEntity.rotationQuarterTurns || 0) * (Math.PI / 2)
+            );
+          }
+        }
 
         if (state.measurementDraft) {
           const draftMeasurement = state.measurements.find((entry) => entry.id === state.measurementDraft.measurementId);
@@ -6642,8 +6994,8 @@
         }
         const measurement = measurementHitAt(pointer.worldX, pointer.worldY);
         if (measurement) {
-          setActiveMeasurementById(measurement.id);
-          setStatus("Measurement active.");
+          setActiveMeasurementById(measurement.id, { tool: "select" });
+          setStatus("Measurement selected.");
           render({ ui: true, overlay: true });
           return;
         }
@@ -6847,6 +7199,9 @@
               return;
             }
           }
+          if (!isRightClick && activeMeasurement() && beginMeasurementTransform(event.clientX, event.clientY)) {
+            return;
+          }
           if (!isRightClick && activeLayer() && beginLayerTransform(event.clientX, event.clientY)) {
             return;
           }
@@ -6886,6 +7241,17 @@
           } else if (state.activeTool === "select" && activeLayer()) {
             const pointer = worldFromClient(event.clientX, event.clientY);
             const hit = layerTransformHit(activeLayer(), pointer.worldX, pointer.worldY);
+            ui.overlayCanvas.style.cursor =
+              hit
+                ? hit.type === "rotate"
+                  ? "grab"
+                  : hit.type === "move"
+                  ? "move"
+                  : "pointer"
+                : "default";
+          } else if (state.activeTool === "select" && activeMeasurement()) {
+            const pointer = worldFromClient(event.clientX, event.clientY);
+            const hit = measurementTransformHit(activeMeasurement(), pointer.worldX, pointer.worldY);
             ui.overlayCanvas.style.cursor =
               hit
                 ? hit.type === "rotate"
@@ -6977,6 +7343,43 @@
           layer.rotationQuarterTurns = normalizedQuarterTurns((state.interaction.startQuarterTurns || 0) + quarterTurns);
           applyLayerCellSnapshot(layer, rotateLayerSnapshot(state.interaction.snapshot, quarterTurns), 0, 0);
           render({ content: true, overlay: true });
+          return;
+        }
+
+        if (state.interaction.type === "measurement-move") {
+          const measurement = state.measurements.find((entry) => entry.id === state.interaction.measurementId);
+          if (!measurement) return;
+          const pointer = worldFromClient(event.clientX, event.clientY);
+          const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+          const deltaX = cell.x - state.interaction.startCellX;
+          const deltaY = cell.y - state.interaction.startCellY;
+          if (deltaX === state.interaction.deltaX && deltaY === state.interaction.deltaY) {
+            return;
+          }
+          state.interaction.deltaX = deltaX;
+          state.interaction.deltaY = deltaY;
+          applyMeasurementSnapshot(measurement, moveMeasurementSnapshot(state.interaction.snapshot, deltaX * CELL_SIZE, deltaY * CELL_SIZE));
+          render({ overlay: true, ui: true });
+          return;
+        }
+
+        if (state.interaction.type === "measurement-rotate") {
+          const measurement = state.measurements.find((entry) => entry.id === state.interaction.measurementId);
+          if (!measurement) return;
+          const pointer = worldFromClient(event.clientX, event.clientY);
+          const currentAngle = Math.atan2(
+            pointer.worldY - state.interaction.centerWorldY,
+            pointer.worldX - state.interaction.centerWorldX
+          );
+          const deltaAngle = currentAngle - state.interaction.startAngle;
+          const quarterTurns = Math.round(deltaAngle / (Math.PI / 2));
+          if (quarterTurns === state.interaction.quarterTurns) {
+            return;
+          }
+          state.interaction.quarterTurns = quarterTurns;
+          measurement.rotationQuarterTurns = normalizedQuarterTurns((state.interaction.startQuarterTurns || 0) + quarterTurns);
+          applyMeasurementSnapshot(measurement, rotateMeasurementSnapshot(state.interaction.snapshot, quarterTurns));
+          render({ overlay: true, ui: true });
           return;
         }
 
@@ -7259,6 +7662,12 @@
         if (state.interaction.type === "layer-rotate") {
           setStatus("Layer rotated.");
         }
+        if (state.interaction.type === "measurement-move") {
+          setStatus("Measurement moved.");
+        }
+        if (state.interaction.type === "measurement-rotate") {
+          setStatus("Measurement rotated.");
+        }
         if (state.interaction.type === "view-move" || state.interaction.type === "view-resize") {
           setStatus("View box updated.");
         }
@@ -7319,7 +7728,7 @@
           } else if (state.activeViewId) {
             setStatus("View active.");
           } else if (state.activeMeasurementId) {
-            setStatus("Measurement active.");
+            setStatus("Measurement selected.");
           } else {
             setStatus("Selection tool active.");
           }
