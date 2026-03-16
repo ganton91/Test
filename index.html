@@ -5604,6 +5604,20 @@
         };
       }
 
+      function squareShapeBounds(startCellX, startCellY, endCellX, endCellY) {
+        const deltaX = endCellX - startCellX;
+        const deltaY = endCellY - startCellY;
+        const side = Math.max(Math.abs(deltaX), Math.abs(deltaY));
+        const directionX = Math.sign(deltaX || 1);
+        const directionY = Math.sign(deltaY || deltaX || 1);
+        return normalizeShapeBounds(
+          startCellX,
+          startCellY,
+          startCellX + directionX * side,
+          startCellY + directionY * side
+        );
+      }
+
       function circleSpecFromInteraction(interaction) {
         if (interaction.centered) {
           return {
@@ -5639,6 +5653,14 @@
         }
         if (interaction.shapeType === "circle") {
           return circleBoundsFromSpec(circleSpecFromInteraction(interaction));
+        }
+        if (interaction.shapeType === "rect" && interaction.square) {
+          return squareShapeBounds(
+            interaction.startCellX,
+            interaction.startCellY,
+            interaction.currentCellX,
+            interaction.currentCellY
+          );
         }
         return normalizeShapeBounds(
           interaction.startCellX,
@@ -5929,6 +5951,10 @@
         return shiftKey && (shapeType === "ellipse" || shapeType === "circle");
       }
 
+      function shapeSquareMode(shapeType, shiftKey) {
+        return shiftKey && shapeType === "rect";
+      }
+
       function beginShape(clientX, clientY, mode, centered) {
         const pointer = worldFromClient(clientX, clientY);
         const cell = cellFromWorld(pointer.worldX, pointer.worldY);
@@ -5938,6 +5964,7 @@
           mode,
           shapeType: state.shape.type,
           centered: centered && (state.shape.type === "ellipse" || state.shape.type === "circle"),
+          square: shapeSquareMode(state.shape.type, centered),
           startCellX: cell.x,
           startCellY: cell.y,
           currentCellX: cell.x,
@@ -5956,6 +5983,7 @@
           mode: draft.mode,
           shapeType: draft.shapeType,
           centered: shapeCenteredMode(draft.shapeType, centered),
+          square: shapeSquareMode(draft.shapeType, centered),
           startCellX: draft.startCellX,
           startCellY: draft.startCellY,
           currentCellX: Number.isInteger(currentCellX) ? currentCellX : draft.currentCellX,
@@ -5969,6 +5997,7 @@
           mode: interaction.mode,
           shapeType: interaction.shapeType,
           centered: interaction.centered,
+          square: interaction.square,
           startCellX: interaction.startCellX,
           startCellY: interaction.startCellY,
           currentCellX: interaction.startCellX,
@@ -6457,6 +6486,7 @@
             const pointer = worldFromClient(event.clientX, event.clientY);
             const cell = cellFromWorld(pointer.worldX, pointer.worldY);
             state.shapeDraft.centered = shapeCenteredMode(state.shapeDraft.shapeType, event.shiftKey);
+            state.shapeDraft.square = shapeSquareMode(state.shapeDraft.shapeType, event.shiftKey);
             state.shapeDraft.currentCellX = cell.x;
             state.shapeDraft.currentCellY = cell.y;
           }
@@ -6518,6 +6548,7 @@
           const pointer = worldFromClient(event.clientX, event.clientY);
           const cell = cellFromWorld(pointer.worldX, pointer.worldY);
           state.interaction.centered = shapeCenteredMode(state.interaction.shapeType, event.shiftKey);
+          state.interaction.square = shapeSquareMode(state.interaction.shapeType, event.shiftKey);
           state.interaction.currentCellX = cell.x;
           state.interaction.currentCellY = cell.y;
           if (
@@ -6749,6 +6780,7 @@
           const pointer = worldFromClient(event.clientX, event.clientY);
           const cell = cellFromWorld(pointer.worldX, pointer.worldY);
           interaction.centered = shapeCenteredMode(interaction.shapeType, event.shiftKey);
+          interaction.square = shapeSquareMode(interaction.shapeType, event.shiftKey);
           interaction.currentCellX = cell.x;
           interaction.currentCellY = cell.y;
 
