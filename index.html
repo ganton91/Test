@@ -2561,7 +2561,7 @@
         state.activeSceneId = null;
         state.activeMeasurementId = null;
         state.color.eyedropper = false;
-        state.activeTool = options.drawing ? "viewbox" : "view";
+        state.activeTool = options.drawing ? "viewbox" : "select";
         return true;
       }
 
@@ -3353,7 +3353,7 @@
       function cursorForViewHit(hit) {
         if (!hit) return "default";
         if (hit.type === "move") return "move";
-        return hit.handle === "ne" || hit.handle === "sw" ? "nesw-resize" : "nwse-resize";
+        return "grab";
       }
 
       function setStatus(message) {
@@ -7197,7 +7197,7 @@
             state.views.unshift(view);
             state.nextViewNumber += 1;
             setActiveViewById(view.id);
-            state.activeTool = "view";
+            state.activeTool = "select";
             state.pendingViewCreation = null;
             setStatus("View box created.");
             state.interaction = null;
