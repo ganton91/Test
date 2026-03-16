@@ -2510,7 +2510,7 @@
         };
       }
 
-      function setActiveLayerById(layerId) {
+      function setActiveLayerById(layerId, options = {}) {
         const layer = state.layers.find((entry) => entry.id === layerId);
         if (!layer) return false;
         cancelSceneCalibration();
@@ -2519,7 +2519,7 @@
         state.activeSceneId = null;
         state.activeMeasurementId = null;
         state.activeViewId = null;
-        state.activeTool = "brush";
+        state.activeTool = options.tool || "brush";
         return true;
       }
 
@@ -2532,7 +2532,7 @@
         state.activeMeasurementId = null;
         state.activeViewId = null;
         state.color.eyedropper = false;
-        state.activeTool = "transform";
+        state.activeTool = "select";
         return true;
       }
 
@@ -2600,6 +2600,53 @@
         }
       }
 
+      function collectLayerCells(layer) {
+        if (!layer) return [];
+        const cells = [];
+        for (const tile of Object.values(layer.tiles)) {
+          const tileMinX = tile.tileX * TILE_SIZE;
+          const tileMinY = tile.tileY * TILE_SIZE;
+          for (const [key, color] of tile.pixels.entries()) {
+            const [localX, localY] = key.split(":").map(Number);
+            cells.push({
+              x: tileMinX + localX,
+              y: tileMinY + localY,
+              color,
+            });
+          }
+        }
+        return cells;
+      }
+
+      function layerCellBounds(layer) {
+        const cells = collectLayerCells(layer);
+        if (!cells.length) return null;
+        return cells.reduce(
+          (bounds, cell) => ({
+            minX: Math.min(bounds.minX, cell.x),
+            minY: Math.min(bounds.minY, cell.y),
+            maxX: Math.max(bounds.maxX, cell.x),
+            maxY: Math.max(bounds.maxY, cell.y),
+          }),
+          {
+            minX: cells[0].x,
+            minY: cells[0].y,
+            maxX: cells[0].x,
+            maxY: cells[0].y,
+          }
+        );
+      }
+
+      function applyLayerCellSnapshot(layer, cells, deltaX, deltaY) {
+        if (!layer) return false;
+        layer.tiles = {};
+        layer.cellCount = 0;
+        cells.forEach((cell) => {
+          setCellColor(layer, cell.x + deltaX, cell.y + deltaY, cell.color);
+        });
+        return true;
+      }
+
       function beginRenameLayer(layerId) {
         state.editingLayerId = layerId;
         state.editingSceneId = null;
@@ -2627,7 +2674,7 @@
           state.editingLayerId = null;
           state.editingMeasurementId = null;
           state.editingViewId = null;
-          setStatus("Transform active on selected scene.");
+          setStatus("Scene selected.");
           render({ ui: true, overlay: true });
         }
       }
@@ -3330,8 +3377,6 @@
             : state.activeTool === "viewbox"
             ? "crosshair"
             : state.activeTool === "view"
-            ? "move"
-            : state.activeTool === "transform"
             ? "move"
             : "default";
       }
@@ -4756,13 +4801,13 @@
           return;
         }
         if (candidate.kind === "layer") {
-          setActiveLayerById(candidate.id);
-          setStatus("Brush active on selected layer.");
+          setActiveLayerById(candidate.id, { tool: "select" });
+          setStatus("Layer selected.");
           return;
         }
         setActiveSceneById(candidate.id);
         const scene = activeScene();
-        setStatus(scene && scene.locked ? "Locked scene selected." : "Transform active on selected scene.");
+        setStatus(scene && scene.locked ? "Locked scene selected." : "Scene selected.");
       }
 
       function resolveSelectionMarquee(interaction, clientX, clientY) {
@@ -5020,6 +5065,25 @@
             });
           }
           overlayCtx.restore();
+        }
+
+        const activeLayerEntity = activeLayer();
+        if (activeLayerEntity && state.activeTool === "select") {
+          const bounds = layerCellBounds(activeLayerEntity);
+          if (bounds) {
+            const size = CELL_SIZE * state.viewport.zoom;
+            const x = snapPixel(state.viewport.x + bounds.minX * size);
+            const y = snapPixel(state.viewport.y + bounds.minY * size);
+            const boxWidth = Math.max(1, snapPixel((bounds.maxX - bounds.minX + 1) * size));
+            const boxHeight = Math.max(1, snapPixel((bounds.maxY - bounds.minY + 1) * size));
+            overlayCtx.save();
+            overlayCtx.strokeStyle = getCssVar("--selection");
+            overlayCtx.lineWidth = 1;
+            overlayCtx.setLineDash([6, 4]);
+            overlayCtx.strokeRect(x + 0.5, y + 0.5, boxWidth - 1, boxHeight - 1);
+            overlayCtx.setLineDash([]);
+            overlayCtx.restore();
+          }
         }
 
         state.measurements
@@ -6328,15 +6392,15 @@
         }
         const layer = topPaintedLayerAt(pointer.worldX, pointer.worldY);
         if (layer) {
-          setActiveLayerById(layer.id);
-          setStatus("Brush active on selected layer.");
+          setActiveLayerById(layer.id, { tool: "select" });
+          setStatus("Layer selected.");
           render({ ui: true, overlay: true });
           return;
         }
         const scene = topSceneAt(pointer.worldX, pointer.worldY);
         if (scene) {
           setActiveSceneById(scene.id);
-          setStatus(scene.locked ? "Locked scene selected." : "Transform active on selected scene.");
+          setStatus(scene.locked ? "Locked scene selected." : "Scene selected.");
           render({ ui: true, overlay: true });
           return;
         }
@@ -6402,6 +6466,26 @@
         );
       }
 
+      function beginLayerTransform(clientX, clientY) {
+        const layer = activeLayer();
+        if (!layer) return false;
+        const pointer = worldFromClient(clientX, clientY);
+        const hitLayer = topPaintedLayerAt(pointer.worldX, pointer.worldY);
+        if (!hitLayer || hitLayer.id !== layer.id) return false;
+        const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+        state.interaction = {
+          type: "layer-move",
+          layerId: layer.id,
+          startCellX: cell.x,
+          startCellY: cell.y,
+          deltaX: 0,
+          deltaY: 0,
+          snapshot: collectLayerCells(layer),
+        };
+        setStatus("Moving active layer.");
+        return true;
+      }
+
       function handlePointerDown(event) {
         const isRightClick = event.button === 2;
         const pickerDismissed = dismissSelectionPicker();
@@ -6462,6 +6546,17 @@
           return;
         }
         if (state.activeTool === "select") {
+          if (!isRightClick && activeScene() && !activeScene().locked) {
+            const pointer = worldFromClient(event.clientX, event.clientY);
+            const hit = sceneTransformHit(activeScene(), pointer.worldX, pointer.worldY);
+            if (hit) {
+              beginSceneTransform(event.clientX, event.clientY);
+              return;
+            }
+          }
+          if (!isRightClick && activeLayer() && beginLayerTransform(event.clientX, event.clientY)) {
+            return;
+          }
           if (!isRightClick && beginViewTransform(event.clientX, event.clientY)) {
             return;
           }
@@ -6492,9 +6587,13 @@
           }
           if (state.sceneCalibration && activeScene()) {
             ui.overlayCanvas.style.cursor = "crosshair";
-          } else if (state.activeTool === "transform" && activeScene() && !activeScene().locked) {
+          } else if (state.activeTool === "select" && activeScene() && !activeScene().locked) {
             const pointer = worldFromClient(event.clientX, event.clientY);
             ui.overlayCanvas.style.cursor = cursorForSceneHit(sceneTransformHit(activeScene(), pointer.worldX, pointer.worldY));
+          } else if (state.activeTool === "select" && activeLayer()) {
+            const pointer = worldFromClient(event.clientX, event.clientY);
+            const hitLayer = topPaintedLayerAt(pointer.worldX, pointer.worldY);
+            ui.overlayCanvas.style.cursor = hitLayer && hitLayer.id === state.activeLayerId ? "move" : "default";
           } else if (state.activeTool === "view" && activeView() && !activeView().pending) {
             const pointer = worldFromClient(event.clientX, event.clientY);
             ui.overlayCanvas.style.cursor = cursorForViewHit(viewTransformHit(activeView(), pointer.worldX, pointer.worldY));
@@ -6541,6 +6640,23 @@
             rememberBrushPoint(cell.x, cell.y);
             render({ ui: changed, content: true, overlay: true });
           }
+          return;
+        }
+
+        if (state.interaction.type === "layer-move") {
+          const layer = state.layers.find((entry) => entry.id === state.interaction.layerId);
+          if (!layer) return;
+          const pointer = worldFromClient(event.clientX, event.clientY);
+          const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+          const deltaX = cell.x - state.interaction.startCellX;
+          const deltaY = cell.y - state.interaction.startCellY;
+          if (deltaX === state.interaction.deltaX && deltaY === state.interaction.deltaY) {
+            return;
+          }
+          state.interaction.deltaX = deltaX;
+          state.interaction.deltaY = deltaY;
+          applyLayerCellSnapshot(layer, state.interaction.snapshot, deltaX, deltaY);
+          render({ content: true, overlay: true });
           return;
         }
 
@@ -6816,6 +6932,9 @@
           setStatus(interaction.mode === "paint" ? "Click second point to paint the shape." : "Click second point to erase the shape.");
           render({ overlay: true });
           return;
+        }
+        if (state.interaction.type === "layer-move") {
+          setStatus("Layer moved.");
         }
         if (state.interaction.type === "view-move" || state.interaction.type === "view-resize") {
           setStatus("View box updated.");
