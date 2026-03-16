@@ -2678,8 +2678,8 @@
           for (let index = 0; index < turns; index += 1) {
             const dx = pointX - centerX;
             const dy = pointY - centerY;
-            pointX = centerX + dy;
-            pointY = centerY - dx;
+            pointX = centerX - dy;
+            pointY = centerY + dx;
           }
           return {
             x: Math.floor(pointX),
@@ -2718,6 +2718,10 @@
             color: cell.color,
           };
         });
+      }
+
+      function layerFlipAxis(axis, quarterTurns) {
+        return normalizedQuarterTurns(quarterTurns) % 2 === 0 ? axis : axis === "horizontal" ? "vertical" : "horizontal";
       }
 
       function layerHandleWorldPositions(layer) {
@@ -3343,7 +3347,7 @@
         if (hit.type === "rotate") return "grab";
         if (hit.type === "move") return "move";
         if (hit.type === "flip-horizontal" || hit.type === "flip-vertical") return "pointer";
-        return "nwse-resize";
+        return "grab";
       }
 
       function cursorForViewHit(hit) {
@@ -5241,8 +5245,8 @@
               overlayCtx.fill();
               overlayCtx.stroke();
             });
-            drawLayerFlipIcon(overlayCtx, flipHorizontalHandle, "horizontal");
-            drawLayerFlipIcon(overlayCtx, flipVerticalHandle, "vertical");
+            drawLayerFlipIcon(overlayCtx, flipHorizontalHandle, "horizontal", activeSceneEntity.rotation || 0);
+            drawLayerFlipIcon(overlayCtx, flipVerticalHandle, "vertical", activeSceneEntity.rotation || 0);
           }
           overlayCtx.restore();
         }
@@ -5276,8 +5280,18 @@
             overlayCtx.fill();
             overlayCtx.stroke();
             overlayCtx.restore();
-            drawLayerFlipIcon(overlayCtx, flipHorizontalHandle, "horizontal");
-            drawLayerFlipIcon(overlayCtx, flipVerticalHandle, "vertical");
+            drawLayerFlipIcon(
+              overlayCtx,
+              flipHorizontalHandle,
+              "horizontal",
+              normalizedQuarterTurns(activeLayerEntity.rotationQuarterTurns || 0) * (Math.PI / 2)
+            );
+            drawLayerFlipIcon(
+              overlayCtx,
+              flipVerticalHandle,
+              "vertical",
+              normalizedQuarterTurns(activeLayerEntity.rotationQuarterTurns || 0) * (Math.PI / 2)
+            );
           }
         }
 
@@ -5531,13 +5545,15 @@
           overlayCtx.restore();
         }
 
-      function drawLayerFlipIcon(context, handle, axis) {
+      function drawLayerFlipIcon(context, handle, axis, rotation = 0) {
         context.save();
+        context.translate(handle.x, handle.y);
+        context.rotate(rotation);
         context.beginPath();
         context.fillStyle = getCssVar("--bg-strong");
         context.strokeStyle = getCssVar("--selection");
         context.lineWidth = 1;
-        context.arc(handle.x, handle.y, 5, 0, Math.PI * 2);
+        context.arc(0, 0, 5, 0, Math.PI * 2);
         context.fill();
         context.stroke();
 
@@ -5545,27 +5561,27 @@
         context.strokeStyle = getCssVar("--selection");
         context.lineWidth = 1;
         if (axis === "horizontal") {
-          context.moveTo(handle.x - 4, handle.y);
-          context.lineTo(handle.x + 4, handle.y);
-          context.moveTo(handle.x - 4, handle.y);
-          context.lineTo(handle.x - 1.5, handle.y - 2);
-          context.moveTo(handle.x - 4, handle.y);
-          context.lineTo(handle.x - 1.5, handle.y + 2);
-          context.moveTo(handle.x + 4, handle.y);
-          context.lineTo(handle.x + 1.5, handle.y - 2);
-          context.moveTo(handle.x + 4, handle.y);
-          context.lineTo(handle.x + 1.5, handle.y + 2);
+          context.moveTo(-4, 0);
+          context.lineTo(4, 0);
+          context.moveTo(-4, 0);
+          context.lineTo(-1.5, -2);
+          context.moveTo(-4, 0);
+          context.lineTo(-1.5, 2);
+          context.moveTo(4, 0);
+          context.lineTo(1.5, -2);
+          context.moveTo(4, 0);
+          context.lineTo(1.5, 2);
         } else {
-          context.moveTo(handle.x, handle.y - 4);
-          context.lineTo(handle.x, handle.y + 4);
-          context.moveTo(handle.x, handle.y - 4);
-          context.lineTo(handle.x - 2, handle.y - 1.5);
-          context.moveTo(handle.x, handle.y - 4);
-          context.lineTo(handle.x + 2, handle.y - 1.5);
-          context.moveTo(handle.x, handle.y + 4);
-          context.lineTo(handle.x - 2, handle.y + 1.5);
-          context.moveTo(handle.x, handle.y + 4);
-          context.lineTo(handle.x + 2, handle.y + 1.5);
+          context.moveTo(0, -4);
+          context.lineTo(0, 4);
+          context.moveTo(0, -4);
+          context.lineTo(-2, -1.5);
+          context.moveTo(0, -4);
+          context.lineTo(2, -1.5);
+          context.moveTo(0, 4);
+          context.lineTo(-2, 1.5);
+          context.moveTo(0, 4);
+          context.lineTo(2, 1.5);
         }
         context.stroke();
         context.restore();
@@ -6723,7 +6739,9 @@
         const cell = cellFromWorld(pointer.worldX, pointer.worldY);
         const snapshot = collectLayerCells(layer);
         if (hit.type === "flip-horizontal" || hit.type === "flip-vertical") {
-          applyLayerCellSnapshot(layer, mirrorLayerSnapshot(snapshot, hit.type === "flip-horizontal" ? "horizontal" : "vertical"), 0, 0);
+          const requestedAxis = hit.type === "flip-horizontal" ? "horizontal" : "vertical";
+          const effectiveAxis = layerFlipAxis(requestedAxis, layer.rotationQuarterTurns || 0);
+          applyLayerCellSnapshot(layer, mirrorLayerSnapshot(snapshot, effectiveAxis), 0, 0);
           setStatus(hit.type === "flip-horizontal" ? "Layer flipped horizontally." : "Layer flipped vertically.");
           render({ content: true, overlay: true });
           return true;
