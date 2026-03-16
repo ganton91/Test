@@ -3122,7 +3122,27 @@
           return true;
         }
         if (hit.type === "move" && itemHit) {
-          return false;
+          const previousClick = state.measurementSelectClickMemory;
+          const isDoubleClick =
+            !!previousClick &&
+            previousClick.measurementId === measurement.id &&
+            measurementItemMatchesTarget(previousClick.target, itemHit) &&
+            Date.now() - previousClick.time <= 320 &&
+            Math.hypot(previousClick.worldX - pointer.worldX, previousClick.worldY - pointer.worldY) <= CELL_SIZE * 0.6;
+          if (isDoubleClick) {
+            state.activeMeasurementItem = { ...itemHit };
+            state.measurementSelectClickMemory = null;
+            setStatus("Measurement item selected.");
+            render({ ui: true, overlay: true });
+            return true;
+          }
+          state.measurementSelectClickMemory = {
+            measurementId: measurement.id,
+            target: itemHit,
+            worldX: pointer.worldX,
+            worldY: pointer.worldY,
+            time: Date.now(),
+          };
         }
         const cell = cellFromWorld(pointer.worldX, pointer.worldY);
         state.interaction = {
@@ -3133,6 +3153,7 @@
           startCellY: cell.y,
           deltaX: 0,
           deltaY: 0,
+          moved: false,
         };
         setStatus("Moving active measurement.");
         return true;
@@ -3144,8 +3165,8 @@
         if (!measurement || !target) return false;
         const pointer = worldFromClient(clientX, clientY);
         const hit = measurementItemHitAt(measurement, pointer.worldX, pointer.worldY);
-        if (!measurementItemMatchesTarget(hit, target)) return false;
-        const current = measurementItemMatchesTarget(hit, target) ? hit : target;
+        if (!measurementItemBelongsToTarget(hit, target)) return false;
+        const current = hit || target;
         if (current.kind === "point") {
           const point = measurement.points.find((entry) => entry.id === current.itemId);
           if (!point) return false;
@@ -3154,6 +3175,7 @@
             measurementId: measurement.id,
             target: current,
             startWorld: measurementPointWorld(point),
+            moved: false,
           };
           setStatus("Moving measurement point.");
           return true;
@@ -3174,6 +3196,7 @@
                   }
                 : null,
             startWorld: current.part === "body" ? snapped : current.part === "start" ? { ...length.start } : { ...length.end },
+            moved: false,
           };
           setStatus(current.part === "body" ? "Moving measurement length." : "Moving measurement length vertex.");
           return true;
@@ -3188,6 +3211,7 @@
             target: current,
             snapshot: current.part === "body" ? area.points.map((point) => ({ ...point })) : null,
             startWorld: current.part === "body" ? snapped : { ...area.points[current.vertexIndex] },
+            moved: false,
           };
           setStatus(current.part === "body" ? "Moving measurement area." : "Moving measurement area vertex.");
           return true;
@@ -5508,10 +5532,11 @@
       function measurementItemHitAt(measurement, worldX, worldY) {
         if (!measurement || !measurement.visible || measurement.opacity <= 0) return null;
         const tolerance = Math.max(CELL_SIZE * 0.12, (measurement.width + 3) / state.viewport.zoom);
+        const vertexTolerance = Math.max(tolerance, CELL_SIZE * 0.22, 9 / state.viewport.zoom);
 
         for (const point of measurement.points) {
           const worldPoint = measurementPointWorld(point);
-          if (Math.hypot(worldX - worldPoint.x, worldY - worldPoint.y) <= tolerance) {
+          if (Math.hypot(worldX - worldPoint.x, worldY - worldPoint.y) <= vertexTolerance) {
             return {
               kind: "point",
               itemId: point.id,
@@ -5521,14 +5546,14 @@
         }
 
         for (const length of measurement.lengths) {
-          if (Math.hypot(worldX - length.start.x, worldY - length.start.y) <= tolerance) {
+          if (Math.hypot(worldX - length.start.x, worldY - length.start.y) <= vertexTolerance) {
             return {
               kind: "length",
               itemId: length.id,
               part: "start",
             };
           }
-          if (Math.hypot(worldX - length.end.x, worldY - length.end.y) <= tolerance) {
+          if (Math.hypot(worldX - length.end.x, worldY - length.end.y) <= vertexTolerance) {
             return {
               kind: "length",
               itemId: length.id,
@@ -5547,7 +5572,7 @@
         for (const area of measurement.areas) {
           for (let index = 0; index < area.points.length; index += 1) {
             const point = area.points[index];
-            if (Math.hypot(worldX - point.x, worldY - point.y) <= tolerance) {
+            if (Math.hypot(worldX - point.x, worldY - point.y) <= vertexTolerance) {
               return {
                 kind: "area",
                 itemId: area.id,
@@ -5580,6 +5605,12 @@
           hit.part === target.part &&
           (hit.vertexIndex ?? -1) === (target.vertexIndex ?? -1)
         );
+      }
+
+      function measurementItemBelongsToTarget(hit, target) {
+        if (!hit || !target) return false;
+        if (target.kind === "point") return measurementItemMatchesTarget(hit, target);
+        return hit.kind === target.kind && hit.itemId === target.itemId;
       }
 
       function measurementItemKey(target) {
@@ -7561,7 +7592,7 @@
             const pointer = worldFromClient(event.clientX, event.clientY);
             const itemHit = activeMeasurementItemData() ? measurementItemHitAt(activeMeasurement(), pointer.worldX, pointer.worldY) : null;
             const hit =
-              itemHit && measurementItemMatchesTarget(itemHit, state.activeMeasurementItem)
+              itemHit && measurementItemBelongsToTarget(itemHit, state.activeMeasurementItem)
                 ? { type: "item-move" }
                 : measurementTransformHit(activeMeasurement(), pointer.worldX, pointer.worldY);
             ui.overlayCanvas.style.cursor =
@@ -7668,6 +7699,9 @@
           if (deltaX === state.interaction.deltaX && deltaY === state.interaction.deltaY) {
             return;
           }
+          if (deltaX !== 0 || deltaY !== 0) {
+            state.interaction.moved = true;
+          }
           state.interaction.deltaX = deltaX;
           state.interaction.deltaY = deltaY;
           applyMeasurementSnapshot(measurement, moveMeasurementSnapshot(state.interaction.snapshot, deltaX * CELL_SIZE, deltaY * CELL_SIZE));
@@ -7684,6 +7718,9 @@
             const point = measurement.points.find((entry) => entry.id === target.itemId);
             if (!point) return;
             const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+            if (point.cellX !== cell.x || point.cellY !== cell.y) {
+              state.interaction.moved = true;
+            }
             point.cellX = cell.x;
             point.cellY = cell.y;
             render({ overlay: true, ui: true });
@@ -7696,6 +7733,9 @@
             if (target.part === "body") {
               const deltaX = snapped.x - state.interaction.startWorld.x;
               const deltaY = snapped.y - state.interaction.startWorld.y;
+              if (deltaX !== 0 || deltaY !== 0) {
+                state.interaction.moved = true;
+              }
               length.start = measurementVertexPointFromWorld({
                 x: state.interaction.snapshot.start.x + deltaX,
                 y: state.interaction.snapshot.start.y + deltaY,
@@ -7705,8 +7745,14 @@
                 y: state.interaction.snapshot.end.y + deltaY,
               });
             } else if (target.part === "start") {
+              if (!pointsEqual(length.start, snapped)) {
+                state.interaction.moved = true;
+              }
               length.start = measurementVertexPointFromWorld(snapped);
             } else if (target.part === "end") {
+              if (!pointsEqual(length.end, snapped)) {
+                state.interaction.moved = true;
+              }
               length.end = measurementVertexPointFromWorld(snapped);
             }
             length.meters = measurementLengthMeters(length.start, length.end);
@@ -7719,6 +7765,9 @@
             if (target.part === "body") {
               const deltaX = snapped.x - state.interaction.startWorld.x;
               const deltaY = snapped.y - state.interaction.startWorld.y;
+              if (deltaX !== 0 || deltaY !== 0) {
+                state.interaction.moved = true;
+              }
               area.points = state.interaction.snapshot.map((point) =>
                 measurementVertexPointFromWorld({
                   x: point.x + deltaX,
@@ -7726,6 +7775,9 @@
                 })
               );
             } else if (target.part === "vertex") {
+              if (!pointsEqual(area.points[target.vertexIndex], snapped)) {
+                state.interaction.moved = true;
+              }
               area.points[target.vertexIndex] = measurementVertexPointFromWorld(snapped);
             }
             area.squareMeters = measurementAreaSquareMeters(area.points);
@@ -8034,13 +8086,35 @@
           setStatus("Layer rotated.");
         }
         if (state.interaction.type === "measurement-move") {
-          setStatus("Measurement moved.");
+          const measurement = state.measurements.find((entry) => entry.id === state.interaction.measurementId);
+          if (!state.interaction.moved && measurement && event) {
+            const pointer = worldFromClient(event.clientX, event.clientY);
+            const groupHit = measurementTransformHit(measurement, pointer.worldX, pointer.worldY);
+            const itemHit = measurementItemHitAt(measurement, pointer.worldX, pointer.worldY);
+            if (groupHit && groupHit.type === "move" && !itemHit) {
+              state.activeMeasurementItem = null;
+              state.measurementSelectClickMemory = null;
+              state.interaction = null;
+              setStatus("Measurement selected.");
+              render({ ui: true, overlay: true });
+              return;
+            }
+          }
+          if (state.interaction.moved) {
+            setStatus("Measurement moved.");
+          } else {
+            setStatus("Measurement selected.");
+          }
         }
         if (state.interaction.type === "measurement-rotate") {
           setStatus("Measurement rotated.");
         }
         if (state.interaction.type === "measurement-item-move") {
-          setStatus("Measurement item moved.");
+          if (state.interaction.moved) {
+            setStatus("Measurement item moved.");
+          } else {
+            setStatus("Measurement item selected.");
+          }
         }
         if (state.interaction.type === "view-move" || state.interaction.type === "view-resize") {
           setStatus("View box updated.");
