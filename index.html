@@ -2655,6 +2655,30 @@
           render({ ui: true, content: true, overlay: true });
           return true;
         }
+        if (state.activeMeasurementId && state.activeMeasurementItem) {
+          const measurement = activeMeasurement();
+          const target = state.activeMeasurementItem;
+          if (!measurement || !target?.itemId) return false;
+          let changed = false;
+          if (target.kind === "point") {
+            const nextPoints = measurement.points.filter((point) => point.id !== target.itemId);
+            changed = nextPoints.length !== measurement.points.length;
+            measurement.points = nextPoints;
+          } else if (target.kind === "length") {
+            const nextLengths = measurement.lengths.filter((length) => length.id !== target.itemId);
+            changed = nextLengths.length !== measurement.lengths.length;
+            measurement.lengths = nextLengths;
+          } else if (target.kind === "area") {
+            const nextAreas = measurement.areas.filter((area) => area.id !== target.itemId);
+            changed = nextAreas.length !== measurement.areas.length;
+            measurement.areas = nextAreas;
+          }
+          if (!changed) return false;
+          state.activeMeasurementItem = null;
+          state.measurementSelectClickMemory = null;
+          render({ ui: true, overlay: true });
+          return true;
+        }
         if (state.activeMeasurementId) {
           const index = state.measurements.findIndex((entry) => entry.id === state.activeMeasurementId);
           if (index === -1) return false;
