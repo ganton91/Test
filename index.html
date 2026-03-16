@@ -1888,6 +1888,7 @@
           name,
           visible: true,
           opacity: 1,
+          rotationQuarterTurns: 0,
           tiles: {},
           cellCount: 0,
         };
@@ -2645,6 +2646,112 @@
           setCellColor(layer, cell.x + deltaX, cell.y + deltaY, cell.color);
         });
         return true;
+      }
+
+      function normalizedQuarterTurns(turns) {
+        return ((turns % 4) + 4) % 4;
+      }
+
+      function rotateLayerSnapshot(snapshot, quarterTurns) {
+        const turns = normalizedQuarterTurns(quarterTurns);
+        if (!turns) return snapshot.map((cell) => ({ ...cell }));
+        if (!snapshot.length) return [];
+        const bounds = snapshot.reduce(
+          (result, cell) => ({
+            minX: Math.min(result.minX, cell.x),
+            minY: Math.min(result.minY, cell.y),
+            maxX: Math.max(result.maxX, cell.x),
+            maxY: Math.max(result.maxY, cell.y),
+          }),
+          {
+            minX: snapshot[0].x,
+            minY: snapshot[0].y,
+            maxX: snapshot[0].x,
+            maxY: snapshot[0].y,
+          }
+        );
+        const centerX = (bounds.minX + bounds.maxX + 1) / 2;
+        const centerY = (bounds.minY + bounds.maxY + 1) / 2;
+        return snapshot.map((cell) => {
+          let pointX = cell.x + 0.5;
+          let pointY = cell.y + 0.5;
+          for (let index = 0; index < turns; index += 1) {
+            const dx = pointX - centerX;
+            const dy = pointY - centerY;
+            pointX = centerX + dy;
+            pointY = centerY - dx;
+          }
+          return {
+            x: Math.floor(pointX),
+            y: Math.floor(pointY),
+            color: cell.color,
+          };
+        });
+      }
+
+      function layerHandleWorldPositions(layer) {
+        const bounds = layerCellBounds(layer);
+        if (!bounds) return null;
+        const minWorldX = bounds.minX * CELL_SIZE;
+        const minWorldY = bounds.minY * CELL_SIZE;
+        const maxWorldX = (bounds.maxX + 1) * CELL_SIZE;
+        const maxWorldY = (bounds.maxY + 1) * CELL_SIZE;
+        const centerX = (minWorldX + maxWorldX) / 2;
+        const centerY = (minWorldY + maxWorldY) / 2;
+        const rotateOffset = 28 / state.viewport.zoom;
+        const quarterTurns = normalizedQuarterTurns(layer.rotationQuarterTurns || 0);
+        let rotateX = centerX;
+        let rotateY = minWorldY - rotateOffset;
+        let anchorX = centerX;
+        let anchorY = minWorldY;
+        if (quarterTurns === 1) {
+          rotateX = maxWorldX + rotateOffset;
+          rotateY = centerY;
+          anchorX = maxWorldX;
+          anchorY = centerY;
+        } else if (quarterTurns === 2) {
+          rotateX = centerX;
+          rotateY = maxWorldY + rotateOffset;
+          anchorX = centerX;
+          anchorY = maxWorldY;
+        } else if (quarterTurns === 3) {
+          rotateX = minWorldX - rotateOffset;
+          rotateY = centerY;
+          anchorX = minWorldX;
+          anchorY = centerY;
+        }
+        return {
+          bounds: {
+            minWorldX,
+            minWorldY,
+            maxWorldX,
+            maxWorldY,
+          },
+          center: { x: centerX, y: centerY },
+          rotateAnchor: { x: anchorX, y: anchorY },
+          rotate: {
+            x: rotateX,
+            y: rotateY,
+          },
+        };
+      }
+
+      function layerTransformHit(layer, worldX, worldY) {
+        const handles = layerHandleWorldPositions(layer);
+        if (!handles) return null;
+        const radius = 10 / state.viewport.zoom;
+        if (Math.hypot(worldX - handles.rotate.x, worldY - handles.rotate.y) <= radius) {
+          return { type: "rotate" };
+        }
+        if (
+          worldX >= handles.bounds.minWorldX &&
+          worldX <= handles.bounds.maxWorldX &&
+          worldY >= handles.bounds.minWorldY &&
+          worldY <= handles.bounds.maxWorldY
+        ) {
+          return { type: "move" };
+        }
+        return null;
       }
 
       function beginRenameLayer(layerId) {
@@ -5069,19 +5176,30 @@
 
         const activeLayerEntity = activeLayer();
         if (activeLayerEntity && state.activeTool === "select") {
-          const bounds = layerCellBounds(activeLayerEntity);
-          if (bounds) {
-            const size = CELL_SIZE * state.viewport.zoom;
-            const x = snapPixel(state.viewport.x + bounds.minX * size);
-            const y = snapPixel(state.viewport.y + bounds.minY * size);
-            const boxWidth = Math.max(1, snapPixel((bounds.maxX - bounds.minX + 1) * size));
-            const boxHeight = Math.max(1, snapPixel((bounds.maxY - bounds.minY + 1) * size));
+          const handles = layerHandleWorldPositions(activeLayerEntity);
+          if (handles) {
+            const x = snapPixel(state.viewport.x + handles.bounds.minWorldX * state.viewport.zoom);
+            const y = snapPixel(state.viewport.y + handles.bounds.minWorldY * state.viewport.zoom);
+            const boxWidth = Math.max(1, snapPixel((handles.bounds.maxWorldX - handles.bounds.minWorldX) * state.viewport.zoom));
+            const boxHeight = Math.max(1, snapPixel((handles.bounds.maxWorldY - handles.bounds.minWorldY) * state.viewport.zoom));
+            const rotateHandle = worldToScreen(handles.rotate.x, handles.rotate.y);
+            const rotateAnchor = worldToScreen(handles.rotateAnchor.x, handles.rotateAnchor.y);
             overlayCtx.save();
             overlayCtx.strokeStyle = getCssVar("--selection");
             overlayCtx.lineWidth = 1;
             overlayCtx.setLineDash([6, 4]);
             overlayCtx.strokeRect(x + 0.5, y + 0.5, boxWidth - 1, boxHeight - 1);
             overlayCtx.setLineDash([]);
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(rotateAnchor.x, rotateAnchor.y);
+            overlayCtx.lineTo(rotateHandle.x, rotateHandle.y);
+            overlayCtx.stroke();
+            overlayCtx.beginPath();
+            overlayCtx.fillStyle = getCssVar("--crosshair");
+            overlayCtx.strokeStyle = getCssVar("--selection");
+            overlayCtx.arc(rotateHandle.x, rotateHandle.y, 5, 0, Math.PI * 2);
+            overlayCtx.fill();
+            overlayCtx.stroke();
             overlayCtx.restore();
           }
         }
@@ -6470,9 +6588,26 @@
         const layer = activeLayer();
         if (!layer) return false;
         const pointer = worldFromClient(clientX, clientY);
-        const hitLayer = topPaintedLayerAt(pointer.worldX, pointer.worldY);
-        if (!hitLayer || hitLayer.id !== layer.id) return false;
+        const hit = layerTransformHit(layer, pointer.worldX, pointer.worldY);
+        if (!hit) return false;
         const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+        const snapshot = collectLayerCells(layer);
+        if (hit.type === "rotate") {
+          const handles = layerHandleWorldPositions(layer);
+          if (!handles) return false;
+          state.interaction = {
+            type: "layer-rotate",
+            layerId: layer.id,
+            snapshot,
+            quarterTurns: 0,
+            startQuarterTurns: normalizedQuarterTurns(layer.rotationQuarterTurns || 0),
+            centerWorldX: handles.center.x,
+            centerWorldY: handles.center.y,
+            startAngle: Math.atan2(pointer.worldY - handles.center.y, pointer.worldX - handles.center.x),
+          };
+          setStatus("Rotating active layer.");
+          return true;
+        }
         state.interaction = {
           type: "layer-move",
           layerId: layer.id,
@@ -6480,7 +6615,7 @@
           startCellY: cell.y,
           deltaX: 0,
           deltaY: 0,
-          snapshot: collectLayerCells(layer),
+          snapshot,
         };
         setStatus("Moving active layer.");
         return true;
@@ -6592,8 +6727,8 @@
             ui.overlayCanvas.style.cursor = cursorForSceneHit(sceneTransformHit(activeScene(), pointer.worldX, pointer.worldY));
           } else if (state.activeTool === "select" && activeLayer()) {
             const pointer = worldFromClient(event.clientX, event.clientY);
-            const hitLayer = topPaintedLayerAt(pointer.worldX, pointer.worldY);
-            ui.overlayCanvas.style.cursor = hitLayer && hitLayer.id === state.activeLayerId ? "move" : "default";
+            const hit = layerTransformHit(activeLayer(), pointer.worldX, pointer.worldY);
+            ui.overlayCanvas.style.cursor = hit ? (hit.type === "rotate" ? "grab" : "move") : "default";
           } else if (state.activeTool === "view" && activeView() && !activeView().pending) {
             const pointer = worldFromClient(event.clientX, event.clientY);
             ui.overlayCanvas.style.cursor = cursorForViewHit(viewTransformHit(activeView(), pointer.worldX, pointer.worldY));
@@ -6656,6 +6791,26 @@
           state.interaction.deltaX = deltaX;
           state.interaction.deltaY = deltaY;
           applyLayerCellSnapshot(layer, state.interaction.snapshot, deltaX, deltaY);
+          render({ content: true, overlay: true });
+          return;
+        }
+
+        if (state.interaction.type === "layer-rotate") {
+          const layer = state.layers.find((entry) => entry.id === state.interaction.layerId);
+          if (!layer) return;
+          const pointer = worldFromClient(event.clientX, event.clientY);
+          const currentAngle = Math.atan2(
+            pointer.worldY - state.interaction.centerWorldY,
+            pointer.worldX - state.interaction.centerWorldX
+          );
+          const deltaAngle = currentAngle - state.interaction.startAngle;
+          const quarterTurns = Math.round(deltaAngle / (Math.PI / 2));
+          if (quarterTurns === state.interaction.quarterTurns) {
+            return;
+          }
+          state.interaction.quarterTurns = quarterTurns;
+          layer.rotationQuarterTurns = normalizedQuarterTurns((state.interaction.startQuarterTurns || 0) + quarterTurns);
+          applyLayerCellSnapshot(layer, rotateLayerSnapshot(state.interaction.snapshot, quarterTurns), 0, 0);
           render({ content: true, overlay: true });
           return;
         }
@@ -6936,6 +7091,9 @@
         if (state.interaction.type === "layer-move") {
           setStatus("Layer moved.");
         }
+        if (state.interaction.type === "layer-rotate") {
+          setStatus("Layer rotated.");
+        }
         if (state.interaction.type === "view-move" || state.interaction.type === "view-resize") {
           setStatus("View box updated.");
         }
@@ -6964,7 +7122,8 @@
           cancelShapeDraft();
         }
         if (tool === "select") {
-          clearActiveTarget();
+          state.color.eyedropper = false;
+          state.outline.eyedropper = false;
         } else if (tool === "brush") {
           if (!activeLayer() && state.layers[0]) {
             setActiveLayerById(state.layers[0].id);
@@ -6987,15 +7146,27 @@
           state.color.eyedropper = false;
         }
         state.activeTool = tool;
-        setStatus(
-          tool === "select"
-            ? "Selection tool active."
-            : tool === "brush"
-            ? "Brush tool active."
-            : tool === "shape"
-            ? "Shape tool active."
-            : "Transform tool active."
-        );
+        if (tool === "select") {
+          if (state.activeLayerId) {
+            setStatus("Layer selected.");
+          } else if (state.activeSceneId) {
+            setStatus("Scene selected.");
+          } else if (state.activeViewId) {
+            setStatus("View active.");
+          } else if (state.activeMeasurementId) {
+            setStatus("Measurement active.");
+          } else {
+            setStatus("Selection tool active.");
+          }
+        } else {
+          setStatus(
+            tool === "brush"
+              ? "Brush tool active."
+              : tool === "shape"
+              ? "Shape tool active."
+              : "Transform tool active."
+          );
+        }
         render({ ui: true, overlay: true });
       }
 
