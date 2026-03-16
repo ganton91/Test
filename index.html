@@ -1235,6 +1235,21 @@
         gap: 16px;
       }
 
+      .settings-group + .settings-group {
+        margin-top: 16px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+      }
+
+      .settings-group-title {
+        margin: 0 0 10px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
       .mode-button {
         padding: 9px 10px;
         text-align: center;
@@ -1424,38 +1439,57 @@
         <input id="projectImportInput" type="file" accept="application/json,.json" hidden />
 
         <div class="menu-panel modal-panel hidden" id="settingsMenu">
-          <div class="menu-section">
-            <div class="menu-title">Appearance</div>
-            <div class="menu-actions">
-              <button class="mode-button active" data-theme="light">Light mode</button>
-              <button class="mode-button" data-theme="dark">Dark mode</button>
+          <div class="settings-group">
+            <div class="settings-group-title">Main</div>
+            <div class="menu-section">
+              <div class="menu-title">Appearance</div>
+              <div class="menu-actions">
+                <button class="mode-button active" data-theme="light">Light mode</button>
+                <button class="mode-button" data-theme="dark">Dark mode</button>
+              </div>
+            </div>
+            <div class="menu-section">
+              <div class="menu-title">Grid Position</div>
+              <div class="menu-actions">
+                <button class="mode-button active" data-grid-position="below">Below layers</button>
+                <button class="mode-button" data-grid-position="above">Above layers</button>
+              </div>
+            </div>
+            <div class="menu-section">
+              <div class="menu-title">Dual Stroke Grid</div>
+              <div class="menu-actions">
+                <button class="mode-button active" data-dual-grid="off">Off</button>
+                <button class="mode-button" data-dual-grid="on">On</button>
+              </div>
             </div>
           </div>
-          <div class="menu-section">
-            <div class="menu-title">Grid Position</div>
-            <div class="menu-actions">
-              <button class="mode-button active" data-grid-position="below">Below layers</button>
-              <button class="mode-button" data-grid-position="above">Above layers</button>
+          <div class="settings-group">
+            <div class="settings-group-title">View</div>
+            <div class="menu-section">
+              <div class="menu-title">View Depth Effect</div>
+              <div class="menu-actions">
+                <button class="mode-button active" data-view-depth="on">On</button>
+                <button class="mode-button" data-view-depth="off">Off</button>
+              </div>
             </div>
-          </div>
-          <div class="menu-section">
-            <div class="menu-title">Dual Stroke Grid</div>
-            <div class="menu-actions">
-              <button class="mode-button active" data-dual-grid="off">Off</button>
-              <button class="mode-button" data-dual-grid="on">On</button>
+            <div class="menu-section">
+              <div class="menu-title">Depth Strength</div>
+              <div class="menu-actions" style="min-width: 180px;">
+                <input id="viewDepthStrength" type="range" min="0" max="100" step="1" value="50" />
+              </div>
             </div>
-          </div>
-          <div class="menu-section">
-            <div class="menu-title">View Depth Effect</div>
-            <div class="menu-actions">
-              <button class="mode-button active" data-view-depth="on">On</button>
-              <button class="mode-button" data-view-depth="off">Off</button>
+            <div class="menu-section">
+              <div class="menu-title">View Outline</div>
+              <div class="menu-actions">
+                <button class="mode-button active" data-view-outline="on">On</button>
+                <button class="mode-button" data-view-outline="off">Off</button>
+              </div>
             </div>
-          </div>
-          <div class="menu-section">
-            <div class="menu-title">Depth Strength</div>
-            <div class="menu-actions" style="min-width: 180px;">
-              <input id="viewDepthStrength" type="range" min="0" max="100" step="1" value="50" />
+            <div class="menu-section">
+              <div class="menu-title">Outline Thickness</div>
+              <div class="menu-actions" style="min-width: 180px;">
+                <input id="viewOutlineThickness" type="range" min="1" max="6" step="1" value="1" />
+              </div>
             </div>
           </div>
         </div>
@@ -1794,7 +1828,9 @@
         gridPositionButtons: Array.from(document.querySelectorAll("[data-grid-position]")),
         dualGridButtons: Array.from(document.querySelectorAll("[data-dual-grid]")),
         viewDepthButtons: Array.from(document.querySelectorAll("[data-view-depth]")),
+        viewOutlineButtons: Array.from(document.querySelectorAll("[data-view-outline]")),
         viewDepthStrength: document.getElementById("viewDepthStrength"),
+        viewOutlineThickness: document.getElementById("viewOutlineThickness"),
         selectionToolButton: document.getElementById("selectionToolButton"),
         brushToolButton: document.getElementById("brushToolButton"),
         shapeToolButton: document.getElementById("shapeToolButton"),
@@ -1924,6 +1960,10 @@
         viewDepthEffect: {
           enabled: true,
           strength: 50,
+        },
+        viewOutlineEffect: {
+          enabled: true,
+          thickness: 1,
         },
         layers: [createLayer("Layer 1")],
         activeLayerId: null,
@@ -2326,6 +2366,10 @@
             enabled: !!state.viewDepthEffect.enabled,
             strength: state.viewDepthEffect.strength,
           },
+          viewOutlineEffect: {
+            enabled: !!state.viewOutlineEffect.enabled,
+            thickness: state.viewOutlineEffect.thickness,
+          },
           sceneSectionCollapsed: state.sceneSectionCollapsed,
           layerSectionCollapsed: state.layerSectionCollapsed,
           measurementSectionCollapsed: state.measurementSectionCollapsed,
@@ -2418,6 +2462,8 @@
           state.dualStrokeGrid = !!project.dualStrokeGrid;
           state.viewDepthEffect.enabled = project.viewDepthEffect?.enabled !== false;
           state.viewDepthEffect.strength = Math.max(0, Math.min(100, Number(project.viewDepthEffect?.strength) || 50));
+          state.viewOutlineEffect.enabled = project.viewOutlineEffect?.enabled !== false;
+          state.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(project.viewOutlineEffect?.thickness) || 1));
           state.sceneSectionCollapsed = !!project.sceneSectionCollapsed;
           state.layerSectionCollapsed = !!project.layerSectionCollapsed;
           state.measurementSectionCollapsed = !!project.measurementSectionCollapsed;
@@ -2826,6 +2872,7 @@
 
         const directionConfig = directionalViewConfig(direction);
         const columnsByLayer = configuredLayers.map(({ layer, config }, orderIndex) => ({
+          layerId: layer.id,
           colorByColumn: collectLayerProjectedColumns(layer, bounds, direction),
           opacity: Math.max(0, Math.min(1, layer.opacity)),
           baseCells: Math.round(config.baseElevation * CELLS_PER_METER),
@@ -2886,6 +2933,7 @@
               const rowIndex = totalRows - 1 - (z - minBaseCells);
               const existing = grid[rowIndex][projectedColumnIndex];
               const candidate = {
+                layerId: entry.layerId,
                 color: column.color,
                 depth: column.depth,
                 isCut: !!column.isCut,
@@ -2929,6 +2977,59 @@
               : hexToRgba(shadedColor, cell.opacity);
             context.fillRect(offsetX + columnIndex * cellPixelSize, offsetY + rowIndex * cellPixelSize, cellPixelSize, cellPixelSize);
           }
+        }
+
+        if (state.viewOutlineEffect.enabled) {
+          context.save();
+          context.fillStyle = getCssVar("--text");
+          const strokeThickness = Math.max(1, Math.min(6, state.viewOutlineEffect.thickness || 1));
+          for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
+            for (let columnIndex = 0; columnIndex < totalColumns; columnIndex += 1) {
+              const cell = grid[rowIndex][columnIndex];
+              if (!cell) continue;
+              const x = offsetX + columnIndex * cellPixelSize;
+              const y = offsetY + rowIndex * cellPixelSize;
+              const topNeighbor = rowIndex > 0 ? grid[rowIndex - 1][columnIndex] : null;
+              const bottomNeighbor = rowIndex < totalRows - 1 ? grid[rowIndex + 1][columnIndex] : null;
+              const leftNeighbor = columnIndex > 0 ? grid[rowIndex][columnIndex - 1] : null;
+              const rightNeighbor = columnIndex < totalColumns - 1 ? grid[rowIndex][columnIndex + 1] : null;
+              const sameVisibleSurface = (neighbor) =>
+                !!neighbor &&
+                neighbor.layerId === cell.layerId &&
+                neighbor.depth === cell.depth &&
+                neighbor.isCut === cell.isCut;
+              const topBoundary = !sameVisibleSurface(topNeighbor);
+              const bottomBoundary = !sameVisibleSurface(bottomNeighbor);
+              const leftBoundary = !sameVisibleSurface(leftNeighbor);
+              const rightBoundary = !sameVisibleSurface(rightNeighbor);
+
+              if (topBoundary) {
+                context.fillRect(x, y, cellPixelSize, strokeThickness);
+                if (!topNeighbor) {
+                  context.fillRect(x, y - strokeThickness, cellPixelSize, strokeThickness);
+                }
+              }
+              if (bottomBoundary) {
+                context.fillRect(x, y + cellPixelSize - strokeThickness, cellPixelSize, strokeThickness);
+                if (!bottomNeighbor) {
+                  context.fillRect(x, y + cellPixelSize, cellPixelSize, strokeThickness);
+                }
+              }
+              if (leftBoundary) {
+                context.fillRect(x, y, strokeThickness, cellPixelSize);
+                if (!leftNeighbor) {
+                  context.fillRect(x - strokeThickness, y, strokeThickness, cellPixelSize);
+                }
+              }
+              if (rightBoundary) {
+                context.fillRect(x + cellPixelSize - strokeThickness, y, strokeThickness, cellPixelSize);
+                if (!rightNeighbor) {
+                  context.fillRect(x + cellPixelSize, y, strokeThickness, cellPixelSize);
+                }
+              }
+            }
+          }
+          context.restore();
         }
 
         if (zeroLineY < surfaceHeight) {
@@ -4727,8 +4828,13 @@
         ui.viewDepthButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewDepth === (state.viewDepthEffect.enabled ? "on" : "off"));
         });
+        ui.viewOutlineButtons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.viewOutline === (state.viewOutlineEffect.enabled ? "on" : "off"));
+        });
         ui.viewDepthStrength.value = String(state.viewDepthEffect.strength);
         ui.viewDepthStrength.disabled = !state.viewDepthEffect.enabled;
+        ui.viewOutlineThickness.value = String(state.viewOutlineEffect.thickness);
+        ui.viewOutlineThickness.disabled = !state.viewOutlineEffect.enabled;
       }
 
       function renderToolState() {
@@ -9683,6 +9789,20 @@
           setStatus(state.viewDepthEffect.enabled ? "View depth effect enabled." : "View depth effect disabled.");
           render({ ui: true, content: true });
         });
+      });
+
+      ui.viewOutlineButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          state.viewOutlineEffect.enabled = button.dataset.viewOutline === "on";
+          setStatus(state.viewOutlineEffect.enabled ? "View outline enabled." : "View outline disabled.");
+          render({ ui: true, content: true });
+        });
+      });
+
+      ui.viewOutlineThickness.addEventListener("input", () => {
+        state.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(ui.viewOutlineThickness.value) || 1));
+        setStatus("View outline thickness " + state.viewOutlineEffect.thickness + ".");
+        render({ ui: true, content: true });
       });
 
       ui.viewDepthStrength.addEventListener("input", () => {
