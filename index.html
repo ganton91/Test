@@ -1538,6 +1538,15 @@
             <button class="floating-tool" id="shapeToolButton">
               <span>Shape</span>
             </button>
+            <button class="floating-tool" id="measurementPointToolButton">
+              <span>Point</span>
+            </button>
+            <button class="floating-tool" id="measurementLengthToolButton">
+              <span>Length</span>
+            </button>
+            <button class="floating-tool" id="measurementAreaToolButton">
+              <span>Area</span>
+            </button>
           </div>
 
           <div class="floating-panels-left">
@@ -1765,6 +1774,9 @@
         selectionToolButton: document.getElementById("selectionToolButton"),
         brushToolButton: document.getElementById("brushToolButton"),
         shapeToolButton: document.getElementById("shapeToolButton"),
+        measurementPointToolButton: document.getElementById("measurementPointToolButton"),
+        measurementLengthToolButton: document.getElementById("measurementLengthToolButton"),
+        measurementAreaToolButton: document.getElementById("measurementAreaToolButton"),
         brushPanel: document.getElementById("brushPanel"),
         shapePanel: document.getElementById("shapePanel"),
         colorPalette: document.getElementById("colorPalette"),
@@ -4006,6 +4018,18 @@
         ui.selectionToolButton.classList.toggle("active", state.activeTool === "select" && !state.sceneCalibration);
         ui.brushToolButton.classList.toggle("active", state.activeTool === "brush");
         ui.shapeToolButton.classList.toggle("active", state.activeTool === "shape");
+        ui.measurementPointToolButton.classList.toggle(
+          "active",
+          state.activeTool === "measure" && activeMeasurement()?.mode === "points"
+        );
+        ui.measurementLengthToolButton.classList.toggle(
+          "active",
+          state.activeTool === "measure" && activeMeasurement()?.mode === "length"
+        );
+        ui.measurementAreaToolButton.classList.toggle(
+          "active",
+          state.activeTool === "measure" && activeMeasurement()?.mode === "area"
+        );
         ui.brushLinkButton.classList.toggle("active", state.brush.linked);
         ui.brushLinkButton.setAttribute("aria-pressed", String(state.brush.linked));
         ui.brushLinkButton.disabled = state.brush.shape === "circle";
@@ -4395,7 +4419,6 @@
       function renderMeasurements() {
         ui.measurementList.innerHTML = "";
         state.measurements.forEach((measurement) => {
-          const measurementToolActive = measurement.id === state.activeMeasurementId && state.activeTool === "measure";
           const card = document.createElement("div");
           card.className = "layer-card measurement-card" + (measurement.id === state.activeMeasurementId ? " active" : "");
           if (measurement.id !== state.activeMeasurementId) card.classList.add("inactive-collapsed");
@@ -4493,52 +4516,6 @@
           header.appendChild(titleWrap);
           header.appendChild(inlineControls);
           main.appendChild(header);
-
-          const modes = document.createElement("div");
-          modes.className = "layer-actions";
-
-          const pointMode = document.createElement("button");
-          pointMode.className = "layer-icon" + (measurementToolActive && measurement.mode === "points" ? " active" : "");
-          pointMode.textContent = "Points";
-          pointMode.title = "Point measurements";
-          pointMode.addEventListener("click", (event) => {
-            event.stopPropagation();
-            cancelMeasurementDraft();
-            measurement.mode = "points";
-            setActiveMeasurementById(measurement.id, { tool: "measure" });
-            setStatus("Points mode active.");
-            render({ ui: true, overlay: true });
-          });
-          modes.appendChild(pointMode);
-
-          const lengthMode = document.createElement("button");
-          lengthMode.className = "layer-icon" + (measurementToolActive && measurement.mode === "length" ? " active" : "");
-          lengthMode.textContent = "Length";
-          lengthMode.title = "Length measurements";
-          lengthMode.addEventListener("click", (event) => {
-            event.stopPropagation();
-            cancelMeasurementDraft();
-            measurement.mode = "length";
-            setActiveMeasurementById(measurement.id, { tool: "measure" });
-            setStatus("Length mode active.");
-            render({ ui: true, overlay: true });
-          });
-          modes.appendChild(lengthMode);
-
-          const areaMode = document.createElement("button");
-          areaMode.className = "layer-icon" + (measurementToolActive && measurement.mode === "area" ? " active" : "");
-          areaMode.textContent = "Area";
-          areaMode.title = "Area measurements";
-          areaMode.addEventListener("click", (event) => {
-            event.stopPropagation();
-            cancelMeasurementDraft();
-            measurement.mode = "area";
-            setActiveMeasurementById(measurement.id, { tool: "measure" });
-            setStatus("Area mode active.");
-            render({ ui: true, overlay: true });
-          });
-          modes.appendChild(areaMode);
-          main.appendChild(modes);
 
           const itemCount = measurement.points.length + measurement.lengths.length + measurement.areas.length;
           const totalLength = measurement.lengths.reduce((sum, entry) => sum + entry.meters, 0);
@@ -8270,8 +8247,12 @@
           state.color.eyedropper = false;
           state.outline.eyedropper = false;
         } else if (tool === "brush") {
-          if (!activeLayer() && state.layers[0]) {
-            setActiveLayerById(state.layers[0].id);
+          if (!activeLayer()) {
+            if (!state.layers.length) {
+              addLayer();
+            } else if (state.layers[0]) {
+              setActiveLayerById(state.layers[0].id);
+            }
           } else {
             state.activeSceneId = null;
             state.activeMeasurementId = null;
@@ -8279,8 +8260,18 @@
             state.activeTool = "brush";
           }
         } else if (tool === "shape") {
-          if (!activeLayer() && state.layers[0]) {
-            setActiveLayerById(state.layers[0].id);
+          if (!activeLayer()) {
+            if (!state.layers.length) {
+              addLayer();
+            } else if (state.layers[0]) {
+              setActiveLayerById(state.layers[0].id);
+            }
+            if (activeLayer()) {
+              state.activeSceneId = null;
+              state.activeMeasurementId = null;
+              state.activeViewId = null;
+              state.activeTool = "shape";
+            }
           } else {
             state.activeSceneId = null;
             state.activeMeasurementId = null;
@@ -8315,9 +8306,35 @@
         render({ ui: true, overlay: true });
       }
 
+      function activateMeasurementMode(mode) {
+        cancelMeasurementDraft();
+        if (!activeMeasurement() && !state.measurements.length) {
+          addMeasurement();
+        }
+        const measurement = activeMeasurement() || state.measurements[0];
+        if (!measurement) {
+          setStatus("Add a measurement first.");
+          render({ overlay: true });
+          return;
+        }
+        measurement.mode = mode;
+        setActiveMeasurementById(measurement.id, { tool: "measure" });
+        setStatus(
+          mode === "points"
+            ? "Points mode active."
+            : mode === "length"
+            ? "Length mode active."
+            : "Area mode active."
+        );
+        render({ ui: true, overlay: true });
+      }
+
       ui.selectionToolButton.addEventListener("click", () => activateTool("select"));
       ui.brushToolButton.addEventListener("click", () => activateTool("brush"));
       ui.shapeToolButton.addEventListener("click", () => activateTool("shape"));
+      ui.measurementPointToolButton.addEventListener("click", () => activateMeasurementMode("points"));
+      ui.measurementLengthToolButton.addEventListener("click", () => activateMeasurementMode("length"));
+      ui.measurementAreaToolButton.addEventListener("click", () => activateMeasurementMode("area"));
       ui.colorPaletteButtons.forEach((button, index) => {
         button.addEventListener("click", () => {
           setActiveColorSwatch(index);
