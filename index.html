@@ -1857,6 +1857,7 @@
         shapePanelCollapsed: false,
         outlinePanelCollapsed: false,
         measurementDraft: null,
+        measurementAreaClickMemory: null,
         selectionPicker: null,
         gridPosition: "below",
         dualStrokeGrid: false,
@@ -3348,6 +3349,7 @@
       function cancelMeasurementDraft() {
         const hadDraft = !!state.measurementDraft;
         state.measurementDraft = null;
+        state.measurementAreaClickMemory = null;
         if (state.interaction && String(state.interaction.type || "").startsWith("measurement-")) {
           state.interaction = null;
         }
@@ -6891,6 +6893,21 @@
         const pointer = worldFromClient(clientX, clientY);
         const snapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
         const draft = state.measurementDraft;
+        const now = Date.now();
+        const previousClick = state.measurementAreaClickMemory;
+        const isDoubleClick =
+          !!previousClick &&
+          previousClick.measurementId === measurement.id &&
+          now - previousClick.time <= 320 &&
+          Math.abs(previousClick.x - snapped.x) <= CELL_SIZE / 2 &&
+          Math.abs(previousClick.y - snapped.y) <= CELL_SIZE / 2;
+
+        state.measurementAreaClickMemory = {
+          measurementId: measurement.id,
+          x: snapped.x,
+          y: snapped.y,
+          time: now,
+        };
 
         if (!draft || draft.type !== "area" || draft.measurementId !== measurement.id) {
           state.measurementDraft = {
@@ -6913,6 +6930,22 @@
             color: state.color.active,
           });
           state.measurementDraft = null;
+          state.measurementAreaClickMemory = null;
+          setStatus("Measurement area added.");
+          render({ ui: true, overlay: true });
+          return;
+        }
+
+        if (isDoubleClick && draft.points.length >= 3) {
+          const points = draft.points.slice();
+          measurement.areas.push({
+            id: "area-" + Math.random().toString(36).slice(2, 9),
+            points,
+            squareMeters: measurementAreaSquareMeters(points),
+            color: state.color.active,
+          });
+          state.measurementDraft = null;
+          state.measurementAreaClickMemory = null;
           setStatus("Measurement area added.");
           render({ ui: true, overlay: true });
           return;
@@ -6926,6 +6959,7 @@
 
         draft.points.push(snapped);
         draft.hover = snapped;
+
         setStatus("Area point added.");
         render({ overlay: true });
       }
