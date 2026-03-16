@@ -1421,6 +1421,7 @@
           </div>
         </aside>
         <input id="sceneImportInput" type="file" accept="image/*" hidden />
+        <input id="projectImportInput" type="file" accept="application/json,.json" hidden />
 
         <div class="menu-panel modal-panel hidden" id="settingsMenu">
           <div class="menu-section">
@@ -1773,6 +1774,9 @@
         modalBackdrop: document.getElementById("modalBackdrop"),
         undoButton: document.getElementById("undoButton"),
         redoButton: document.getElementById("redoButton"),
+        exportButton: document.getElementById("exportButton"),
+        importButton: document.getElementById("importButton"),
+        projectImportInput: document.getElementById("projectImportInput"),
         themeButtons: Array.from(document.querySelectorAll("[data-theme]")),
         gridPositionButtons: Array.from(document.querySelectorAll("[data-grid-position]")),
         dualGridButtons: Array.from(document.querySelectorAll("[data-dual-grid]")),
@@ -2246,6 +2250,238 @@
         state.history.undoStack.push(next);
         restoreDocumentState(next.snapshot);
         return true;
+      }
+
+      function loadImageFromUrl(url) {
+        return new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = () => reject(new Error("Could not load scene image from project file."));
+          image.src = url;
+        });
+      }
+
+      async function sceneImageDataUrl(scene) {
+        if (!scene) return "";
+        if (typeof scene.previewUrl === "string" && scene.previewUrl.startsWith("data:")) {
+          return scene.previewUrl;
+        }
+        if (!scene.image) {
+          return scene.previewUrl || "";
+        }
+        const width = scene.image.naturalWidth || scene.image.width;
+        const height = scene.image.naturalHeight || scene.image.height;
+        if (!width || !height) {
+          return scene.previewUrl || "";
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(scene.image, 0, 0, width, height);
+        return canvas.toDataURL("image/png");
+      }
+
+      async function serializeSceneForProject(scene) {
+        const imageDataUrl = await sceneImageDataUrl(scene);
+        return {
+          ...cloneSceneForSnapshot(scene),
+          imageDataUrl,
+        };
+      }
+
+      async function captureProjectState() {
+        return {
+          version: 1,
+          exportedAt: new Date().toISOString(),
+          theme: state.theme,
+          viewport: {
+            x: state.viewport.x,
+            y: state.viewport.y,
+            zoom: state.viewport.zoom,
+          },
+          gridPosition: state.gridPosition,
+          dualStrokeGrid: state.dualStrokeGrid,
+          sceneSectionCollapsed: state.sceneSectionCollapsed,
+          layerSectionCollapsed: state.layerSectionCollapsed,
+          measurementSectionCollapsed: state.measurementSectionCollapsed,
+          viewSectionCollapsed: state.viewSectionCollapsed,
+          colorPanelCollapsed: state.colorPanelCollapsed,
+          brushPanelCollapsed: state.brushPanelCollapsed,
+          shapePanelCollapsed: state.shapePanelCollapsed,
+          outlinePanelCollapsed: state.outlinePanelCollapsed,
+          activeCanvasViewTab: state.activeCanvasViewTab,
+          activeTool: state.activeTool === "eyedropper" ? state.eyedropperSession?.previousTool || "select" : state.activeTool,
+          activeSceneId: state.activeSceneId,
+          activeLayerId: state.activeLayerId,
+          activeMeasurementId: state.activeMeasurementId,
+          activeMeasurementItem: state.activeMeasurementItem ? { ...state.activeMeasurementItem } : null,
+          activeViewId: state.activeViewId,
+          lastLayerAuthoringTool: state.lastLayerAuthoringTool,
+          lastMeasurementMode: state.lastMeasurementMode,
+          nextSceneNumber: state.nextSceneNumber,
+          nextMeasurementNumber: state.nextMeasurementNumber,
+          nextViewNumber: state.nextViewNumber,
+          color: {
+            active: state.color.active,
+            hsv: { ...state.color.hsv },
+            paletteColors: [...state.color.paletteColors],
+            activeSwatchIndex: state.color.activeSwatchIndex,
+          },
+          outline: {
+            side: state.outline.side,
+            noFill: state.outline.noFill,
+            width: state.outline.width,
+            active: state.outline.active,
+            hsv: { ...state.outline.hsv },
+            paletteColors: [...state.outline.paletteColors],
+            activeSwatchIndex: state.outline.activeSwatchIndex,
+          },
+          brush: {
+            width: state.brush.width,
+            height: state.brush.height,
+            linked: state.brush.linked,
+            shape: state.brush.shape,
+          },
+          shape: {
+            type: state.shape.type,
+          },
+          scenes: await Promise.all(state.scenes.map(serializeSceneForProject)),
+          measurements: state.measurements.map(cloneMeasurementForSnapshot),
+          views: state.views.map(cloneViewForSnapshot),
+          layers: state.layers.map(cloneLayerForSnapshot),
+        };
+      }
+
+      async function restoreProjectState(project) {
+        state.history.isRestoring = true;
+        try {
+          closeModal(ui.settingsMenu);
+          closeModal(ui.sceneScaleModal);
+          if (state.viewEditDraft) {
+            closeViewEditModal();
+          }
+          state.sceneCalibration = null;
+          state.interaction = null;
+          state.selectionPicker = null;
+          state.pendingViewCreation = null;
+          state.measurementDraft = null;
+          state.measurementAreaClickMemory = null;
+          state.measurementSelectClickMemory = null;
+          state.shapeDraft = null;
+          state.polygonClickMemory = null;
+          state.eyedropperSession = null;
+          state.color.eyedropper = false;
+          state.outline.eyedropper = false;
+
+          const restoredScenes = await Promise.all(
+            (project.scenes || []).map(async (sceneSnapshot) => {
+              const imageDataUrl = sceneSnapshot.imageDataUrl || sceneSnapshot.previewUrl || "";
+              const image = imageDataUrl ? await loadImageFromUrl(imageDataUrl) : null;
+              return {
+                ...sceneSnapshot,
+                previewUrl: imageDataUrl,
+                image,
+              };
+            })
+          );
+
+          state.theme = project.theme === "dark" ? "dark" : "light";
+          state.viewport.x = Number.isFinite(project.viewport?.x) ? project.viewport.x : state.viewport.x;
+          state.viewport.y = Number.isFinite(project.viewport?.y) ? project.viewport.y : state.viewport.y;
+          state.viewport.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number.isFinite(project.viewport?.zoom) ? project.viewport.zoom : 1));
+          state.gridPosition = project.gridPosition === "above" ? "above" : "below";
+          state.dualStrokeGrid = !!project.dualStrokeGrid;
+          state.sceneSectionCollapsed = !!project.sceneSectionCollapsed;
+          state.layerSectionCollapsed = !!project.layerSectionCollapsed;
+          state.measurementSectionCollapsed = !!project.measurementSectionCollapsed;
+          state.viewSectionCollapsed = !!project.viewSectionCollapsed;
+          state.colorPanelCollapsed = !!project.colorPanelCollapsed;
+          state.brushPanelCollapsed = !!project.brushPanelCollapsed;
+          state.shapePanelCollapsed = !!project.shapePanelCollapsed;
+          state.outlinePanelCollapsed = !!project.outlinePanelCollapsed;
+          state.lastLayerAuthoringTool = project.lastLayerAuthoringTool === "shape" ? "shape" : "brush";
+          state.lastMeasurementMode = ["points", "length", "area"].includes(project.lastMeasurementMode)
+            ? project.lastMeasurementMode
+            : "points";
+          state.nextSceneNumber = Number.isFinite(project.nextSceneNumber) ? project.nextSceneNumber : 1;
+          state.nextMeasurementNumber = Number.isFinite(project.nextMeasurementNumber) ? project.nextMeasurementNumber : 1;
+          state.nextViewNumber = Number.isFinite(project.nextViewNumber) ? project.nextViewNumber : 1;
+          state.scenes = restoredScenes;
+          state.measurements = (project.measurements || []).map(restoreMeasurementFromSnapshot);
+          state.views = (project.views || []).map(restoreViewFromSnapshot);
+          state.layers = (project.layers || []).map(restoreLayerFromSnapshot);
+
+          state.color.active = project.color?.active || DEFAULT_COLOR;
+          state.color.hsv = project.color?.hsv ? { ...project.color.hsv } : hexToHsv(state.color.active);
+          state.color.paletteColors = Array.isArray(project.color?.paletteColors)
+            ? [...project.color.paletteColors]
+            : [...ui.colorPaletteButtons.map((button) => button.dataset.color)];
+          state.color.activeSwatchIndex = Math.max(
+            0,
+            Math.min(
+              state.color.paletteColors.length - 1,
+              Number.isFinite(project.color?.activeSwatchIndex) ? project.color.activeSwatchIndex : 0
+            )
+          );
+
+          state.outline.side = project.outline?.side === "inside" || project.outline?.side === "outside" ? project.outline.side : null;
+          state.outline.noFill = !!project.outline?.noFill;
+          state.outline.width = Math.max(1, Number(project.outline?.width) || 1);
+          state.outline.active = project.outline?.active || DEFAULT_COLOR;
+          state.outline.hsv = project.outline?.hsv ? { ...project.outline.hsv } : hexToHsv(state.outline.active);
+          state.outline.paletteColors = Array.isArray(project.outline?.paletteColors)
+            ? [...project.outline.paletteColors]
+            : [...ui.outlinePaletteButtons.map((button) => button.dataset.color)];
+          state.outline.activeSwatchIndex = Math.max(
+            0,
+            Math.min(
+              state.outline.paletteColors.length - 1,
+              Number.isFinite(project.outline?.activeSwatchIndex) ? project.outline.activeSwatchIndex : 0
+            )
+          );
+
+          state.brush.width = Math.max(1, Number(project.brush?.width) || 1);
+          state.brush.height = Math.max(1, Number(project.brush?.height) || 1);
+          state.brush.linked = !!project.brush?.linked;
+          state.brush.shape = project.brush?.shape === "circle" ? "circle" : "rect";
+          if (state.brush.shape === "circle") {
+            state.brush.linked = true;
+            state.brush.height = state.brush.width;
+          }
+          state.brush.lastCellX = null;
+          state.brush.lastCellY = null;
+          state.shape.type = ["rect", "ellipse", "circle", "polygon"].includes(project.shape?.type)
+            ? project.shape.type
+            : "rect";
+
+          state.activeSceneId = state.scenes.some((scene) => scene.id === project.activeSceneId) ? project.activeSceneId : null;
+          state.activeLayerId = state.layers.some((layer) => layer.id === project.activeLayerId) ? project.activeLayerId : null;
+          state.activeMeasurementId = state.measurements.some((measurement) => measurement.id === project.activeMeasurementId)
+            ? project.activeMeasurementId
+            : null;
+          state.activeMeasurementItem = state.activeMeasurementId && project.activeMeasurementItem
+            ? { ...project.activeMeasurementItem }
+            : null;
+          state.activeViewId = state.views.some((view) => view.id === project.activeViewId) ? project.activeViewId : null;
+          state.activeCanvasViewTab =
+            project.activeCanvasViewTab === "main" || state.views.some((view) => view.id === project.activeCanvasViewTab)
+              ? project.activeCanvasViewTab
+              : "main";
+          state.activeTool = ["select", "brush", "shape", "measure", "viewbox", "view"].includes(project.activeTool)
+            ? project.activeTool
+            : "select";
+
+          state.history.undoStack = [];
+          state.history.redoStack = [];
+          state.history.isRestoring = false;
+          pushHistorySnapshot("Imported Project");
+          render({ ui: true, static: true, scenes: true, content: true, overlay: true, rulers: true });
+        } catch (error) {
+          state.history.isRestoring = false;
+          throw error;
+        }
       }
 
       function measurementAnnotationColor(entry, measurement) {
@@ -9308,6 +9544,21 @@
         const [file] = ui.sceneImportInput.files || [];
         importSceneFile(file);
       });
+      ui.projectImportInput.addEventListener("change", async () => {
+        const [file] = ui.projectImportInput.files || [];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const project = JSON.parse(text);
+          await restoreProjectState(project);
+          closeModal(ui.settingsMenu);
+          setStatus("Project imported.");
+        } catch (error) {
+          console.error(error);
+          setStatus("Project import failed.");
+          render({ ui: true, overlay: true });
+        }
+      });
       ui.addMeasurementButton.addEventListener("click", addMeasurement);
       ui.addViewButton.addEventListener("click", addView);
       ui.addLayerButton.addEventListener("click", addLayer);
@@ -9318,6 +9569,31 @@
       ui.redoButton.addEventListener("click", () => {
         if (!redoHistory()) return;
         setStatus("Redo.");
+      });
+      ui.exportButton.addEventListener("click", async () => {
+        try {
+          const project = await captureProjectState();
+          const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = "millimetre-project-" + new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-") + ".json";
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+          closeModal(ui.settingsMenu);
+          setStatus("Project exported.");
+          render({ ui: true });
+        } catch (error) {
+          console.error(error);
+          setStatus("Project export failed.");
+          render({ ui: true });
+        }
+      });
+      ui.importButton.addEventListener("click", () => {
+        ui.projectImportInput.value = "";
+        ui.projectImportInput.click();
       });
       ui.sceneScaleCancelButton.addEventListener("click", () => {
         closeModal(ui.sceneScaleModal);
