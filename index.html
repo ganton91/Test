@@ -1840,6 +1840,7 @@
         nextMeasurementNumber: 1,
         measurements: [],
         activeMeasurementId: null,
+        activeMeasurementItem: null,
         editingMeasurementId: null,
         dragMeasurementId: null,
         measurementSectionCollapsed: false,
@@ -1858,6 +1859,7 @@
         outlinePanelCollapsed: false,
         measurementDraft: null,
         measurementAreaClickMemory: null,
+        measurementSelectClickMemory: null,
         selectionPicker: null,
         gridPosition: "below",
         dualStrokeGrid: false,
@@ -2529,7 +2531,9 @@
         state.activeLayerId = layer.id;
         state.activeSceneId = null;
         state.activeMeasurementId = null;
+        state.activeMeasurementItem = null;
         state.activeViewId = null;
+        state.measurementSelectClickMemory = null;
         state.activeTool = options.tool || "brush";
         return true;
       }
@@ -2541,7 +2545,9 @@
         state.activeSceneId = scene.id;
         state.activeLayerId = null;
         state.activeMeasurementId = null;
+        state.activeMeasurementItem = null;
         state.activeViewId = null;
+        state.measurementSelectClickMemory = null;
         state.color.eyedropper = false;
         state.activeTool = "select";
         return true;
@@ -2550,6 +2556,7 @@
       function setActiveMeasurementById(measurementId, options = {}) {
         const measurement = state.measurements.find((entry) => entry.id === measurementId);
         if (!measurement) return false;
+        const previousMeasurementId = state.activeMeasurementId;
         cancelSceneCalibration();
         if (state.activeMeasurementId !== measurementId) cancelMeasurementDraft();
         state.activeMeasurementId = measurement.id;
@@ -2558,6 +2565,12 @@
         state.activeViewId = null;
         state.color.eyedropper = false;
         state.activeTool = options.tool || "measure";
+        if (!options.preserveClickMemory) {
+          state.measurementSelectClickMemory = null;
+        }
+        if (previousMeasurementId !== measurementId || !options.preserveItem) {
+          state.activeMeasurementItem = null;
+        }
         return true;
       }
 
@@ -2570,7 +2583,9 @@
         state.activeLayerId = null;
         state.activeSceneId = null;
         state.activeMeasurementId = null;
+        state.activeMeasurementItem = null;
         state.color.eyedropper = false;
+        state.measurementSelectClickMemory = null;
         state.activeTool = options.drawing ? "viewbox" : "select";
         return true;
       }
@@ -2581,12 +2596,14 @@
         state.activeLayerId = null;
         state.activeSceneId = null;
         state.activeMeasurementId = null;
+        state.activeMeasurementItem = null;
         state.activeViewId = null;
         state.editingLayerId = null;
         state.editingSceneId = null;
         state.editingMeasurementId = null;
         state.editingViewId = null;
         state.color.eyedropper = false;
+        state.measurementSelectClickMemory = null;
         state.activeTool = "select";
       }
 
@@ -3078,6 +3095,7 @@
         const pointer = worldFromClient(clientX, clientY);
         const hit = measurementTransformHit(measurement, pointer.worldX, pointer.worldY);
         if (!hit) return false;
+        const itemHit = measurementItemHitAt(measurement, pointer.worldX, pointer.worldY);
         const snapshot = collectMeasurementSnapshot(measurement);
         if (hit.type === "flip-horizontal" || hit.type === "flip-vertical") {
           const requestedAxis = hit.type === "flip-horizontal" ? "horizontal" : "vertical";
@@ -3103,6 +3121,9 @@
           setStatus("Rotating active measurement.");
           return true;
         }
+        if (hit.type === "move" && itemHit) {
+          return false;
+        }
         const cell = cellFromWorld(pointer.worldX, pointer.worldY);
         state.interaction = {
           type: "measurement-move",
@@ -3115,6 +3136,63 @@
         };
         setStatus("Moving active measurement.");
         return true;
+      }
+
+      function beginMeasurementItemTransform(clientX, clientY) {
+        const measurement = activeMeasurement();
+        const target = state.activeMeasurementItem;
+        if (!measurement || !target) return false;
+        const pointer = worldFromClient(clientX, clientY);
+        const hit = measurementItemHitAt(measurement, pointer.worldX, pointer.worldY);
+        if (!measurementItemMatchesTarget(hit, target)) return false;
+        const current = measurementItemMatchesTarget(hit, target) ? hit : target;
+        if (current.kind === "point") {
+          const point = measurement.points.find((entry) => entry.id === current.itemId);
+          if (!point) return false;
+          state.interaction = {
+            type: "measurement-item-move",
+            measurementId: measurement.id,
+            target: current,
+            startWorld: measurementPointWorld(point),
+          };
+          setStatus("Moving measurement point.");
+          return true;
+        }
+        if (current.kind === "length") {
+          const length = measurement.lengths.find((entry) => entry.id === current.itemId);
+          if (!length) return false;
+          const snapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
+          state.interaction = {
+            type: "measurement-item-move",
+            measurementId: measurement.id,
+            target: current,
+            snapshot:
+              current.part === "body"
+                ? {
+                    start: { ...length.start },
+                    end: { ...length.end },
+                  }
+                : null,
+            startWorld: current.part === "body" ? snapped : current.part === "start" ? { ...length.start } : { ...length.end },
+          };
+          setStatus(current.part === "body" ? "Moving measurement length." : "Moving measurement length vertex.");
+          return true;
+        }
+        if (current.kind === "area") {
+          const area = measurement.areas.find((entry) => entry.id === current.itemId);
+          if (!area) return false;
+          const snapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
+          state.interaction = {
+            type: "measurement-item-move",
+            measurementId: measurement.id,
+            target: current,
+            snapshot: current.part === "body" ? area.points.map((point) => ({ ...point })) : null,
+            startWorld: current.part === "body" ? snapped : { ...area.points[current.vertexIndex] },
+          };
+          setStatus(current.part === "body" ? "Moving measurement area." : "Moving measurement area vertex.");
+          return true;
+        }
+        return false;
       }
 
       function beginRenameLayer(layerId) {
@@ -5427,6 +5505,110 @@
         return null;
       }
 
+      function measurementItemHitAt(measurement, worldX, worldY) {
+        if (!measurement || !measurement.visible || measurement.opacity <= 0) return null;
+        const tolerance = Math.max(CELL_SIZE * 0.12, (measurement.width + 3) / state.viewport.zoom);
+
+        for (const point of measurement.points) {
+          const worldPoint = measurementPointWorld(point);
+          if (Math.hypot(worldX - worldPoint.x, worldY - worldPoint.y) <= tolerance) {
+            return {
+              kind: "point",
+              itemId: point.id,
+              part: "point",
+            };
+          }
+        }
+
+        for (const length of measurement.lengths) {
+          if (Math.hypot(worldX - length.start.x, worldY - length.start.y) <= tolerance) {
+            return {
+              kind: "length",
+              itemId: length.id,
+              part: "start",
+            };
+          }
+          if (Math.hypot(worldX - length.end.x, worldY - length.end.y) <= tolerance) {
+            return {
+              kind: "length",
+              itemId: length.id,
+              part: "end",
+            };
+          }
+          if (distanceToSegment(worldX, worldY, length.start, length.end) <= tolerance) {
+            return {
+              kind: "length",
+              itemId: length.id,
+              part: "body",
+            };
+          }
+        }
+
+        for (const area of measurement.areas) {
+          for (let index = 0; index < area.points.length; index += 1) {
+            const point = area.points[index];
+            if (Math.hypot(worldX - point.x, worldY - point.y) <= tolerance) {
+              return {
+                kind: "area",
+                itemId: area.id,
+                part: "vertex",
+                vertexIndex: index,
+              };
+            }
+          }
+          const hitEdge = area.points.some((point, index) => {
+            const next = area.points[(index + 1) % area.points.length];
+            return distanceToSegment(worldX, worldY, point, next) <= tolerance;
+          });
+          if (hitEdge || pointInPolygon(worldX, worldY, area.points)) {
+            return {
+              kind: "area",
+              itemId: area.id,
+              part: "body",
+            };
+          }
+        }
+
+        return null;
+      }
+
+      function measurementItemMatchesTarget(hit, target) {
+        if (!hit || !target) return false;
+        return (
+          hit.kind === target.kind &&
+          hit.itemId === target.itemId &&
+          hit.part === target.part &&
+          (hit.vertexIndex ?? -1) === (target.vertexIndex ?? -1)
+        );
+      }
+
+      function measurementItemKey(target) {
+        if (!target) return "";
+        return [target.kind, target.itemId, target.part, target.vertexIndex ?? ""].join(":");
+      }
+
+      function activeMeasurementItemData() {
+        const measurement = activeMeasurement();
+        const target = state.activeMeasurementItem;
+        if (!measurement || !target) return null;
+        if (target.kind === "point") {
+          const point = measurement.points.find((entry) => entry.id === target.itemId);
+          if (!point) return null;
+          return { measurement, target, point };
+        }
+        if (target.kind === "length") {
+          const length = measurement.lengths.find((entry) => entry.id === target.itemId);
+          if (!length) return null;
+          return { measurement, target, length };
+        }
+        if (target.kind === "area") {
+          const area = measurement.areas.find((entry) => entry.id === target.itemId);
+          if (!area) return null;
+          return { measurement, target, area };
+        }
+        return null;
+      }
+
       function drawMeasurementLength(context, measurement, length) {
         const start = worldToScreen(length.start.x, length.start.y);
         const end = worldToScreen(length.end.x, length.end.y);
@@ -5645,6 +5827,57 @@
 
         const activeMeasurementEntity = state.activeTool === "select" ? activeMeasurement() : null;
         if (activeMeasurementEntity) {
+          const activeItemData = activeMeasurementItemData();
+          if (activeItemData) {
+            overlayCtx.save();
+            overlayCtx.strokeStyle = getCssVar("--crosshair");
+            overlayCtx.fillStyle = hexToRgba(getCssVar("--crosshair"), 0.18);
+            overlayCtx.lineWidth = 1.5;
+            if (activeItemData.target.kind === "point") {
+              const worldPoint = measurementPointWorld(activeItemData.point);
+              const screenPoint = worldToScreen(worldPoint.x, worldPoint.y);
+              overlayCtx.beginPath();
+              overlayCtx.arc(screenPoint.x, screenPoint.y, Math.max(6, activeMeasurementEntity.width + 4), 0, Math.PI * 2);
+              overlayCtx.fill();
+              overlayCtx.stroke();
+            } else if (activeItemData.target.kind === "length") {
+              const start = worldToScreen(activeItemData.length.start.x, activeItemData.length.start.y);
+              const end = worldToScreen(activeItemData.length.end.x, activeItemData.length.end.y);
+              overlayCtx.beginPath();
+              overlayCtx.moveTo(start.x, start.y);
+              overlayCtx.lineTo(end.x, end.y);
+              overlayCtx.stroke();
+              [start, end].forEach((point, index) => {
+                overlayCtx.beginPath();
+                overlayCtx.fillStyle =
+                  (activeItemData.target.part === "start" && index === 0) || (activeItemData.target.part === "end" && index === 1)
+                    ? getCssVar("--crosshair")
+                    : getCssVar("--bg-strong");
+                overlayCtx.arc(point.x, point.y, 4, 0, Math.PI * 2);
+                overlayCtx.fill();
+                overlayCtx.stroke();
+              });
+            } else if (activeItemData.target.kind === "area") {
+              const screenPoints = activeItemData.area.points.map((point) => worldToScreen(point.x, point.y));
+              overlayCtx.beginPath();
+              overlayCtx.moveTo(screenPoints[0].x, screenPoints[0].y);
+              screenPoints.slice(1).forEach((point) => overlayCtx.lineTo(point.x, point.y));
+              overlayCtx.closePath();
+              overlayCtx.fill();
+              overlayCtx.stroke();
+              screenPoints.forEach((point, index) => {
+                overlayCtx.beginPath();
+                overlayCtx.fillStyle =
+                  activeItemData.target.part === "vertex" && activeItemData.target.vertexIndex === index
+                    ? getCssVar("--crosshair")
+                    : getCssVar("--bg-strong");
+                overlayCtx.arc(point.x, point.y, 4, 0, Math.PI * 2);
+                overlayCtx.fill();
+                overlayCtx.stroke();
+              });
+            }
+            overlayCtx.restore();
+          }
           const handles = measurementHandleWorldPositions(activeMeasurementEntity);
           if (handles) {
             const x = snapPixel(state.viewport.x + handles.bounds.minWorldX * state.viewport.zoom);
@@ -7039,8 +7272,35 @@
         }
         const measurement = measurementHitAt(pointer.worldX, pointer.worldY);
         if (measurement) {
-          setActiveMeasurementById(measurement.id, { tool: "select" });
-          setStatus("Measurement selected.");
+          const itemHit = measurementItemHitAt(measurement, pointer.worldX, pointer.worldY);
+          const now = Date.now();
+          const previousClick = state.measurementSelectClickMemory;
+          const isDoubleClick =
+            !!itemHit &&
+            !!previousClick &&
+            previousClick.measurementId === measurement.id &&
+            measurementItemMatchesTarget(previousClick.target, itemHit) &&
+            now - previousClick.time <= 320 &&
+            Math.hypot(previousClick.worldX - pointer.worldX, previousClick.worldY - pointer.worldY) <= CELL_SIZE * 0.6;
+          state.measurementSelectClickMemory = {
+            measurementId: measurement.id,
+            target: itemHit,
+            worldX: pointer.worldX,
+            worldY: pointer.worldY,
+            time: now,
+          };
+          setActiveMeasurementById(measurement.id, {
+            tool: "select",
+            preserveItem: isDoubleClick,
+            preserveClickMemory: true,
+          });
+          if (isDoubleClick && itemHit) {
+            state.activeMeasurementItem = { ...itemHit };
+            setStatus("Measurement item selected.");
+          } else {
+            state.activeMeasurementItem = null;
+            setStatus("Measurement selected.");
+          }
           render({ ui: true, overlay: true });
           return;
         }
@@ -7244,6 +7504,9 @@
               return;
             }
           }
+          if (!isRightClick && activeMeasurementItemData() && beginMeasurementItemTransform(event.clientX, event.clientY)) {
+            return;
+          }
           if (!isRightClick && activeMeasurement() && beginMeasurementTransform(event.clientX, event.clientY)) {
             return;
           }
@@ -7296,12 +7559,16 @@
                 : "default";
           } else if (state.activeTool === "select" && activeMeasurement()) {
             const pointer = worldFromClient(event.clientX, event.clientY);
-            const hit = measurementTransformHit(activeMeasurement(), pointer.worldX, pointer.worldY);
+            const itemHit = activeMeasurementItemData() ? measurementItemHitAt(activeMeasurement(), pointer.worldX, pointer.worldY) : null;
+            const hit =
+              itemHit && measurementItemMatchesTarget(itemHit, state.activeMeasurementItem)
+                ? { type: "item-move" }
+                : measurementTransformHit(activeMeasurement(), pointer.worldX, pointer.worldY);
             ui.overlayCanvas.style.cursor =
               hit
                 ? hit.type === "rotate"
                   ? "grab"
-                  : hit.type === "move"
+                  : hit.type === "move" || hit.type === "item-move"
                   ? "move"
                   : "pointer"
                 : "default";
@@ -7406,6 +7673,65 @@
           applyMeasurementSnapshot(measurement, moveMeasurementSnapshot(state.interaction.snapshot, deltaX * CELL_SIZE, deltaY * CELL_SIZE));
           render({ overlay: true, ui: true });
           return;
+        }
+
+        if (state.interaction.type === "measurement-item-move") {
+          const measurement = state.measurements.find((entry) => entry.id === state.interaction.measurementId);
+          if (!measurement) return;
+          const target = state.interaction.target;
+          const pointer = worldFromClient(event.clientX, event.clientY);
+          if (target.kind === "point") {
+            const point = measurement.points.find((entry) => entry.id === target.itemId);
+            if (!point) return;
+            const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+            point.cellX = cell.x;
+            point.cellY = cell.y;
+            render({ overlay: true, ui: true });
+            return;
+          }
+          const snapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
+          if (target.kind === "length") {
+            const length = measurement.lengths.find((entry) => entry.id === target.itemId);
+            if (!length) return;
+            if (target.part === "body") {
+              const deltaX = snapped.x - state.interaction.startWorld.x;
+              const deltaY = snapped.y - state.interaction.startWorld.y;
+              length.start = measurementVertexPointFromWorld({
+                x: state.interaction.snapshot.start.x + deltaX,
+                y: state.interaction.snapshot.start.y + deltaY,
+              });
+              length.end = measurementVertexPointFromWorld({
+                x: state.interaction.snapshot.end.x + deltaX,
+                y: state.interaction.snapshot.end.y + deltaY,
+              });
+            } else if (target.part === "start") {
+              length.start = measurementVertexPointFromWorld(snapped);
+            } else if (target.part === "end") {
+              length.end = measurementVertexPointFromWorld(snapped);
+            }
+            length.meters = measurementLengthMeters(length.start, length.end);
+            render({ overlay: true, ui: true });
+            return;
+          }
+          if (target.kind === "area") {
+            const area = measurement.areas.find((entry) => entry.id === target.itemId);
+            if (!area) return;
+            if (target.part === "body") {
+              const deltaX = snapped.x - state.interaction.startWorld.x;
+              const deltaY = snapped.y - state.interaction.startWorld.y;
+              area.points = state.interaction.snapshot.map((point) =>
+                measurementVertexPointFromWorld({
+                  x: point.x + deltaX,
+                  y: point.y + deltaY,
+                })
+              );
+            } else if (target.part === "vertex") {
+              area.points[target.vertexIndex] = measurementVertexPointFromWorld(snapped);
+            }
+            area.squareMeters = measurementAreaSquareMeters(area.points);
+            render({ overlay: true, ui: true });
+            return;
+          }
         }
 
         if (state.interaction.type === "measurement-rotate") {
@@ -7712,6 +8038,9 @@
         }
         if (state.interaction.type === "measurement-rotate") {
           setStatus("Measurement rotated.");
+        }
+        if (state.interaction.type === "measurement-item-move") {
+          setStatus("Measurement item moved.");
         }
         if (state.interaction.type === "view-move" || state.interaction.type === "view-resize") {
           setStatus("View box updated.");
