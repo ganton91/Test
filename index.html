@@ -1771,6 +1771,8 @@
         viewEditCancelButton: document.getElementById("viewEditCancelButton"),
         viewEditApplyButton: document.getElementById("viewEditApplyButton"),
         modalBackdrop: document.getElementById("modalBackdrop"),
+        undoButton: document.getElementById("undoButton"),
+        redoButton: document.getElementById("redoButton"),
         themeButtons: Array.from(document.querySelectorAll("[data-theme]")),
         gridPositionButtons: Array.from(document.querySelectorAll("[data-grid-position]")),
         dualGridButtons: Array.from(document.querySelectorAll("[data-dual-grid]")),
@@ -1914,6 +1916,12 @@
           overlayDirty: true,
           rulersDirty: true,
         },
+        history: {
+          undoStack: [],
+          redoStack: [],
+          limit: 100,
+          isRestoring: false,
+        },
       };
 
       state.activeLayerId = state.layers[0].id;
@@ -1957,6 +1965,243 @@
           layerConfigs: {},
           layerOrder: [],
         };
+      }
+
+      function cloneLayerForSnapshot(layer) {
+        const snapshot = {
+          id: layer.id,
+          name: layer.name,
+          visible: layer.visible,
+          opacity: layer.opacity,
+          rotationQuarterTurns: layer.rotationQuarterTurns || 0,
+          cellCount: layer.cellCount,
+          tiles: [],
+        };
+        Object.values(layer.tiles).forEach((tile) => {
+          snapshot.tiles.push({
+            tileX: tile.tileX,
+            tileY: tile.tileY,
+            pixels: Array.from(tile.pixels.entries()),
+          });
+        });
+        return snapshot;
+      }
+
+      function restoreLayerFromSnapshot(snapshot) {
+        const layer = createLayer(snapshot.name);
+        layer.id = snapshot.id;
+        layer.visible = snapshot.visible;
+        layer.opacity = snapshot.opacity;
+        layer.rotationQuarterTurns = snapshot.rotationQuarterTurns || 0;
+        layer.cellCount = snapshot.cellCount || 0;
+        layer.tiles = {};
+        (snapshot.tiles || []).forEach((tileSnapshot) => {
+          const tile = createTile(layer, tileSnapshot.tileX, tileSnapshot.tileY);
+          tile.pixels = new Map(tileSnapshot.pixels || []);
+          tile.dirty = true;
+        });
+        return layer;
+      }
+
+      function cloneMeasurementForSnapshot(measurement) {
+        return {
+          id: measurement.id,
+          name: measurement.name,
+          visible: measurement.visible,
+          opacity: measurement.opacity,
+          width: measurement.width,
+          defaultColor: measurement.defaultColor,
+          mode: measurement.mode,
+          rotationQuarterTurns: measurement.rotationQuarterTurns || 0,
+          points: measurement.points.map((point) => ({ ...point })),
+          lengths: measurement.lengths.map((length) => ({
+            ...length,
+            start: { ...length.start },
+            end: { ...length.end },
+          })),
+          areas: measurement.areas.map((area) => ({
+            ...area,
+            points: area.points.map((point) => ({ ...point })),
+          })),
+        };
+      }
+
+      function restoreMeasurementFromSnapshot(snapshot) {
+        const measurement = createMeasurement(snapshot.name);
+        measurement.id = snapshot.id;
+        measurement.visible = snapshot.visible;
+        measurement.opacity = snapshot.opacity;
+        measurement.width = snapshot.width;
+        measurement.defaultColor = snapshot.defaultColor;
+        measurement.mode = snapshot.mode;
+        measurement.rotationQuarterTurns = snapshot.rotationQuarterTurns || 0;
+        measurement.points = (snapshot.points || []).map((point) => ({ ...point }));
+        measurement.lengths = (snapshot.lengths || []).map((length) => ({
+          ...length,
+          start: { ...length.start },
+          end: { ...length.end },
+        }));
+        measurement.areas = (snapshot.areas || []).map((area) => ({
+          ...area,
+          points: area.points.map((point) => ({ ...point })),
+        }));
+        return measurement;
+      }
+
+      function cloneViewForSnapshot(view) {
+        return {
+          id: view.id,
+          name: view.name,
+          visible: view.visible,
+          opacity: view.opacity,
+          pending: !!view.pending,
+          bounds: view.bounds ? { ...view.bounds } : null,
+          layerConfigs: Object.fromEntries(
+            Object.entries(view.layerConfigs || {}).map(([layerId, config]) => [layerId, { ...config }])
+          ),
+          layerOrder: Array.isArray(view.layerOrder) ? [...view.layerOrder] : [],
+        };
+      }
+
+      function restoreViewFromSnapshot(snapshot) {
+        const view = createView(snapshot.name);
+        view.id = snapshot.id;
+        view.visible = snapshot.visible;
+        view.opacity = snapshot.opacity;
+        view.pending = !!snapshot.pending;
+        view.bounds = snapshot.bounds ? { ...snapshot.bounds } : null;
+        view.layerConfigs = Object.fromEntries(
+          Object.entries(snapshot.layerConfigs || {}).map(([layerId, config]) => [layerId, { ...config }])
+        );
+        view.layerOrder = Array.isArray(snapshot.layerOrder) ? [...snapshot.layerOrder] : [];
+        return view;
+      }
+
+      function cloneSceneForSnapshot(scene) {
+        return {
+          id: scene.id,
+          name: scene.name,
+          previewUrl: scene.previewUrl,
+          image: scene.image,
+          visible: scene.visible,
+          locked: scene.locked,
+          opacity: scene.opacity,
+          rotation: scene.rotation,
+          flipX: scene.flipX,
+          flipY: scene.flipY,
+          x: scene.x,
+          y: scene.y,
+          width: scene.width,
+          height: scene.height,
+        };
+      }
+
+      function captureDocumentState() {
+        return {
+          nextSceneNumber: state.nextSceneNumber,
+          nextMeasurementNumber: state.nextMeasurementNumber,
+          nextViewNumber: state.nextViewNumber,
+          scenes: state.scenes.map(cloneSceneForSnapshot),
+          measurements: state.measurements.map(cloneMeasurementForSnapshot),
+          views: state.views.map(cloneViewForSnapshot),
+          layers: state.layers.map(cloneLayerForSnapshot),
+          activeSceneId: state.activeSceneId,
+          activeMeasurementId: state.activeMeasurementId,
+          activeMeasurementItem: state.activeMeasurementItem ? { ...state.activeMeasurementItem } : null,
+          activeViewId: state.activeViewId,
+          activeCanvasViewTab: state.activeCanvasViewTab,
+          activeLayerId: state.activeLayerId,
+          activeTool: state.activeTool,
+        };
+      }
+
+      function historySignature(snapshot) {
+        return JSON.stringify({
+          ...snapshot,
+          scenes: snapshot.scenes.map((scene) => ({
+            ...scene,
+            image: undefined,
+          })),
+        });
+      }
+
+      function pushHistorySnapshot(label = "") {
+        if (state.history.isRestoring) return false;
+        const snapshot = captureDocumentState();
+        const signature = historySignature(snapshot);
+        const lastEntry = state.history.undoStack[state.history.undoStack.length - 1];
+        if (lastEntry && lastEntry.signature === signature) return false;
+        state.history.undoStack.push({ label, signature, snapshot });
+        if (state.history.undoStack.length > state.history.limit) {
+          state.history.undoStack.shift();
+        }
+        state.history.redoStack = [];
+        return true;
+      }
+
+      function commitHistory(label = "") {
+        return pushHistorySnapshot(label);
+      }
+
+      function restoreDocumentState(snapshot) {
+        state.history.isRestoring = true;
+        closeModal(ui.settingsMenu);
+        closeModal(ui.sceneScaleModal);
+        if (state.viewEditDraft) {
+          closeViewEditModal();
+        }
+        state.sceneCalibration = null;
+        state.interaction = null;
+        state.selectionPicker = null;
+        state.pendingViewCreation = null;
+        state.measurementDraft = null;
+        state.measurementAreaClickMemory = null;
+        state.measurementSelectClickMemory = null;
+        state.shapeDraft = null;
+        state.polygonClickMemory = null;
+        state.color.eyedropper = false;
+        state.outline.eyedropper = false;
+        state.nextSceneNumber = snapshot.nextSceneNumber;
+        state.nextMeasurementNumber = snapshot.nextMeasurementNumber;
+        state.nextViewNumber = snapshot.nextViewNumber;
+        state.scenes = snapshot.scenes.map((scene) => ({ ...scene }));
+        state.measurements = snapshot.measurements.map(restoreMeasurementFromSnapshot);
+        state.views = snapshot.views.map(restoreViewFromSnapshot);
+        state.layers = snapshot.layers.map(restoreLayerFromSnapshot);
+        state.activeSceneId = state.scenes.some((scene) => scene.id === snapshot.activeSceneId) ? snapshot.activeSceneId : null;
+        state.activeMeasurementId = state.measurements.some((measurement) => measurement.id === snapshot.activeMeasurementId)
+          ? snapshot.activeMeasurementId
+          : null;
+        state.activeMeasurementItem = state.activeMeasurementId && snapshot.activeMeasurementItem
+          ? { ...snapshot.activeMeasurementItem }
+          : null;
+        state.activeViewId = state.views.some((view) => view.id === snapshot.activeViewId) ? snapshot.activeViewId : null;
+        state.activeCanvasViewTab =
+          snapshot.activeCanvasViewTab === "main" || state.views.some((view) => view.id === snapshot.activeCanvasViewTab)
+            ? snapshot.activeCanvasViewTab
+            : "main";
+        state.activeLayerId = state.layers.some((layer) => layer.id === snapshot.activeLayerId) ? snapshot.activeLayerId : null;
+        state.activeTool = snapshot.activeTool;
+        state.history.isRestoring = false;
+        render({ ui: true, static: true, scenes: true, content: true, overlay: true, rulers: true });
+      }
+
+      function undoHistory() {
+        if (state.history.undoStack.length <= 1) return false;
+        const current = state.history.undoStack.pop();
+        state.history.redoStack.push(current);
+        const previous = state.history.undoStack[state.history.undoStack.length - 1];
+        if (!previous) return false;
+        restoreDocumentState(previous.snapshot);
+        return true;
+      }
+
+      function redoHistory() {
+        const next = state.history.redoStack.pop();
+        if (!next) return false;
+        state.history.undoStack.push(next);
+        restoreDocumentState(next.snapshot);
+        return true;
       }
 
       function measurementAnnotationColor(entry, measurement) {
@@ -2458,6 +2703,7 @@
           ...currentLayerOrder.filter((layerId) => !draft.items.some((item) => item.layerId === layerId)),
         ];
         closeViewEditModal();
+        commitHistory("Edit View Layers");
         setStatus("View layers updated.");
         render({ ui: true, overlay: true });
         return true;
@@ -2647,6 +2893,7 @@
           const [scene] = state.scenes.splice(index, 1);
           if (scene?.previewUrl) URL.revokeObjectURL(scene.previewUrl);
           clearActiveTarget();
+          commitHistory("Delete Scene");
           render({ ui: true, scenes: true });
           return true;
         }
@@ -2655,6 +2902,7 @@
           if (index === -1) return false;
           state.layers.splice(index, 1);
           clearActiveTarget();
+          commitHistory("Delete Layer");
           render({ ui: true, content: true, overlay: true });
           return true;
         }
@@ -2679,6 +2927,7 @@
           if (!changed) return false;
           state.activeMeasurementItem = null;
           state.measurementSelectClickMemory = null;
+          commitHistory("Delete Measurement Item");
           render({ ui: true, overlay: true });
           return true;
         }
@@ -2687,6 +2936,7 @@
           if (index === -1) return false;
           state.measurements.splice(index, 1);
           clearActiveTarget();
+          commitHistory("Delete Measurement");
           render({ ui: true, overlay: true });
           return true;
         }
@@ -2707,6 +2957,7 @@
             closeViewEditModal();
           }
           clearActiveTarget();
+          commitHistory("Delete View");
           render({ ui: true, overlay: true });
           return true;
         }
@@ -2729,6 +2980,7 @@
         });
         state.layers.splice(index, 0, duplicate);
         setActiveLayerById(duplicate.id, { tool: "select" });
+        commitHistory("Duplicate Layer");
         render({ ui: true, content: true, overlay: true });
         return true;
       }
@@ -2758,6 +3010,7 @@
         }));
         state.measurements.splice(index, 0, duplicate);
         setActiveMeasurementById(duplicate.id, { tool: "select" });
+        commitHistory("Duplicate Measurement");
         render({ ui: true, overlay: true });
         return true;
       }
@@ -2780,6 +3033,7 @@
         if (state.activeCanvasViewTab === viewId) {
           state.activeCanvasViewTab = duplicate.id;
         }
+        commitHistory("Duplicate View");
         render({ ui: true, overlay: true });
         return true;
       }
@@ -2794,6 +3048,7 @@
         };
         state.scenes.splice(index, 0, duplicate);
         setActiveSceneById(duplicate.id);
+        commitHistory("Duplicate Scene");
         render({ ui: true, scenes: true, overlay: true });
         return true;
       }
@@ -3292,6 +3547,7 @@
           const requestedAxis = hit.type === "flip-horizontal" ? "horizontal" : "vertical";
           const effectiveAxis = layerFlipAxis(requestedAxis, measurement.rotationQuarterTurns || 0);
           applyMeasurementSnapshot(measurement, mirrorMeasurementSnapshot(snapshot, effectiveAxis));
+          commitHistory(hit.type === "flip-horizontal" ? "Flip Measurement Horizontal" : "Flip Measurement Vertical");
           setStatus(hit.type === "flip-horizontal" ? "Measurement flipped horizontally." : "Measurement flipped vertically.");
           render({ overlay: true, ui: true });
           return true;
@@ -3762,6 +4018,7 @@
         scene.y = center.y - scene.height / 2;
         state.sceneCalibration = null;
         closeModal(ui.sceneScaleModal);
+        commitHistory("Set Scene Scale");
         setStatus("Scene scaled from measured distance.");
         render({ ui: true, scenes: true, overlay: true });
       }
@@ -4066,6 +4323,7 @@
         if (state.renderState.uiDirty) {
           updateThemeButtons();
           renderToolState();
+          renderHistoryState();
           renderSectionState();
           renderViewSwitcher();
           renderViewCreateState();
@@ -4195,6 +4453,11 @@
             : state.activeTool === "view"
             ? "move"
             : "default";
+      }
+
+      function renderHistoryState() {
+        ui.undoButton.disabled = state.history.undoStack.length <= 1;
+        ui.redoButton.disabled = state.history.redoStack.length === 0;
       }
 
       function renderSelectionPicker() {
@@ -5083,6 +5346,7 @@
             if (scene.locked && state.interaction && state.interaction.sceneId === scene.id) {
               state.interaction = null;
             }
+            commitHistory(scene.locked ? "Lock Scene" : "Unlock Scene");
             setStatus(scene.locked ? "Scene locked." : "Scene unlocked.");
             render({ ui: true, scenes: true, overlay: true });
           });
@@ -6715,6 +6979,7 @@
         const measurement = createMeasurement("Measurement " + state.nextMeasurementNumber++);
         state.measurements.unshift(measurement);
         setActiveMeasurementById(measurement.id);
+        commitHistory("Create Measurement");
         setStatus("New measurement added.");
         render({ ui: true, overlay: true });
       }
@@ -6740,6 +7005,7 @@
         const layer = createLayer("Layer " + (state.layers.length + 1));
         state.layers.unshift(layer);
         setActiveLayerById(layer.id);
+        commitHistory("Create Layer");
         setStatus("New layer added.");
         render({ ui: true, content: true, overlay: true });
       }
@@ -6783,6 +7049,7 @@
           const scene = createSceneFromImage(image, previewUrl);
           state.scenes.unshift(scene);
           setActiveSceneById(scene.id);
+          commitHistory("Import Scene");
           setStatus("Imported scene image.");
           render({ ui: true, scenes: true, overlay: true });
         };
@@ -7196,12 +7463,14 @@
           anchorCellY: cell.y,
           lockedAxis: null,
           lastKey: "",
+          changed: false,
         };
         const shouldDrawLine =
           shiftKey && Number.isInteger(state.brush.lastCellX) && Number.isInteger(state.brush.lastCellY);
         const changed = shouldDrawLine
           ? paintBrushLine(state.brush.lastCellX, state.brush.lastCellY, cell.x, cell.y, mode)
           : paintCells(cell.x, cell.y, mode);
+        state.interaction.changed = changed;
         state.interaction.lastKey = cell.x + ":" + cell.y + ":" + mode;
         rememberBrushPoint(cell.x, cell.y);
         setStatus(mode === "paint" ? "Painting active layer." : "Erasing from active layer.");
@@ -7276,6 +7545,7 @@
         const changed = paintPolygonShape(points, mode);
         state.shapeDraft = null;
         state.polygonClickMemory = null;
+        if (changed) commitHistory(mode === "erase" ? "Erase Polygon Shape" : "Paint Polygon Shape");
         render({ ui: changed, content: true, overlay: true });
       }
 
@@ -7429,6 +7699,7 @@
           y: snapped.y,
           color: state.color.active,
         });
+        commitHistory("Add Measurement Point");
         setStatus("Measurement point added.");
         render({ ui: true, overlay: true });
       }
@@ -7442,6 +7713,7 @@
           meters: measurementLengthMeters(start, end),
           color: state.color.active,
         });
+        commitHistory("Add Measurement Length");
         return true;
       }
 
@@ -7517,6 +7789,7 @@
           });
           state.measurementDraft = null;
           state.measurementAreaClickMemory = null;
+          commitHistory("Add Measurement Area");
           setStatus("Measurement area added.");
           render({ ui: true, overlay: true });
           return;
@@ -7532,6 +7805,7 @@
           });
           state.measurementDraft = null;
           state.measurementAreaClickMemory = null;
+          commitHistory("Add Measurement Area");
           setStatus("Measurement area added.");
           render({ ui: true, overlay: true });
           return;
@@ -7688,9 +7962,11 @@
         if (hit.type === "flip-horizontal" || hit.type === "flip-vertical") {
           if (hit.type === "flip-horizontal") {
             scene.flipX = !scene.flipX;
+            commitHistory("Flip Scene Horizontal");
             setStatus("Scene flipped horizontally.");
           } else {
             scene.flipY = !scene.flipY;
+            commitHistory("Flip Scene Vertical");
             setStatus("Scene flipped vertically.");
           }
           render({ scenes: true, overlay: true });
@@ -7745,6 +8021,7 @@
           const requestedAxis = hit.type === "flip-horizontal" ? "horizontal" : "vertical";
           const effectiveAxis = layerFlipAxis(requestedAxis, layer.rotationQuarterTurns || 0);
           applyLayerCellSnapshot(layer, mirrorLayerSnapshot(snapshot, effectiveAxis), 0, 0);
+          commitHistory(hit.type === "flip-horizontal" ? "Flip Layer Horizontal" : "Flip Layer Vertical");
           setStatus(hit.type === "flip-horizontal" ? "Layer flipped horizontally." : "Layer flipped vertically.");
           render({ content: true, overlay: true });
           return true;
@@ -7956,6 +8233,7 @@
           const key = cell.x + ":" + cell.y + ":" + state.interaction.mode;
           if (key !== state.interaction.lastKey) {
             const changed = paintCells(cell.x, cell.y, state.interaction.mode);
+            state.interaction.changed = state.interaction.changed || changed;
             state.interaction.lastKey = key;
             rememberBrushPoint(cell.x, cell.y);
             render({ ui: changed, content: true, overlay: true });
@@ -8331,6 +8609,9 @@
             setStatus("Length started. Click the second point or drag.");
           }
         }
+        if (state.interaction.type === "brush" && state.interaction.changed) {
+          commitHistory(state.interaction.mode === "erase" ? "Erase Brush Stroke" : "Paint Brush Stroke");
+        }
         if (state.interaction.type === "viewbox-draw") {
           const draftBounds = normalizeViewBounds(state.interaction.start, state.interaction.current);
           const width = draftBounds.maxX - draftBounds.minX;
@@ -8344,6 +8625,7 @@
             setActiveViewById(view.id);
             state.activeTool = "select";
             state.pendingViewCreation = null;
+            commitHistory("Create View");
             setStatus("View box created.");
             state.interaction = null;
             render({ ui: true, overlay: true });
@@ -8371,6 +8653,9 @@
                 : interaction;
             const changed = commitShapeInteraction(interactionToCommit);
             state.shapeDraft = null;
+            if (changed) {
+              commitHistory(interaction.mode === "erase" ? "Erase Shape" : "Paint Shape");
+            }
             render({ ui: changed, content: true, overlay: true });
             return;
           }
@@ -8385,6 +8670,9 @@
               shapeInteractionFromDraft(state.shapeDraft, interaction.currentCellX, interaction.currentCellY, interaction.centered)
             );
             state.shapeDraft = null;
+            if (changed) {
+              commitHistory(interaction.mode === "erase" ? "Erase Shape" : "Paint Shape");
+            }
             render({ ui: changed, content: true, overlay: true });
             return;
           }
@@ -8395,9 +8683,11 @@
           return;
         }
         if (state.interaction.type === "layer-move") {
+          commitHistory("Move Layer");
           setStatus("Layer moved.");
         }
         if (state.interaction.type === "layer-rotate") {
+          commitHistory("Rotate Layer");
           setStatus("Layer rotated.");
         }
         if (state.interaction.type === "measurement-move") {
@@ -8416,25 +8706,32 @@
             }
           }
           if (state.interaction.moved) {
+            commitHistory("Move Measurement");
             setStatus("Measurement moved.");
           } else {
             setStatus("Measurement selected.");
           }
         }
         if (state.interaction.type === "measurement-rotate") {
+          commitHistory("Rotate Measurement");
           setStatus("Measurement rotated.");
         }
         if (state.interaction.type === "measurement-item-move") {
           if (state.interaction.moved) {
+            commitHistory("Move Measurement Item");
             setStatus("Measurement item moved.");
           } else {
             setStatus("Measurement item selected.");
           }
         }
         if (state.interaction.type === "view-move" || state.interaction.type === "view-resize") {
+          commitHistory("Update View Box");
           setStatus("View box updated.");
         }
-        if (state.interaction.sceneId) setStatus("Scene transform updated.");
+        if (state.interaction.sceneId) {
+          commitHistory("Transform Scene");
+          setStatus("Scene transform updated.");
+        }
         state.interaction = null;
         render({ ui: true, overlay: true });
       }
@@ -8732,6 +9029,14 @@
       ui.addMeasurementButton.addEventListener("click", addMeasurement);
       ui.addViewButton.addEventListener("click", addView);
       ui.addLayerButton.addEventListener("click", addLayer);
+      ui.undoButton.addEventListener("click", () => {
+        if (!undoHistory()) return;
+        setStatus("Undo.");
+      });
+      ui.redoButton.addEventListener("click", () => {
+        if (!redoHistory()) return;
+        setStatus("Redo.");
+      });
       ui.sceneScaleCancelButton.addEventListener("click", () => {
         closeModal(ui.sceneScaleModal);
         cancelSceneCalibration();
@@ -8854,6 +9159,25 @@
           || target instanceof HTMLTextAreaElement
           || target instanceof HTMLSelectElement
           || target?.isContentEditable;
+        const isUndoShortcut = (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "z";
+        const isRedoShortcut =
+          (event.ctrlKey || event.metaKey) &&
+          !event.altKey &&
+          (event.key.toLowerCase() === "y" || (event.shiftKey && event.key.toLowerCase() === "z"));
+        if (!isEditableTarget && isUndoShortcut) {
+          event.preventDefault();
+          if (undoHistory()) {
+            setStatus("Undo.");
+          }
+          return;
+        }
+        if (!isEditableTarget && isRedoShortcut) {
+          event.preventDefault();
+          if (redoHistory()) {
+            setStatus("Redo.");
+          }
+          return;
+        }
         const hasOpenModal = isModalOpen(ui.settingsMenu) || isModalOpen(ui.sceneScaleModal) || isModalOpen(ui.viewEditModal);
         if (event.key === "Delete" && state.activeTool === "select" && !hasOpenModal && !isEditableTarget) {
           if (deleteActiveTarget()) {
@@ -8936,6 +9260,7 @@
       });
       window.addEventListener("resize", resizeCanvases);
 
+      pushHistorySnapshot("Initial State");
       resizeCanvases();
       render();
     </script>
