@@ -364,3 +364,12 @@ The current goal is to keep building `Milimetre` as a strong, minimal infinite c
   - `right/bottom` from the next snapped tile boundary
   - draw size = next boundary minus current boundary
 - This is preferred over using a separately rounded shared `tileSpan`, because the boundary-based approach prevents visible tile seam artifacts during zooming and at reduced opacity.
+- Original state of this fix:
+  - `snapPixel(value)` used plain CSS-pixel snapping with `Math.round(value)`
+  - the seam fix depended on boundary-based tile drawing only
+- Current tuning layered on top of that:
+  - `snapPixel(value)` is now device-pixel aware:
+    - `const ratio = window.devicePixelRatio || 1`
+    - `return Math.round(value * ratio) / ratio`
+  - the shared-boundary tile drawing model stays the same
+  - only the snap precision changed, so future seam regressions on other browsers / browser zoom modes can be compared first against this exact `snapPixel()` change

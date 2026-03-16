@@ -5121,7 +5121,8 @@
       }
 
       function snapPixel(value) {
-        return Math.round(value);
+        const ratio = window.devicePixelRatio || 1;
+        return Math.round(value * ratio) / ratio;
       }
 
       function resizeCanvases() {
