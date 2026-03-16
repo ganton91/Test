@@ -2045,6 +2045,11 @@
           strength: 0.05,
           mode: "shadow",
         },
+        viewDepthRepeat: {
+          timeoutId: null,
+          intervalId: null,
+          suppressClick: false,
+        },
         viewOutlineEffect: {
           enabled: true,
           thickness: 1,
@@ -4822,6 +4827,35 @@
       function setStatus(message) {
         if (!ui.statusPill) return;
         ui.statusPill.textContent = message;
+      }
+
+      function stopViewDepthStrengthRepeat() {
+        if (state.viewDepthRepeat.timeoutId) {
+          clearTimeout(state.viewDepthRepeat.timeoutId);
+          state.viewDepthRepeat.timeoutId = null;
+        }
+        if (state.viewDepthRepeat.intervalId) {
+          clearInterval(state.viewDepthRepeat.intervalId);
+          state.viewDepthRepeat.intervalId = null;
+        }
+      }
+
+      function startViewDepthStrengthRepeat(step) {
+        if (!state.viewDepthEffect.enabled) return;
+        stopViewDepthStrengthRepeat();
+        state.viewDepthRepeat.suppressClick = true;
+        const applyStep = () => {
+          state.viewDepthEffect.strength = Math.max(
+            0.01,
+            Math.min(100, Math.round((state.viewDepthEffect.strength + step) * 100) / 100)
+          );
+          setStatus("View depth step " + state.viewDepthEffect.strength.toFixed(2) + "% per cell.");
+          render({ ui: true, content: true });
+        };
+        applyStep();
+        state.viewDepthRepeat.timeoutId = setTimeout(() => {
+          state.viewDepthRepeat.intervalId = setInterval(applyStep, 60);
+        }, 260);
       }
 
       function setCardDragPreview(event, card) {
@@ -10041,15 +10075,36 @@
       });
 
       ui.viewDepthStrengthDecrease.addEventListener("click", () => {
+        if (state.viewDepthRepeat.suppressClick) {
+          state.viewDepthRepeat.suppressClick = false;
+          return;
+        }
         state.viewDepthEffect.strength = Math.max(0.01, Math.round((state.viewDepthEffect.strength - 0.01) * 100) / 100);
         setStatus("View depth step " + state.viewDepthEffect.strength.toFixed(2) + "% per cell.");
         render({ ui: true, content: true });
       });
 
       ui.viewDepthStrengthIncrease.addEventListener("click", () => {
+        if (state.viewDepthRepeat.suppressClick) {
+          state.viewDepthRepeat.suppressClick = false;
+          return;
+        }
         state.viewDepthEffect.strength = Math.min(100, Math.round((state.viewDepthEffect.strength + 0.01) * 100) / 100);
         setStatus("View depth step " + state.viewDepthEffect.strength.toFixed(2) + "% per cell.");
         render({ ui: true, content: true });
+      });
+
+      ui.viewDepthStrengthDecrease.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        startViewDepthStrengthRepeat(-0.01);
+      });
+      ui.viewDepthStrengthIncrease.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        startViewDepthStrengthRepeat(0.01);
+      });
+      ["pointerup", "pointercancel", "pointerleave"].forEach((eventName) => {
+        ui.viewDepthStrengthDecrease.addEventListener(eventName, stopViewDepthStrengthRepeat);
+        ui.viewDepthStrengthIncrease.addEventListener(eventName, stopViewDepthStrengthRepeat);
       });
 
       ui.viewDepthStrengthValue.addEventListener("input", () => {
