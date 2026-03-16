@@ -7595,12 +7595,16 @@
 
         if (state.shapeDraft && state.shapeDraft.type === "polygon") {
           const draftPoints = state.shapeDraft.points.slice();
-          const previewPoint = state.shapeDraft.hover || draftPoints[draftPoints.length - 1];
-          const previewPoints =
-            previewPoint &&
-            (previewPoint.x !== draftPoints[draftPoints.length - 1].x || previewPoint.y !== draftPoints[draftPoints.length - 1].y)
-              ? [...draftPoints, previewPoint]
-              : draftPoints;
+          const lastPoint = draftPoints[draftPoints.length - 1];
+          const previewPoint = state.shapeDraft.hover || lastPoint;
+          const previewWorld = state.shapeDraft.hoverWorld || {
+            x: (previewPoint.x + 0.5) * CELL_SIZE,
+            y: (previewPoint.y + 0.5) * CELL_SIZE,
+          };
+          const hasPreviewSegment =
+            !!previewPoint &&
+            !!lastPoint &&
+            (previewPoint.x !== lastPoint.x || previewPoint.y !== lastPoint.y || !!state.shapeDraft.hoverWorld);
 
           overlayCtx.save();
           overlayCtx.fillStyle =
@@ -7609,14 +7613,20 @@
             state.shapeDraft.mode === "paint" ? hexToRgba(state.color.active, 0.64) : hexToRgba(getCssVar("--text"), 0.42);
           overlayCtx.lineWidth = 1.25;
 
-          if (previewPoints.length >= 2) {
+          if (draftPoints.length >= 2 || (draftPoints.length === 1 && hasPreviewSegment)) {
             overlayCtx.beginPath();
-            previewPoints.forEach((point, index) => {
+            draftPoints.forEach((point, index) => {
               const screenX = snapPixel(state.viewport.x + (point.x + 0.5) * CELL_SIZE * state.viewport.zoom);
               const screenY = snapPixel(state.viewport.y + (point.y + 0.5) * CELL_SIZE * state.viewport.zoom);
               if (index === 0) overlayCtx.moveTo(screenX, screenY);
               else overlayCtx.lineTo(screenX, screenY);
             });
+            if (hasPreviewSegment) {
+              const previewScreen = worldToScreen(previewWorld.x, previewWorld.y);
+              const previewScreenX = previewScreen.x;
+              const previewScreenY = previewScreen.y;
+              overlayCtx.lineTo(previewScreenX, previewScreenY);
+            }
             if (draftPoints.length >= 3) {
               overlayCtx.closePath();
               overlayCtx.fill();
@@ -8569,24 +8579,27 @@
         return true;
       }
 
-      function beginPolygonShape(clientX, clientY, mode) {
+      function beginPolygonShape(clientX, clientY, mode, shiftKey) {
         const pointer = worldFromClient(clientX, clientY);
-        const cell = cellFromWorld(pointer.worldX, pointer.worldY);
-        const point = { x: cell.x, y: cell.y };
         const draft = state.shapeDraft;
+        const anchorPoint = draft && draft.type === "polygon" && draft.mode === mode && draft.points.length
+          ? draft.points[draft.points.length - 1]
+          : null;
+        const preview = polygonPreviewWithAxisLock(draft, anchorPoint, clientX, clientY, pointer.worldX, pointer.worldY, shiftKey);
+        const point = preview.cell;
         const now = Date.now();
         const previousClick = state.polygonClickMemory;
         const isDoubleClick =
           !!previousClick &&
           previousClick.mode === mode &&
           now - previousClick.time <= 320 &&
-          Math.abs(previousClick.cellX - cell.x) <= 1 &&
-          Math.abs(previousClick.cellY - cell.y) <= 1;
+          Math.abs(previousClick.cellX - point.x) <= 1 &&
+          Math.abs(previousClick.cellY - point.y) <= 1;
 
         state.polygonClickMemory = {
           mode,
-          cellX: cell.x,
-          cellY: cell.y,
+          cellX: point.x,
+          cellY: point.y,
           time: now,
         };
 
@@ -8596,6 +8609,13 @@
             mode,
             points: [point],
             hover: point,
+            hoverWorld: {
+              x: (point.x + 0.5) * CELL_SIZE,
+              y: (point.y + 0.5) * CELL_SIZE,
+            },
+            anchorClientX: clientX,
+            anchorClientY: clientY,
+            lockedAxis: null,
           };
           setStatus("Polygon started. Click points, click the first point to close, or double click to fill.");
           render({ overlay: true });
@@ -8614,6 +8634,13 @@
           draft.points.push(point);
         }
         draft.hover = point;
+        draft.hoverWorld = {
+          x: (point.x + 0.5) * CELL_SIZE,
+          y: (point.y + 0.5) * CELL_SIZE,
+        };
+        draft.anchorClientX = clientX;
+        draft.anchorClientY = clientY;
+        draft.lockedAxis = null;
 
         if (isDoubleClick && draft.points.length >= 3) {
           commitPolygonDraft(draft.points.slice(), draft.mode);
@@ -8696,6 +8723,46 @@
           return { x: point.x, y: anchorPoint.y };
         }
         return { x: anchorPoint.x, y: point.y };
+      }
+
+      function polygonPreviewWithAxisLock(draft, anchorPoint, clientX, clientY, worldX, worldY, shiftKey) {
+        const rawCell = cellFromWorld(worldX, worldY);
+        if (!draft || !anchorPoint) {
+          return {
+            cell: { x: rawCell.x, y: rawCell.y },
+            world: { x: worldX, y: worldY },
+          };
+        }
+        if (!shiftKey) {
+          draft.lockedAxis = null;
+          return {
+            cell: { x: rawCell.x, y: rawCell.y },
+            world: { x: worldX, y: worldY },
+          };
+        }
+        const anchorClientX = Number.isFinite(draft.anchorClientX) ? draft.anchorClientX : clientX;
+        const anchorClientY = Number.isFinite(draft.anchorClientY) ? draft.anchorClientY : clientY;
+        const deltaClientX = clientX - anchorClientX;
+        const deltaClientY = clientY - anchorClientY;
+        if (deltaClientX === 0 && deltaClientY === 0) {
+          return {
+            cell: { x: rawCell.x, y: rawCell.y },
+            world: { x: worldX, y: worldY },
+          };
+        }
+        if (!draft.lockedAxis) {
+          draft.lockedAxis = Math.abs(deltaClientX) > Math.abs(deltaClientY) ? "x" : "y";
+        }
+        if (draft.lockedAxis === "x") {
+          return {
+            cell: { x: rawCell.x, y: anchorPoint.y },
+            world: { x: worldX, y: (anchorPoint.y + 0.5) * CELL_SIZE },
+          };
+        }
+        return {
+          cell: { x: anchorPoint.x, y: rawCell.y },
+          world: { x: (anchorPoint.x + 0.5) * CELL_SIZE, y: worldY },
+        };
       }
 
       function resetBrushAxisLockAnchor(clientX, clientY) {
@@ -9239,7 +9306,7 @@
         }
         if (state.activeTool === "shape") {
           if (state.shape.type === "polygon") {
-            beginPolygonShape(event.clientX, event.clientY, isRightClick ? "erase" : "paint");
+            beginPolygonShape(event.clientX, event.clientY, isRightClick ? "erase" : "paint", event.shiftKey);
           } else {
             beginShape(event.clientX, event.clientY, isRightClick ? "erase" : "paint", event.shiftKey);
           }
@@ -9299,6 +9366,21 @@
             state.shapeDraft.square = shapeSquareMode(state.shapeDraft.shapeType, event.shiftKey);
             state.shapeDraft.currentCellX = cell.x;
             state.shapeDraft.currentCellY = cell.y;
+          }
+          if (state.shapeDraft && state.shapeDraft.type === "polygon") {
+            const pointer = worldFromClient(event.clientX, event.clientY);
+            const anchorPoint = state.shapeDraft.points[state.shapeDraft.points.length - 1];
+            const preview = polygonPreviewWithAxisLock(
+              state.shapeDraft,
+              anchorPoint,
+              event.clientX,
+              event.clientY,
+              pointer.worldX,
+              pointer.worldY,
+              event.shiftKey
+            );
+            state.shapeDraft.hover = preview.cell;
+            state.shapeDraft.hoverWorld = preview.world;
           }
           if (state.color.eyedropper || state.outline.eyedropper || state.activeTool === "eyedropper") {
             ui.overlayCanvas.style.cursor = "copy";
@@ -9649,14 +9731,6 @@
           ) {
             state.interaction.moved = true;
           }
-          render({ overlay: true });
-          return;
-        }
-
-        if (state.shapeDraft && state.shapeDraft.type === "polygon") {
-          const pointer = worldFromClient(event.clientX, event.clientY);
-          const cell = cellFromWorld(pointer.worldX, pointer.worldY);
-          state.shapeDraft.hover = { x: cell.x, y: cell.y };
           render({ overlay: true });
           return;
         }
