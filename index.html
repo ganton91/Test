@@ -5027,6 +5027,12 @@
       }
 
       function measurementPointWorld(point) {
+        if (typeof point.x === "number" && typeof point.y === "number") {
+          return {
+            x: point.x,
+            y: point.y,
+          };
+        }
         return {
           x: (point.cellX + 0.5) * CELL_SIZE,
           y: (point.cellY + 0.5) * CELL_SIZE,
@@ -7105,17 +7111,17 @@
           return;
         }
         const pointer = worldFromClient(clientX, clientY);
-        const cell = cellFromWorld(pointer.worldX, pointer.worldY);
-        const exists = measurement.points.some((point) => point.cellX === cell.x && point.cellY === cell.y);
+        const snapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
+        const exists = measurement.points.some((point) => pointsEqual(measurementPointWorld(point), snapped));
         if (exists) {
-          setStatus("Point already exists on this cell.");
+          setStatus("Point already exists on this snap point.");
           render({ overlay: true });
           return;
         }
         measurement.points.push({
           id: "point-" + Math.random().toString(36).slice(2, 9),
-          cellX: cell.x,
-          cellY: cell.y,
+          x: snapped.x,
+          y: snapped.y,
           color: state.color.active,
         });
         setStatus("Measurement point added.");
@@ -7720,12 +7726,13 @@
           if (target.kind === "point") {
             const point = measurement.points.find((entry) => entry.id === target.itemId);
             if (!point) return;
-            const cell = cellFromWorld(pointer.worldX, pointer.worldY);
-            if (point.cellX !== cell.x || point.cellY !== cell.y) {
+            const snapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
+            const current = measurementPointWorld(point);
+            if (!pointsEqual(current, snapped)) {
               state.interaction.moved = true;
             }
-            point.cellX = cell.x;
-            point.cellY = cell.y;
+            point.x = snapped.x;
+            point.y = snapped.y;
             render({ overlay: true, ui: true });
             return;
           }
