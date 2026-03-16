@@ -3641,6 +3641,9 @@
           type: "measurement-move",
           measurementId: measurement.id,
           snapshot,
+          anchorClientX: clientX,
+          anchorClientY: clientY,
+          lockedAxis: null,
           startCellX: cell.x,
           startCellY: cell.y,
           deltaX: 0,
@@ -3667,6 +3670,9 @@
             measurementId: measurement.id,
             target: current,
             startWorld: measurementPointWorld(point),
+            anchorClientX: clientX,
+            anchorClientY: clientY,
+            lockedAxis: null,
             moved: false,
           };
           setStatus("Moving measurement point.");
@@ -3688,6 +3694,9 @@
                   }
                 : null,
             startWorld: current.part === "body" ? snapped : current.part === "start" ? { ...length.start } : { ...length.end },
+            anchorClientX: clientX,
+            anchorClientY: clientY,
+            lockedAxis: null,
             moved: false,
           };
           setStatus(current.part === "body" ? "Moving measurement length." : "Moving measurement length vertex.");
@@ -3703,6 +3712,9 @@
             target: current,
             snapshot: current.part === "body" ? area.points.map((point) => ({ ...point })) : null,
             startWorld: current.part === "body" ? snapped : { ...area.points[current.vertexIndex] },
+            anchorClientX: clientX,
+            anchorClientY: clientY,
+            lockedAxis: null,
             moved: false,
           };
           setStatus(current.part === "body" ? "Moving measurement area." : "Moving measurement area vertex.");
@@ -7684,6 +7696,28 @@
         };
       }
 
+      function axisLockDeltas(interaction, clientX, clientY, deltaX, deltaY, shiftKey) {
+        if (!interaction) {
+          return { deltaX, deltaY };
+        }
+        if (!shiftKey) {
+          interaction.lockedAxis = null;
+          return { deltaX, deltaY };
+        }
+        const deltaClientX = clientX - interaction.anchorClientX;
+        const deltaClientY = clientY - interaction.anchorClientY;
+        if (deltaClientX === 0 && deltaClientY === 0) {
+          return { deltaX, deltaY };
+        }
+        if (!interaction.lockedAxis) {
+          interaction.lockedAxis = Math.abs(deltaClientX) > Math.abs(deltaClientY) ? "x" : "y";
+        }
+        if (interaction.lockedAxis === "x") {
+          return { deltaX, deltaY: 0 };
+        }
+        return { deltaX: 0, deltaY };
+      }
+
       function resetBrushAxisLockAnchor(clientX, clientY) {
         if (!state.interaction || state.interaction.type !== "brush") return;
         const pointer = worldFromClient(clientX, clientY);
@@ -7897,6 +7931,9 @@
           type: hit.type === "move" ? "view-move" : "view-resize",
           viewId: view.id,
           handle: hit.handle,
+          anchorClientX: clientX,
+          anchorClientY: clientY,
+          lockedAxis: null,
           startPointerX: viewBoxBoundaryFromWorld(pointer.worldX),
           startPointerY: viewBoxBoundaryFromWorld(pointer.worldY),
           startBounds: {
@@ -8031,6 +8068,9 @@
           type: hit.type,
           sceneId: scene.id,
           handle: hit.handle,
+          anchorClientX: clientX,
+          anchorClientY: clientY,
+          lockedAxis: null,
           startX: scene.x,
           startY: scene.y,
           startWidth: scene.width,
@@ -8090,6 +8130,9 @@
         state.interaction = {
           type: "layer-move",
           layerId: layer.id,
+          anchorClientX: clientX,
+          anchorClientY: clientY,
+          lockedAxis: null,
           startCellX: cell.x,
           startCellY: cell.y,
           deltaX: 0,
@@ -8314,8 +8357,16 @@
           if (!layer) return;
           const pointer = worldFromClient(event.clientX, event.clientY);
           const cell = cellFromWorld(pointer.worldX, pointer.worldY);
-          const deltaX = cell.x - state.interaction.startCellX;
-          const deltaY = cell.y - state.interaction.startCellY;
+          const locked = axisLockDeltas(
+            state.interaction,
+            event.clientX,
+            event.clientY,
+            cell.x - state.interaction.startCellX,
+            cell.y - state.interaction.startCellY,
+            event.shiftKey
+          );
+          const deltaX = locked.deltaX;
+          const deltaY = locked.deltaY;
           if (deltaX === state.interaction.deltaX && deltaY === state.interaction.deltaY) {
             return;
           }
@@ -8352,8 +8403,16 @@
           if (!measurement) return;
           const pointer = worldFromClient(event.clientX, event.clientY);
           const cell = cellFromWorld(pointer.worldX, pointer.worldY);
-          const deltaX = cell.x - state.interaction.startCellX;
-          const deltaY = cell.y - state.interaction.startCellY;
+          const locked = axisLockDeltas(
+            state.interaction,
+            event.clientX,
+            event.clientY,
+            cell.x - state.interaction.startCellX,
+            cell.y - state.interaction.startCellY,
+            event.shiftKey
+          );
+          const deltaX = locked.deltaX;
+          const deltaY = locked.deltaY;
           if (deltaX === state.interaction.deltaX && deltaY === state.interaction.deltaY) {
             return;
           }
@@ -8377,12 +8436,24 @@
             const point = measurement.points.find((entry) => entry.id === target.itemId);
             if (!point) return;
             const snapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
+            const locked = axisLockDeltas(
+              state.interaction,
+              event.clientX,
+              event.clientY,
+              snapped.x - state.interaction.startWorld.x,
+              snapped.y - state.interaction.startWorld.y,
+              event.shiftKey
+            );
+            const nextWorld = {
+              x: state.interaction.startWorld.x + locked.deltaX,
+              y: state.interaction.startWorld.y + locked.deltaY,
+            };
             const current = measurementPointWorld(point);
-            if (!pointsEqual(current, snapped)) {
+            if (!pointsEqual(current, nextWorld)) {
               state.interaction.moved = true;
             }
-            point.x = snapped.x;
-            point.y = snapped.y;
+            point.x = nextWorld.x;
+            point.y = nextWorld.y;
             render({ overlay: true, ui: true });
             return;
           }
@@ -8391,8 +8462,16 @@
             const length = measurement.lengths.find((entry) => entry.id === target.itemId);
             if (!length) return;
             if (target.part === "body") {
-              const deltaX = snapped.x - state.interaction.startWorld.x;
-              const deltaY = snapped.y - state.interaction.startWorld.y;
+              const locked = axisLockDeltas(
+                state.interaction,
+                event.clientX,
+                event.clientY,
+                snapped.x - state.interaction.startWorld.x,
+                snapped.y - state.interaction.startWorld.y,
+                event.shiftKey
+              );
+              const deltaX = locked.deltaX;
+              const deltaY = locked.deltaY;
               if (deltaX !== 0 || deltaY !== 0) {
                 state.interaction.moved = true;
               }
@@ -8405,15 +8484,39 @@
                 y: state.interaction.snapshot.end.y + deltaY,
               });
             } else if (target.part === "start") {
-              if (!pointsEqual(length.start, snapped)) {
+              const locked = axisLockDeltas(
+                state.interaction,
+                event.clientX,
+                event.clientY,
+                snapped.x - state.interaction.startWorld.x,
+                snapped.y - state.interaction.startWorld.y,
+                event.shiftKey
+              );
+              const nextWorld = {
+                x: state.interaction.startWorld.x + locked.deltaX,
+                y: state.interaction.startWorld.y + locked.deltaY,
+              };
+              if (!pointsEqual(length.start, nextWorld)) {
                 state.interaction.moved = true;
               }
-              length.start = measurementVertexPointFromWorld(snapped);
+              length.start = measurementVertexPointFromWorld(nextWorld);
             } else if (target.part === "end") {
-              if (!pointsEqual(length.end, snapped)) {
+              const locked = axisLockDeltas(
+                state.interaction,
+                event.clientX,
+                event.clientY,
+                snapped.x - state.interaction.startWorld.x,
+                snapped.y - state.interaction.startWorld.y,
+                event.shiftKey
+              );
+              const nextWorld = {
+                x: state.interaction.startWorld.x + locked.deltaX,
+                y: state.interaction.startWorld.y + locked.deltaY,
+              };
+              if (!pointsEqual(length.end, nextWorld)) {
                 state.interaction.moved = true;
               }
-              length.end = measurementVertexPointFromWorld(snapped);
+              length.end = measurementVertexPointFromWorld(nextWorld);
             }
             length.meters = measurementLengthMeters(length.start, length.end);
             render({ overlay: true, ui: true });
@@ -8423,8 +8526,16 @@
             const area = measurement.areas.find((entry) => entry.id === target.itemId);
             if (!area) return;
             if (target.part === "body") {
-              const deltaX = snapped.x - state.interaction.startWorld.x;
-              const deltaY = snapped.y - state.interaction.startWorld.y;
+              const locked = axisLockDeltas(
+                state.interaction,
+                event.clientX,
+                event.clientY,
+                snapped.x - state.interaction.startWorld.x,
+                snapped.y - state.interaction.startWorld.y,
+                event.shiftKey
+              );
+              const deltaX = locked.deltaX;
+              const deltaY = locked.deltaY;
               if (deltaX !== 0 || deltaY !== 0) {
                 state.interaction.moved = true;
               }
@@ -8435,10 +8546,22 @@
                 })
               );
             } else if (target.part === "vertex") {
-              if (!pointsEqual(area.points[target.vertexIndex], snapped)) {
+              const locked = axisLockDeltas(
+                state.interaction,
+                event.clientX,
+                event.clientY,
+                snapped.x - state.interaction.startWorld.x,
+                snapped.y - state.interaction.startWorld.y,
+                event.shiftKey
+              );
+              const nextWorld = {
+                x: state.interaction.startWorld.x + locked.deltaX,
+                y: state.interaction.startWorld.y + locked.deltaY,
+              };
+              if (!pointsEqual(area.points[target.vertexIndex], nextWorld)) {
                 state.interaction.moved = true;
               }
-              area.points[target.vertexIndex] = measurementVertexPointFromWorld(snapped);
+              area.points[target.vertexIndex] = measurementVertexPointFromWorld(nextWorld);
             }
             area.squareMeters = measurementAreaSquareMeters(area.points);
             render({ overlay: true, ui: true });
@@ -8548,8 +8671,16 @@
           const pointer = worldFromClient(event.clientX, event.clientY);
           const snappedX = viewBoxBoundaryFromWorld(pointer.worldX);
           const snappedY = viewBoxBoundaryFromWorld(pointer.worldY);
-          const deltaX = snappedX - state.interaction.startPointerX;
-          const deltaY = snappedY - state.interaction.startPointerY;
+          const locked = axisLockDeltas(
+            state.interaction,
+            event.clientX,
+            event.clientY,
+            snappedX - state.interaction.startPointerX,
+            snappedY - state.interaction.startPointerY,
+            event.shiftKey
+          );
+          const deltaX = locked.deltaX;
+          const deltaY = locked.deltaY;
           view.bounds = {
             minX: state.interaction.startBounds.minX + deltaX,
             minY: state.interaction.startBounds.minY + deltaY,
@@ -8591,8 +8722,16 @@
           const pointer = worldFromClient(event.clientX, event.clientY);
 
           if (state.interaction.type === "move") {
-            scene.x = state.interaction.startX + (pointer.worldX - state.interaction.pointerWorldX);
-            scene.y = state.interaction.startY + (pointer.worldY - state.interaction.pointerWorldY);
+            const locked = axisLockDeltas(
+              state.interaction,
+              event.clientX,
+              event.clientY,
+              pointer.worldX - state.interaction.pointerWorldX,
+              pointer.worldY - state.interaction.pointerWorldY,
+              event.shiftKey
+            );
+            scene.x = state.interaction.startX + locked.deltaX;
+            scene.y = state.interaction.startY + locked.deltaY;
             render({ scenes: true, overlay: true });
             return;
           }
