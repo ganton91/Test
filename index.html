@@ -1864,6 +1864,7 @@
           lastCellX: null,
           lastCellY: null,
         },
+        lastLayerAuthoringTool: "brush",
         shape: {
           type: "rect",
         },
@@ -1878,6 +1879,7 @@
         measurements: [],
         activeMeasurementId: null,
         activeMeasurementItem: null,
+        lastMeasurementMode: "points",
         editingMeasurementId: null,
         dragMeasurementId: null,
         measurementSectionCollapsed: true,
@@ -3113,12 +3115,13 @@
           render({ ui: true, overlay: true });
           return;
         }
-        if (setActiveLayerById(layerId, { tool: "select" })) {
+        const nextTool = state.lastLayerAuthoringTool === "shape" ? "shape" : "brush";
+        if (setActiveLayerById(layerId, { tool: nextTool })) {
           state.editingLayerId = null;
           state.editingSceneId = null;
           state.editingMeasurementId = null;
           state.editingViewId = null;
-          setStatus("Layer selected.");
+          setStatus(nextTool === "shape" ? "Shape tool active." : "Brush tool active.");
           render({ ui: true, overlay: true });
         }
       }
@@ -3770,12 +3773,23 @@
           render({ ui: true, overlay: true });
           return;
         }
-        if (setActiveMeasurementById(measurementId, { tool: "select" })) {
+        const nextMode = ["points", "length", "area"].includes(state.lastMeasurementMode) ? state.lastMeasurementMode : "points";
+        const measurement = state.measurements.find((entry) => entry.id === measurementId);
+        if (measurement) {
+          measurement.mode = nextMode;
+        }
+        if (setActiveMeasurementById(measurementId, { tool: "measure" })) {
           state.editingMeasurementId = null;
           state.editingLayerId = null;
           state.editingSceneId = null;
           state.editingViewId = null;
-          setStatus("Measurement selected.");
+          setStatus(
+            nextMode === "points"
+              ? "Points mode active."
+              : nextMode === "length"
+              ? "Length mode active."
+              : "Area mode active."
+          );
           render({ ui: true, overlay: true });
         }
       }
@@ -9012,6 +9026,9 @@
         if ((state.color.eyedropper || state.outline.eyedropper || state.activeTool === "eyedropper") && tool !== "eyedropper") {
           stopEyedropperSession();
         }
+        if (tool === "brush" || tool === "shape") {
+          state.lastLayerAuthoringTool = tool;
+        }
         if (tool !== "viewbox") {
           cancelPendingView();
         }
@@ -9086,6 +9103,7 @@
           stopEyedropperSession();
         }
         cancelMeasurementDraft();
+        state.lastMeasurementMode = mode;
         if (!activeMeasurement() && !state.measurements.length) {
           addMeasurement();
         }
