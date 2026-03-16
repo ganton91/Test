@@ -487,6 +487,11 @@
       }
 
       .inline-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
         padding: 0;
         border: 0;
         background: transparent;
@@ -500,12 +505,10 @@
         color: var(--text);
       }
 
-      .inline-icon.visibility-dot {
-        font-size: 16px;
-      }
-
-      .inline-icon.delete-mark {
-        font-size: 16px;
+      .inline-icon svg {
+        width: 14px;
+        height: 14px;
+        display: block;
       }
 
       .inline-icon:disabled {
@@ -4451,7 +4454,7 @@
 
           const duplicateInline = document.createElement("button");
           duplicateInline.className = "inline-icon";
-          duplicateInline.textContent = "+";
+          duplicateInline.appendChild(createInlineIcon("duplicate"));
           duplicateInline.title = "Duplicate view";
           duplicateInline.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -4462,7 +4465,7 @@
 
           const visibilityInline = document.createElement("button");
           visibilityInline.className = "inline-icon visibility-dot";
-          visibilityInline.textContent = view.visible ? "●" : "○";
+          visibilityInline.appendChild(createInlineIcon("visibility", { filled: view.visible }));
           visibilityInline.title = view.visible ? "Hide view box" : "Show view box";
           visibilityInline.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -4473,7 +4476,7 @@
 
           const removeInline = document.createElement("button");
           removeInline.className = "inline-icon delete-mark";
-          removeInline.textContent = "×";
+          removeInline.appendChild(createInlineIcon("delete"));
           removeInline.title = "Delete view";
           removeInline.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -4610,7 +4613,7 @@
 
           const duplicateInline = document.createElement("button");
           duplicateInline.className = "inline-icon";
-          duplicateInline.textContent = "+";
+          duplicateInline.appendChild(createInlineIcon("duplicate"));
           duplicateInline.title = "Duplicate measurement";
           duplicateInline.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -4621,7 +4624,7 @@
 
           const visibilityInline = document.createElement("button");
           visibilityInline.className = "inline-icon visibility-dot";
-          visibilityInline.textContent = measurement.visible ? "●" : "○";
+          visibilityInline.appendChild(createInlineIcon("visibility", { filled: measurement.visible }));
           visibilityInline.title = measurement.visible ? "Hide measurement" : "Show measurement";
           visibilityInline.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -4632,7 +4635,7 @@
 
           const removeInline = document.createElement("button");
           removeInline.className = "inline-icon delete-mark";
-          removeInline.textContent = "×";
+          removeInline.appendChild(createInlineIcon("delete"));
           removeInline.title = "Delete measurement";
           removeInline.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -4814,7 +4817,7 @@
 
           const duplicateInline = document.createElement("button");
           duplicateInline.className = "inline-icon";
-          duplicateInline.textContent = "+";
+          duplicateInline.appendChild(createInlineIcon("duplicate"));
           duplicateInline.title = "Duplicate layer";
           duplicateInline.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -4825,7 +4828,7 @@
 
           const visibilityInline = document.createElement("button");
           visibilityInline.className = "inline-icon visibility-dot";
-          visibilityInline.textContent = layer.visible ? "●" : "○";
+          visibilityInline.appendChild(createInlineIcon("visibility", { filled: layer.visible }));
           visibilityInline.title = layer.visible ? "Hide layer" : "Show layer";
           visibilityInline.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -4836,7 +4839,7 @@
 
           const removeInline = document.createElement("button");
           removeInline.className = "inline-icon delete-mark";
-          removeInline.textContent = "×";
+          removeInline.appendChild(createInlineIcon("delete"));
           removeInline.title = "Delete layer";
           removeInline.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -4990,7 +4993,7 @@
 
           const duplicateInline = document.createElement("button");
           duplicateInline.className = "inline-icon";
-          duplicateInline.textContent = "+";
+          duplicateInline.appendChild(createInlineIcon("duplicate"));
           duplicateInline.title = "Duplicate scene";
           duplicateInline.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -5001,7 +5004,7 @@
 
           const visibilityInline = document.createElement("button");
           visibilityInline.className = "inline-icon visibility-dot";
-          visibilityInline.textContent = scene.visible ? "●" : "○";
+          visibilityInline.appendChild(createInlineIcon("visibility", { filled: scene.visible }));
           visibilityInline.title = scene.visible ? "Hide scene" : "Show scene";
           visibilityInline.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -5012,7 +5015,7 @@
 
           const removeInline = document.createElement("button");
           removeInline.className = "inline-icon delete-mark";
-          removeInline.textContent = "×";
+          removeInline.appendChild(createInlineIcon("delete"));
           removeInline.title = "Delete scene";
           removeInline.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -6633,6 +6636,77 @@
       function hsvToHex(h, s, v) {
         const rgb = hsvToRgb(h, s, v);
         return rgbToHex(rgb.r, rgb.g, rgb.b);
+      }
+
+      function createInlineIcon(kind, options = {}) {
+        const ns = "http://www.w3.org/2000/svg";
+        const svg = document.createElementNS(ns, "svg");
+        svg.setAttribute("viewBox", "0 0 16 16");
+        svg.setAttribute("aria-hidden", "true");
+
+        if (kind === "duplicate") {
+          const horizontal = document.createElementNS(ns, "line");
+          horizontal.setAttribute("x1", "3");
+          horizontal.setAttribute("y1", "8");
+          horizontal.setAttribute("x2", "13");
+          horizontal.setAttribute("y2", "8");
+          horizontal.setAttribute("stroke", "currentColor");
+          horizontal.setAttribute("stroke-width", "1.6");
+          horizontal.setAttribute("stroke-linecap", "round");
+          svg.appendChild(horizontal);
+
+          const vertical = document.createElementNS(ns, "line");
+          vertical.setAttribute("x1", "8");
+          vertical.setAttribute("y1", "3");
+          vertical.setAttribute("x2", "8");
+          vertical.setAttribute("y2", "13");
+          vertical.setAttribute("stroke", "currentColor");
+          vertical.setAttribute("stroke-width", "1.6");
+          vertical.setAttribute("stroke-linecap", "round");
+          svg.appendChild(vertical);
+          return svg;
+        }
+
+        if (kind === "visibility") {
+          const circle = document.createElementNS(ns, "circle");
+          circle.setAttribute("cx", "8");
+          circle.setAttribute("cy", "8");
+          circle.setAttribute("r", "4");
+          if (options.filled) {
+            circle.setAttribute("fill", "currentColor");
+          } else {
+            circle.setAttribute("fill", "none");
+            circle.setAttribute("stroke", "currentColor");
+            circle.setAttribute("stroke-width", "1.6");
+          }
+          svg.appendChild(circle);
+          return svg;
+        }
+
+        if (kind === "delete") {
+          const lineA = document.createElementNS(ns, "line");
+          lineA.setAttribute("x1", "4");
+          lineA.setAttribute("y1", "4");
+          lineA.setAttribute("x2", "12");
+          lineA.setAttribute("y2", "12");
+          lineA.setAttribute("stroke", "currentColor");
+          lineA.setAttribute("stroke-width", "1.6");
+          lineA.setAttribute("stroke-linecap", "round");
+          svg.appendChild(lineA);
+
+          const lineB = document.createElementNS(ns, "line");
+          lineB.setAttribute("x1", "12");
+          lineB.setAttribute("y1", "4");
+          lineB.setAttribute("x2", "4");
+          lineB.setAttribute("y2", "12");
+          lineB.setAttribute("stroke", "currentColor");
+          lineB.setAttribute("stroke-width", "1.6");
+          lineB.setAttribute("stroke-linecap", "round");
+          svg.appendChild(lineB);
+          return svg;
+        }
+
+        return svg;
       }
 
       function addMeasurement() {
