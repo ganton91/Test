@@ -56,6 +56,8 @@ This document should be treated as authoritative unless the user explicitly chan
   - `Circular + Shift` = center-to-radius
   - `Polygon` uses custom double-click detection, not native browser `dblclick`
   - `Polygon` closes by clicking the first point or by custom double-click
+  - `Polygon` now shows a live preview segment while the pointer moves
+  - `Polygon + Shift` applies the same axis lock behavior to the current segment as `Area`
   - `Escape` cancels the polygon draft
 - `Outline Settings` is a separate global paint subsystem for `Brush` and `Shape`:
   - independent outline color palette
@@ -71,7 +73,9 @@ This document should be treated as authoritative unless the user explicitly chan
   - snap on the shared half-cell grid (`2.5 cm`)
   - therefore `Points` can land on corners, side midpoints, and centers
   - `Length` supports both drag and click-click creation
+  - `Length + Shift` axis-locks the active segment during both drag and click-click creation
   - `Area` is polygonal and closes by first-point click or custom double-click
+  - `Area + Shift` axis-locks the current segment from the last vertex
   - right-click drag acts as a measurement eraser for the active measurement
   - `Escape` is hierarchical:
     - cancel the active draft first
@@ -331,6 +335,7 @@ The current goal is to keep building `Milimetre` as a strong, minimal infinite c
   - `Drag to create view box`
   - `Pick two points to set scale`
   - measurement tool prompts
+  - eyedropper prompt: `Click on a Painted Cell to pick a color`
   - future workflow hints should reuse this same shared component instead of adding ad hoc status pills
 
 ## Views Subsystem
@@ -343,19 +348,72 @@ The current goal is to keep building `Milimetre` as a strong, minimal infinite c
   - each created view gets its own selectable tab in the same pill
   - the switcher is a floating canvas control, not a structural canvas header bar
 - Entering a specific `View` opens the dedicated `View` workspace:
-  - a 4-panel orthographic view layout
-  - one panel for each cardinal viewing direction
+  - a dedicated orthographic workspace with layout presets:
+    - `1 Side`
+    - `2 Sides`
+    - `4 Sides`
+  - each visible pane can be assigned any direction independently:
+    - `Top to Bottom`
+    - `Bottom to Top`
+    - `Left to Right`
+    - `Right to Left`
+  - duplicate directions are allowed across panes by design
   - `Main View` floating drawing tools and rulers are suppressed there where appropriate
 - Active view boxes use their own transform mode on the main canvas:
   - move
   - free resize from corner handles
+  - `Shift` while drawing or resizing a view box constrains it to a square
   - no rotation
 - In `Selection` mode, views can be selected from their outline or label, not from the box interior.
-- `Edit Layers` on a view card opens a modal that shows only the painted layers intersecting that view box.
+- View cards show the view-box dimensions in meters directly below the card header.
+- `Edit Layer Elevations` on a view card opens a modal that shows only the painted layers intersecting that view box.
 - The modal stores per-view layer settings:
-  - `Base Elevation`
+  - `Color`
+  - `Opacity`
   - `Height`
-  - and view-specific layer reorder for future view rendering
+  - `Start`
+  - derived `End`
+  - and view-specific layer reorder
+- View rendering now supports a dedicated settings group:
+  - `Depth Effect` on/off
+  - `Depth Mode` = `Shadow` or `Fog`
+  - `Depth Strength` as explicit `% overlay per depth cell`
+  - `Outline` on/off with custom color
+  - `Sky` on/off with custom color
+  - `Ground` on/off with custom color
+  - `Override View Colors` on/off
+- Depth effect no longer changes layer colors through HSV manipulation:
+  - it keeps the base visible color
+  - then applies a per-depth-cell overlay
+  - `Shadow` overlays toward black
+  - `Fog` overlays toward the active sky color
+- View outlines are depth-aware:
+  - they react not only to empty space, but also to changes in the visible surface signature
+  - the baseline `0` line is treated as part of the same outline visibility toggle
+- When `Override View Colors` is off, views render the original painted cell colors from the main canvas.
+- When `Override View Colors` is on, views use the per-view layer `Color` and `Opacity` values from `Edit Layer Elevations`.
+- The current per-view opacity override is only opacity of the final visible layer winner in that projection column:
+  - it does not reveal hidden geometry behind that layer
+  - it blends against the already rendered view background instead
+
+## Export And Import
+
+- `Export / Import` is now a first-class project system.
+- Exported project data includes the working project state:
+  - `Scenes` including embedded scene image data
+  - `Layers`
+  - `Measurements`
+  - `Views`
+  - active ids / active tool
+  - viewport
+  - panel collapsed states
+  - paint / shape / outline / view settings
+  - remembered last-used layer authoring tool and measurement mode
+- Export / Import is intended to restore the same working project state, not transient in-progress interaction:
+  - no active drag gesture
+  - no temporary draft stroke / polygon / measurement draft
+  - no live eyedropper session
+  - no imported undo/redo history stack
 
 ## Renderer Note
 
