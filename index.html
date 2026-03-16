@@ -2591,12 +2591,12 @@
           render({ ui: true, overlay: true });
           return;
         }
-        if (setActiveLayerById(layerId)) {
+        if (setActiveLayerById(layerId, { tool: "select" })) {
           state.editingLayerId = null;
           state.editingSceneId = null;
           state.editingMeasurementId = null;
           state.editingViewId = null;
-          setStatus("Brush active on selected layer.");
+          setStatus("Layer selected.");
           render({ ui: true, overlay: true });
         }
       }
@@ -3027,9 +3027,13 @@
 
       function cancelSceneCalibration() {
         if (!state.sceneCalibration) return false;
+        const sceneId = state.sceneCalibration.sceneId;
         state.sceneCalibration = null;
         if (isModalOpen(ui.sceneScaleModal)) {
           closeModal(ui.sceneScaleModal);
+        }
+        if (sceneId) {
+          setActiveSceneById(sceneId);
         }
         return true;
       }
@@ -3418,7 +3422,7 @@
           closeModal(ui.sceneScaleModal);
           cancelSceneCalibration();
           setStatus("Scene scale setup cancelled.");
-          render({ overlay: true });
+          render({ ui: true, overlay: true });
           return true;
         }
         if (isModalOpen(ui.viewEditModal)) {
@@ -3510,7 +3514,7 @@
       }
 
       function renderToolState() {
-        ui.selectionToolButton.classList.toggle("active", state.activeTool === "select");
+        ui.selectionToolButton.classList.toggle("active", state.activeTool === "select" && !state.sceneCalibration);
         ui.brushToolButton.classList.toggle("active", state.activeTool === "brush");
         ui.shapeToolButton.classList.toggle("active", state.activeTool === "shape");
         ui.brushLinkButton.classList.toggle("active", state.brush.linked);
@@ -7488,7 +7492,7 @@
         closeModal(ui.sceneScaleModal);
         cancelSceneCalibration();
         setStatus("Scene scale setup cancelled.");
-        render({ overlay: true });
+        render({ ui: true, overlay: true });
       });
       ui.sceneScaleApplyButton.addEventListener("click", applySceneCalibration);
       ui.viewEditCancelButton.addEventListener("click", () => {
@@ -7600,6 +7604,12 @@
           state.pointer.shiftKey = true;
           resetBrushAxisLockAnchor(state.pointer.clientX, state.pointer.clientY);
           if (state.pointer.inside && state.activeTool === "brush") render({ overlay: true });
+        }
+        if (event.key === "Escape" && state.sceneCalibration) {
+          cancelSceneCalibration();
+          setStatus("Scene scale setup cancelled.");
+          render({ ui: true, overlay: true });
+          return;
         }
         if (event.key === "Escape" && closeActiveModal()) {
           return;
