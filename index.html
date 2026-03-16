@@ -9159,11 +9159,16 @@
           || target instanceof HTMLTextAreaElement
           || target instanceof HTMLSelectElement
           || target?.isContentEditable;
-        const isUndoShortcut = (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "z";
+        const isUndoShortcut =
+          (event.ctrlKey || event.metaKey) &&
+          !event.altKey &&
+          !event.shiftKey &&
+          event.key.toLowerCase() === "z";
         const isRedoShortcut =
           (event.ctrlKey || event.metaKey) &&
           !event.altKey &&
-          (event.key.toLowerCase() === "y" || (event.shiftKey && event.key.toLowerCase() === "z"));
+          event.shiftKey &&
+          event.key.toLowerCase() === "z";
         if (!isEditableTarget && isUndoShortcut) {
           event.preventDefault();
           if (undoHistory()) {
