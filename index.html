@@ -1838,6 +1838,7 @@
           shiftKey: false,
         },
         middleClickMemory: null,
+        eyedropperSession: null,
         color: {
           active: DEFAULT_COLOR,
           hsv: hexToHsv(DEFAULT_COLOR),
@@ -2182,6 +2183,7 @@
         state.measurementSelectClickMemory = null;
         state.shapeDraft = null;
         state.polygonClickMemory = null;
+        state.eyedropperSession = null;
         state.color.eyedropper = false;
         state.outline.eyedropper = false;
         state.nextSceneNumber = snapshot.nextSceneNumber;
@@ -2336,7 +2338,9 @@
       function renderCanvasModeHint() {
         if (!ui.canvasModeHint) return;
         let text = "";
-        if (state.pendingViewCreation) {
+        if (state.color.eyedropper || state.outline.eyedropper || state.activeTool === "eyedropper") {
+          text = "Click on a Painted Cell to pick a color";
+        } else if (state.pendingViewCreation) {
           text = "Drag to create view box";
         } else if (state.sceneCalibration && !isModalOpen(ui.sceneScaleModal)) {
           text = "Pick two points to set scale";
@@ -4499,7 +4503,9 @@
           button.classList.toggle("active", index === state.outline.activeSwatchIndex);
         });
         ui.overlayCanvas.style.cursor =
-          state.activeTool === "brush" || state.activeTool === "shape"
+          state.activeTool === "eyedropper"
+            ? "copy"
+            : state.activeTool === "brush" || state.activeTool === "shape"
             ? state.color.eyedropper || state.outline.eyedropper
               ? "copy"
               : "crosshair"
@@ -6260,8 +6266,9 @@
         const width = ui.overlayCanvas.clientWidth;
         const height = ui.overlayCanvas.clientHeight;
         overlayCtx.clearRect(0, 0, width, height);
+        const eyedropperActive = state.color.eyedropper || state.outline.eyedropper || state.activeTool === "eyedropper";
 
-        const activeSceneEntity = activeScene();
+        const activeSceneEntity = eyedropperActive ? null : activeScene();
         if (activeSceneEntity) {
           const calibration = state.sceneCalibration && state.sceneCalibration.sceneId === activeSceneEntity.id ? state.sceneCalibration : null;
           const handles = sceneHandleWorldPositions(activeSceneEntity);
@@ -6323,7 +6330,7 @@
           overlayCtx.restore();
         }
 
-        const activeLayerEntity = activeLayer();
+        const activeLayerEntity = eyedropperActive ? null : activeLayer();
         if (activeLayerEntity && state.activeTool === "select") {
           const handles = layerHandleWorldPositions(activeLayerEntity);
           if (handles) {
@@ -6390,7 +6397,7 @@
             measurement.areas.forEach((area) => drawMeasurementArea(overlayCtx, measurement, area));
           });
 
-        const activeMeasurementEntity = state.activeTool === "select" ? activeMeasurement() : null;
+        const activeMeasurementEntity = !eyedropperActive && state.activeTool === "select" ? activeMeasurement() : null;
         if (activeMeasurementEntity) {
           const activeItemData = activeMeasurementItemData();
           if (activeItemData) {
@@ -6499,13 +6506,14 @@
             if (!view.visible || !view.bounds) return;
             const rect = viewBoundsScreenRect(view.bounds);
             const handles = viewHandleWorldPositions(view);
+            const viewIsActive = !eyedropperActive && view.id === state.activeViewId;
             overlayCtx.save();
-            overlayCtx.strokeStyle = view.id === state.activeViewId ? getCssVar("--crosshair") : getCssVar("--selection");
-            overlayCtx.lineWidth = view.id === state.activeViewId ? 1.5 : 1;
-            overlayCtx.setLineDash(view.id === state.activeViewId ? [8, 4] : [5, 4]);
+            overlayCtx.strokeStyle = viewIsActive ? getCssVar("--crosshair") : getCssVar("--selection");
+            overlayCtx.lineWidth = viewIsActive ? 1.5 : 1;
+            overlayCtx.setLineDash(viewIsActive ? [8, 4] : [5, 4]);
             overlayCtx.strokeRect(rect.x + 0.5, rect.y + 0.5, Math.max(0, rect.width - 1), Math.max(0, rect.height - 1));
             overlayCtx.setLineDash([]);
-            if (view.id === state.activeViewId) {
+            if (viewIsActive) {
               Object.values(handles).forEach((handle) => {
                 const screenHandle = worldToScreen(handle.x, handle.y);
                 overlayCtx.beginPath();
@@ -6519,7 +6527,7 @@
             overlayCtx.font = "600 11px IBM Plex Sans, Segoe UI, sans-serif";
             overlayCtx.textAlign = "left";
             overlayCtx.textBaseline = "bottom";
-            overlayCtx.fillStyle = view.id === state.activeViewId ? getCssVar("--crosshair") : getCssVar("--selection");
+            overlayCtx.fillStyle = viewIsActive ? getCssVar("--crosshair") : getCssVar("--selection");
             overlayCtx.fillText(view.name, rect.x + 6, rect.y - 6);
             overlayCtx.restore();
           });
@@ -6553,6 +6561,7 @@
 
         if (
           state.pointer.inside &&
+          !eyedropperActive &&
           state.activeTool === "select" &&
           !(state.interaction && state.interaction.type === "selection-marquee" && state.interaction.moved)
         ) {
@@ -7729,6 +7738,37 @@
         state.interaction.lockedAxis = null;
       }
 
+      function stopEyedropperSession(statusMessage = "", renderFlags = null) {
+        const previousTool = state.eyedropperSession?.previousTool || "select";
+        state.color.eyedropper = false;
+        state.outline.eyedropper = false;
+        state.eyedropperSession = null;
+        state.activeTool = previousTool;
+        if (statusMessage) {
+          setStatus(statusMessage);
+        }
+        if (renderFlags) {
+          render(renderFlags);
+        }
+      }
+
+      function startEyedropperSession(target) {
+        cancelPendingView();
+        cancelShapeDraft();
+        cancelMeasurementDraft();
+        cancelSceneCalibration();
+        state.interaction = null;
+        state.measurementSelectClickMemory = null;
+        state.eyedropperSession = {
+          target,
+          previousTool: state.activeTool,
+        };
+        state.activeTool = "eyedropper";
+        state.color.eyedropper = target === "color";
+        state.outline.eyedropper = target === "outline";
+        setStatus(target === "outline" ? "Outline eyedropper active. Click a painted cell." : "Eyedropper active. Click a painted cell.");
+      }
+
       function beginColorEyedropper(clientX, clientY) {
         const pointer = worldFromClient(clientX, clientY);
         const color = samplePaintColorAt(pointer.worldX, pointer.worldY);
@@ -7738,8 +7778,7 @@
           return;
         }
         setColorSwatchColor(state.color.activeSwatchIndex, color);
-        state.color.eyedropper = false;
-        setStatus("Color sampled from canvas.");
+        stopEyedropperSession("Color sampled from canvas.");
         render({ ui: true, overlay: true });
       }
 
@@ -7752,8 +7791,7 @@
           return;
         }
         setOutlineSwatchColor(state.outline.activeSwatchIndex, color);
-        state.outline.eyedropper = false;
-        setStatus("Outline color sampled from canvas.");
+        stopEyedropperSession("Outline color sampled from canvas.");
         render({ ui: true, overlay: true });
       }
 
@@ -8270,7 +8308,9 @@
             state.shapeDraft.currentCellX = cell.x;
             state.shapeDraft.currentCellY = cell.y;
           }
-          if (state.sceneCalibration && activeScene()) {
+          if (state.color.eyedropper || state.outline.eyedropper || state.activeTool === "eyedropper") {
+            ui.overlayCanvas.style.cursor = "copy";
+          } else if (state.sceneCalibration && activeScene()) {
             ui.overlayCanvas.style.cursor = "crosshair";
           } else if (state.activeTool === "select" && activeScene() && !activeScene().locked) {
             const pointer = worldFromClient(event.clientX, event.clientY);
@@ -8969,6 +9009,9 @@
       }
 
       function activateTool(tool) {
+        if ((state.color.eyedropper || state.outline.eyedropper || state.activeTool === "eyedropper") && tool !== "eyedropper") {
+          stopEyedropperSession();
+        }
         if (tool !== "viewbox") {
           cancelPendingView();
         }
@@ -9039,6 +9082,9 @@
       }
 
       function activateMeasurementMode(mode) {
+        if (state.color.eyedropper || state.outline.eyedropper || state.activeTool === "eyedropper") {
+          stopEyedropperSession();
+        }
         cancelMeasurementDraft();
         if (!activeMeasurement() && !state.measurements.length) {
           addMeasurement();
@@ -9104,15 +9150,19 @@
       ui.outlineSaturation.addEventListener("input", syncActiveOutlineFromHsv);
       ui.outlineBrightness.addEventListener("input", syncActiveOutlineFromHsv);
       ui.colorEyedropperButton.addEventListener("click", () => {
-        state.outline.eyedropper = false;
-        state.color.eyedropper = !state.color.eyedropper;
-        setStatus(state.color.eyedropper ? "Eyedropper active. Click a painted cell." : "Color eyedropper off.");
+        if (state.color.eyedropper) {
+          stopEyedropperSession("Color eyedropper off.");
+        } else {
+          startEyedropperSession("color");
+        }
         render({ ui: true, overlay: true });
       });
       ui.outlineEyedropperButton.addEventListener("click", () => {
-        state.color.eyedropper = false;
-        state.outline.eyedropper = !state.outline.eyedropper;
-        setStatus(state.outline.eyedropper ? "Outline eyedropper active." : "Outline eyedropper off.");
+        if (state.outline.eyedropper) {
+          stopEyedropperSession("Outline eyedropper off.");
+        } else {
+          startEyedropperSession("outline");
+        }
         render({ ui: true, overlay: true });
       });
       ui.brushWidth.addEventListener("input", () => {
@@ -9406,6 +9456,13 @@
         if (event.key === "Escape" && closeActiveModal()) {
           return;
         }
+        if (event.key === "Escape" && (state.color.eyedropper || state.outline.eyedropper || state.activeTool === "eyedropper")) {
+          stopEyedropperSession(
+            state.outline.eyedropper ? "Outline eyedropper off." : "Color eyedropper off.",
+            { ui: true, overlay: true }
+          );
+          return;
+        }
         if (event.key === "Escape" && dismissSelectionPicker()) {
           setStatus("Selection picker closed.");
           render({ ui: true, overlay: true });
@@ -9431,18 +9488,6 @@
         if (event.key === "Escape" && state.activeTool === "measure" && state.activeMeasurementId) {
           setActiveMeasurementById(state.activeMeasurementId, { tool: "select" });
           setStatus("Measurement selected.");
-          render({ ui: true, overlay: true });
-          return;
-        }
-        if (event.key === "Escape" && state.color.eyedropper) {
-          state.color.eyedropper = false;
-          setStatus("Color eyedropper off.");
-          render({ ui: true, overlay: true });
-          return;
-        }
-        if (event.key === "Escape" && state.outline.eyedropper) {
-          state.outline.eyedropper = false;
-          setStatus("Outline eyedropper off.");
           render({ ui: true, overlay: true });
           return;
         }
