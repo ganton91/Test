@@ -1268,6 +1268,42 @@
         border-color: var(--line-strong);
       }
 
+      .stepper-actions {
+        align-items: center;
+        gap: 6px;
+      }
+
+      .stepper-button {
+        min-width: 36px;
+        padding: 9px 0;
+        font-weight: 700;
+      }
+
+      .stepper-value {
+        min-width: 64px;
+        width: 64px;
+        padding: 9px 12px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface-strong);
+        color: var(--text);
+        font-size: 12px;
+        font-weight: 600;
+        text-align: center;
+        box-sizing: border-box;
+      }
+
+      .stepper-input {
+        appearance: textfield;
+        -moz-appearance: textfield;
+      }
+
+      .stepper-input::-webkit-outer-spin-button,
+      .stepper-input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+
       .calibration-modal {
         width: min(360px, calc(100vw - 40px));
       }
@@ -1493,8 +1529,17 @@
             </div>
             <div class="menu-section">
               <div class="menu-title">Depth Strength</div>
-              <div class="menu-actions" style="min-width: 180px;">
-                <input id="viewDepthStrength" type="range" min="0" max="100" step="1" value="50" />
+              <div class="menu-actions stepper-actions">
+                <button class="mode-button stepper-button" id="viewDepthStrengthDecrease" type="button" aria-label="Decrease depth strength">-</button>
+                <input class="stepper-value stepper-input" id="viewDepthStrengthValue" type="number" min="0.01" max="100" step="0.01" value="0.05" />
+                <button class="mode-button stepper-button" id="viewDepthStrengthIncrease" type="button" aria-label="Increase depth strength">+</button>
+              </div>
+            </div>
+            <div class="menu-section">
+              <div class="menu-title">Depth Mode</div>
+              <div class="menu-actions">
+                <button class="mode-button active" data-view-depth-mode="shadow">Shadow</button>
+                <button class="mode-button" data-view-depth-mode="fog">Fog</button>
               </div>
             </div>
             <div class="menu-section">
@@ -1859,10 +1904,13 @@
         gridPositionButtons: Array.from(document.querySelectorAll("[data-grid-position]")),
         dualGridButtons: Array.from(document.querySelectorAll("[data-dual-grid]")),
         viewDepthButtons: Array.from(document.querySelectorAll("[data-view-depth]")),
+        viewDepthModeButtons: Array.from(document.querySelectorAll("[data-view-depth-mode]")),
         viewOutlineButtons: Array.from(document.querySelectorAll("[data-view-outline]")),
         viewSkyButtons: Array.from(document.querySelectorAll("[data-view-sky]")),
         viewGroundButtons: Array.from(document.querySelectorAll("[data-view-ground]")),
-        viewDepthStrength: document.getElementById("viewDepthStrength"),
+        viewDepthStrengthDecrease: document.getElementById("viewDepthStrengthDecrease"),
+        viewDepthStrengthIncrease: document.getElementById("viewDepthStrengthIncrease"),
+        viewDepthStrengthValue: document.getElementById("viewDepthStrengthValue"),
         viewOutlineColor: document.getElementById("viewOutlineColor"),
         viewSkyColor: document.getElementById("viewSkyColor"),
         viewGroundColor: document.getElementById("viewGroundColor"),
@@ -1994,7 +2042,8 @@
         dualStrokeGrid: false,
         viewDepthEffect: {
           enabled: true,
-          strength: 50,
+          strength: 0.05,
+          mode: "shadow",
         },
         viewOutlineEffect: {
           enabled: true,
@@ -2407,6 +2456,7 @@
           viewDepthEffect: {
             enabled: !!state.viewDepthEffect.enabled,
             strength: state.viewDepthEffect.strength,
+            mode: state.viewDepthEffect.mode,
           },
           viewOutlineEffect: {
             enabled: !!state.viewOutlineEffect.enabled,
@@ -2510,7 +2560,18 @@
           state.gridPosition = project.gridPosition === "above" ? "above" : "below";
           state.dualStrokeGrid = !!project.dualStrokeGrid;
           state.viewDepthEffect.enabled = project.viewDepthEffect?.enabled !== false;
-          state.viewDepthEffect.strength = Math.max(0, Math.min(100, Number(project.viewDepthEffect?.strength) || 50));
+          state.viewDepthEffect.strength = Math.max(
+            0.01,
+            Math.min(
+              100,
+              (() => {
+                const imported = Number(project.viewDepthEffect?.strength);
+                if (!Number.isFinite(imported)) return 0.05;
+                return imported > 20 ? Math.round(imported / 10) : imported;
+              })()
+            )
+          );
+          state.viewDepthEffect.mode = project.viewDepthEffect?.mode === "fog" ? "fog" : "shadow";
           state.viewOutlineEffect.enabled = project.viewOutlineEffect?.enabled !== false;
           state.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(project.viewOutlineEffect?.thickness) || 1));
           state.viewOutlineEffect.color = typeof project.viewOutlineEffect?.color === "string" ? project.viewOutlineEffect.color : defaultViewOutlineColor();
@@ -2812,13 +2873,18 @@
         if (!Number.isFinite(depthOffsetCells) || depthOffsetCells <= 0) {
           return color;
         }
-        const hsv = hexToHsv(color);
-        const strength = Math.max(0, Math.min(2, state.viewDepthEffect.strength / 50));
-        const saturationFloor = Math.max(0.35, 1 - 0.3 * strength);
-        const brightnessFloor = Math.max(0.05, 1 - 0.8 * strength);
-        const nextSaturation = hsv.s * Math.max(saturationFloor, 1 - depthOffsetCells * 0.0005 * strength);
-        const nextBrightness = hsv.v * Math.max(brightnessFloor, 1 - depthOffsetCells * 0.00165 * strength);
-        return hsvToHex(hsv.h, nextSaturation, nextBrightness);
+        const rgb = hexToRgb(color);
+        const overlayRgb = state.viewDepthEffect.mode === "fog"
+          ? { r: 255, g: 255, b: 255 }
+          : { r: 0, g: 0, b: 0 };
+        const stepAlpha = Math.max(0, state.viewDepthEffect.strength) / 100;
+        const alpha = Math.max(0, Math.min(0.95, depthOffsetCells * stepAlpha));
+        const mixChannel = (base, overlay) => Math.round(base * (1 - alpha) + overlay * alpha);
+        return rgbToHex(
+          mixChannel(rgb.r, overlayRgb.r),
+          mixChannel(rgb.g, overlayRgb.g),
+          mixChannel(rgb.b, overlayRgb.b)
+        );
       }
 
       function directionalViewConfig(direction) {
@@ -4908,6 +4974,9 @@
         ui.viewDepthButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewDepth === (state.viewDepthEffect.enabled ? "on" : "off"));
         });
+        ui.viewDepthModeButtons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.viewDepthMode === state.viewDepthEffect.mode);
+        });
         ui.viewOutlineButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewOutline === (state.viewOutlineEffect.enabled ? "on" : "off"));
         });
@@ -4917,8 +4986,10 @@
         ui.viewGroundButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewGround === (state.viewEnvironment.groundEnabled ? "on" : "off"));
         });
-        ui.viewDepthStrength.value = String(state.viewDepthEffect.strength);
-        ui.viewDepthStrength.disabled = !state.viewDepthEffect.enabled;
+        ui.viewDepthStrengthValue.value = state.viewDepthEffect.strength.toFixed(2);
+        ui.viewDepthStrengthDecrease.disabled = !state.viewDepthEffect.enabled;
+        ui.viewDepthStrengthIncrease.disabled = !state.viewDepthEffect.enabled;
+        ui.viewDepthStrengthValue.disabled = !state.viewDepthEffect.enabled;
         ui.viewOutlineColor.value = state.viewOutlineEffect.color;
         ui.viewSkyColor.value = state.viewEnvironment.skyColor;
         ui.viewGroundColor.value = state.viewEnvironment.groundColor;
@@ -9919,6 +9990,14 @@
         });
       });
 
+      ui.viewDepthModeButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          state.viewDepthEffect.mode = button.dataset.viewDepthMode === "fog" ? "fog" : "shadow";
+          setStatus(state.viewDepthEffect.mode === "fog" ? "View depth mode set to fog." : "View depth mode set to shadow.");
+          render({ ui: true, content: true });
+        });
+      });
+
       ui.viewOutlineButtons.forEach((button) => {
         button.addEventListener("click", () => {
           state.viewOutlineEffect.enabled = button.dataset.viewOutline === "on";
@@ -9961,9 +10040,29 @@
         });
       });
 
-      ui.viewDepthStrength.addEventListener("input", () => {
-        state.viewDepthEffect.strength = Math.max(0, Math.min(100, Number(ui.viewDepthStrength.value) || 0));
-        setStatus("View depth strength " + state.viewDepthEffect.strength + "%.");
+      ui.viewDepthStrengthDecrease.addEventListener("click", () => {
+        state.viewDepthEffect.strength = Math.max(0.01, Math.round((state.viewDepthEffect.strength - 0.01) * 100) / 100);
+        setStatus("View depth step " + state.viewDepthEffect.strength.toFixed(2) + "% per cell.");
+        render({ ui: true, content: true });
+      });
+
+      ui.viewDepthStrengthIncrease.addEventListener("click", () => {
+        state.viewDepthEffect.strength = Math.min(100, Math.round((state.viewDepthEffect.strength + 0.01) * 100) / 100);
+        setStatus("View depth step " + state.viewDepthEffect.strength.toFixed(2) + "% per cell.");
+        render({ ui: true, content: true });
+      });
+
+      ui.viewDepthStrengthValue.addEventListener("input", () => {
+        const nextValue = Number(ui.viewDepthStrengthValue.value);
+        state.viewDepthEffect.strength = Math.max(0.01, Math.min(100, Number.isFinite(nextValue) ? nextValue : state.viewDepthEffect.strength));
+        render({ ui: true, content: true });
+      });
+
+      ui.viewDepthStrengthValue.addEventListener("change", () => {
+        const nextValue = Number(ui.viewDepthStrengthValue.value);
+        state.viewDepthEffect.strength = Math.max(0.01, Math.min(100, Number.isFinite(nextValue) ? nextValue : state.viewDepthEffect.strength));
+        ui.viewDepthStrengthValue.value = state.viewDepthEffect.strength.toFixed(2);
+        setStatus("View depth step " + state.viewDepthEffect.strength.toFixed(2) + "% per cell.");
         render({ ui: true, content: true });
       });
 
