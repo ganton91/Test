@@ -1510,6 +1510,18 @@
                 <input id="viewOutlineThickness" type="range" min="1" max="6" step="1" value="1" />
               </div>
             </div>
+            <div class="menu-section">
+              <div class="menu-title">Sky Color</div>
+              <div class="menu-actions" style="min-width: 180px;">
+                <input id="viewSkyColor" type="color" value="#f8fafc" />
+              </div>
+            </div>
+            <div class="menu-section">
+              <div class="menu-title">Ground Color</div>
+              <div class="menu-actions" style="min-width: 180px;">
+                <input id="viewGroundColor" type="color" value="#d4d0c8" />
+              </div>
+            </div>
           </div>
         </div>
         <div class="menu-panel modal-panel calibration-modal hidden" id="sceneScaleModal">
@@ -1851,6 +1863,8 @@
         viewOutlineButtons: Array.from(document.querySelectorAll("[data-view-outline]")),
         viewDepthStrength: document.getElementById("viewDepthStrength"),
         viewOutlineThickness: document.getElementById("viewOutlineThickness"),
+        viewSkyColor: document.getElementById("viewSkyColor"),
+        viewGroundColor: document.getElementById("viewGroundColor"),
         selectionToolButton: document.getElementById("selectionToolButton"),
         brushToolButton: document.getElementById("brushToolButton"),
         shapeToolButton: document.getElementById("shapeToolButton"),
@@ -1984,6 +1998,10 @@
         viewOutlineEffect: {
           enabled: true,
           thickness: 1,
+        },
+        viewEnvironment: {
+          skyColor: "#f8fafc",
+          groundColor: "#d4d0c8",
         },
         layers: [createLayer("Layer 1")],
         activeLayerId: null,
@@ -2390,6 +2408,10 @@
             enabled: !!state.viewOutlineEffect.enabled,
             thickness: state.viewOutlineEffect.thickness,
           },
+          viewEnvironment: {
+            skyColor: state.viewEnvironment.skyColor,
+            groundColor: state.viewEnvironment.groundColor,
+          },
           sceneSectionCollapsed: state.sceneSectionCollapsed,
           layerSectionCollapsed: state.layerSectionCollapsed,
           measurementSectionCollapsed: state.measurementSectionCollapsed,
@@ -2484,6 +2506,8 @@
           state.viewDepthEffect.strength = Math.max(0, Math.min(100, Number(project.viewDepthEffect?.strength) || 50));
           state.viewOutlineEffect.enabled = project.viewOutlineEffect?.enabled !== false;
           state.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(project.viewOutlineEffect?.thickness) || 1));
+          state.viewEnvironment.skyColor = typeof project.viewEnvironment?.skyColor === "string" ? project.viewEnvironment.skyColor : "#f8fafc";
+          state.viewEnvironment.groundColor = typeof project.viewEnvironment?.groundColor === "string" ? project.viewEnvironment.groundColor : "#d4d0c8";
           state.sceneSectionCollapsed = !!project.sceneSectionCollapsed;
           state.layerSectionCollapsed = !!project.layerSectionCollapsed;
           state.measurementSectionCollapsed = !!project.measurementSectionCollapsed;
@@ -2932,8 +2956,12 @@
         const zeroLineY = offsetY + (maxTopCells - 0) * cellPixelSize + 0.5;
 
         context.clearRect(0, 0, surfaceWidth, surfaceHeight);
-        context.fillStyle = getCssVar("--surface");
+        context.fillStyle = state.viewEnvironment.skyColor;
         context.fillRect(0, 0, surfaceWidth, surfaceHeight);
+        if (zeroLineY < surfaceHeight) {
+          context.fillStyle = state.viewEnvironment.groundColor;
+          context.fillRect(0, Math.max(0, zeroLineY), surfaceWidth, surfaceHeight - Math.max(0, zeroLineY));
+        }
 
         const grid = Array.from({ length: totalRows }, () => Array(totalColumns).fill(null));
         for (const entry of columnsByLayer) {
@@ -3042,11 +3070,6 @@
             }
           }
           context.restore();
-        }
-
-        if (zeroLineY < surfaceHeight) {
-          context.fillStyle = "rgba(0, 0, 0, 0.3)";
-          context.fillRect(0, Math.max(0, zeroLineY), surfaceWidth, surfaceHeight - Math.max(0, zeroLineY));
         }
 
         context.strokeStyle = getCssVar("--text");
@@ -4859,6 +4882,8 @@
         ui.viewDepthStrength.disabled = !state.viewDepthEffect.enabled;
         ui.viewOutlineThickness.value = String(state.viewOutlineEffect.thickness);
         ui.viewOutlineThickness.disabled = !state.viewOutlineEffect.enabled;
+        ui.viewSkyColor.value = state.viewEnvironment.skyColor;
+        ui.viewGroundColor.value = state.viewEnvironment.groundColor;
       }
 
       function renderToolState() {
@@ -9867,6 +9892,18 @@
       ui.viewOutlineThickness.addEventListener("input", () => {
         state.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(ui.viewOutlineThickness.value) || 1));
         setStatus("View outline thickness " + state.viewOutlineEffect.thickness + ".");
+        render({ ui: true, content: true });
+      });
+
+      ui.viewSkyColor.addEventListener("input", () => {
+        state.viewEnvironment.skyColor = ui.viewSkyColor.value || "#f8fafc";
+        setStatus("View sky color updated.");
+        render({ ui: true, content: true });
+      });
+
+      ui.viewGroundColor.addEventListener("input", () => {
+        state.viewEnvironment.groundColor = ui.viewGroundColor.value || "#d4d0c8";
+        setStatus("View ground color updated.");
         render({ ui: true, content: true });
       });
 
