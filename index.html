@@ -7169,6 +7169,7 @@
       function drawMeasurementDraft(context, draft, measurement) {
         if (!draft || !measurement) return;
         const color = state.color.active;
+        const dimensionLabels = [];
         context.save();
         context.strokeStyle = hexToRgba(color, Math.max(0.28, Math.min(1, measurement.opacity)));
         context.fillStyle = hexToRgba(color, Math.max(0.16, measurement.opacity * 0.22));
@@ -7181,6 +7182,9 @@
           context.moveTo(start.x, start.y);
           context.lineTo(end.x, end.y);
           context.stroke();
+          if (!pointsEqual(draft.start, draft.end)) {
+            dimensionLabels.push(formatMetersValue(measurementLengthMeters(draft.start, draft.end)));
+          }
         }
 
         if (draft.type === "area" && draft.points.length) {
@@ -7197,8 +7201,15 @@
             context.arc(point.x, point.y, Math.max(2, measurement.width * 0.55), 0, Math.PI * 2);
             context.fill();
           });
+          if (draft.hover && draft.points.length) {
+            const lastPoint = draft.points[draft.points.length - 1];
+            if (!pointsEqual(lastPoint, draft.hover)) {
+              dimensionLabels.push(formatMetersValue(measurementLengthMeters(lastPoint, draft.hover)));
+            }
+          }
         }
         context.restore();
+        drawPreviewDimensionStack(context, dimensionLabels);
       }
 
       function drawOverlayScene() {
@@ -7632,6 +7643,14 @@
               overlayCtx.fill();
             }
             overlayCtx.stroke();
+            if (hasPreviewSegment && lastPoint) {
+              const startWorld = {
+                x: (lastPoint.x + 0.5) * CELL_SIZE,
+                y: (lastPoint.y + 0.5) * CELL_SIZE,
+              };
+              const segmentMeters = measurementLengthMeters(startWorld, previewWorld);
+              drawPreviewDimensionStack(overlayCtx, [formatMetersValue(segmentMeters)]);
+            }
           }
 
           draftPoints.forEach((point, index) => {
@@ -7649,15 +7668,60 @@
         }
       }
 
+      function drawPreviewDimensionChip(context, x, y, text) {
+          if (!text) return;
+          context.save();
+          context.font = "600 10px sans-serif";
+          context.textAlign = "center";
+          context.textBaseline = "middle";
+          const metrics = context.measureText(text);
+          const width = Math.ceil(metrics.width) + 10;
+          const height = 18;
+          const left = Math.round(x - width / 2);
+          const top = Math.round(y - height / 2);
+          context.fillStyle = hexToRgba(getCssVar("--bg-strong"), 0.9);
+          context.strokeStyle = hexToRgba(getCssVar("--line-strong"), 0.75);
+          context.lineWidth = 1;
+          context.beginPath();
+          context.roundRect(left, top, width, height, 7);
+          context.fill();
+          context.stroke();
+          context.fillStyle = getCssVar("--muted");
+          context.fillText(text, left + width / 2, top + height / 2 + 0.5);
+          context.restore();
+        }
+
+      function overlayPointerLabelAnchor() {
+          const rect = ui.overlayCanvas.getBoundingClientRect();
+          const fallbackX = ui.overlayCanvas.clientWidth - 72;
+          const fallbackY = 40;
+          if (!state.pointer.inside) {
+            return { x: fallbackX, y: fallbackY };
+          }
+          const x = Math.max(24, Math.min(ui.overlayCanvas.clientWidth - 24, state.pointer.clientX - rect.left + 36));
+          const y = Math.max(24, Math.min(ui.overlayCanvas.clientHeight - 24, state.pointer.clientY - rect.top - 10));
+          return { x, y };
+        }
+
+      function drawPreviewDimensionStack(context, labels) {
+          const items = labels.filter(Boolean);
+          if (!items.length) return;
+          const anchor = overlayPointerLabelAnchor();
+          items.forEach((label, index) => {
+            drawPreviewDimensionChip(context, anchor.x, anchor.y + index * 22, label);
+          });
+        }
+
       function drawShapePreviewOverlay(overlayCtx, shapePreview) {
           overlayCtx.save();
           overlayCtx.fillStyle =
             shapePreview.mode === "paint" ? hexToRgba(state.color.active, 0.18) : hexToRgba(getCssVar("--text"), 0.12);
           overlayCtx.strokeStyle =
             shapePreview.mode === "paint" ? hexToRgba(state.color.active, 0.56) : hexToRgba(getCssVar("--text"), 0.42);
+          const size = CELL_SIZE * state.viewport.zoom;
+          const dimensionLabels = [];
           if (shapePreview.shapeType === "circle") {
             const spec = circleSpecFromInteraction(shapePreview);
-            const size = CELL_SIZE * state.viewport.zoom;
             const centerX = snapPixel(state.viewport.x + (spec.centerX + 0.5) * size);
             const centerY = snapPixel(state.viewport.y + (spec.centerY + 0.5) * size);
             const radius = Math.max(size / 2, spec.radius * size);
@@ -7665,23 +7729,31 @@
             overlayCtx.ellipse(centerX, centerY, radius, radius, 0, 0, Math.PI * 2);
             overlayCtx.fill();
             overlayCtx.stroke();
+            const metersValue = metersFromWorldUnits(spec.radius * CELL_SIZE * 2);
+            dimensionLabels.push("D: " + formatMetersValue(metersValue));
           } else {
             const bounds = shapeBoundsFromInteraction(shapePreview);
-            const size = CELL_SIZE * state.viewport.zoom;
             const x = snapPixel(state.viewport.x + bounds.minX * size);
             const y = snapPixel(state.viewport.y + bounds.minY * size);
             const width = Math.max(1, snapPixel((bounds.maxX - bounds.minX + 1) * size));
             const height = Math.max(1, snapPixel((bounds.maxY - bounds.minY + 1) * size));
+            const widthMeters = metersFromWorldUnits((bounds.maxX - bounds.minX + 1) * CELL_SIZE);
+            const heightMeters = metersFromWorldUnits((bounds.maxY - bounds.minY + 1) * CELL_SIZE);
             if (shapePreview.shapeType === "ellipse") {
               overlayCtx.beginPath();
               overlayCtx.ellipse(x + width / 2, y + height / 2, Math.max(0.5, width / 2), Math.max(0.5, height / 2), 0, 0, Math.PI * 2);
               overlayCtx.fill();
               overlayCtx.stroke();
+              dimensionLabels.push("DX: " + formatMetersValue(widthMeters));
+              dimensionLabels.push("DY: " + formatMetersValue(heightMeters));
             } else {
               overlayCtx.fillRect(x, y, width, height);
               overlayCtx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+              dimensionLabels.push("X: " + formatMetersValue(widthMeters));
+              dimensionLabels.push("Y: " + formatMetersValue(heightMeters));
             }
           }
+          drawPreviewDimensionStack(overlayCtx, dimensionLabels);
           overlayCtx.restore();
         }
 
