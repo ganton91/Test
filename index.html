@@ -1445,6 +1445,19 @@
               <button class="mode-button" data-dual-grid="on">On</button>
             </div>
           </div>
+          <div class="menu-section">
+            <div class="menu-title">View Depth Effect</div>
+            <div class="menu-actions">
+              <button class="mode-button active" data-view-depth="on">On</button>
+              <button class="mode-button" data-view-depth="off">Off</button>
+            </div>
+          </div>
+          <div class="menu-section">
+            <div class="menu-title">Depth Strength</div>
+            <div class="menu-actions" style="min-width: 180px;">
+              <input id="viewDepthStrength" type="range" min="0" max="100" step="1" value="50" />
+            </div>
+          </div>
         </div>
         <div class="menu-panel modal-panel calibration-modal hidden" id="sceneScaleModal">
           <div class="menu-title">Scene Scale</div>
@@ -1780,6 +1793,8 @@
         themeButtons: Array.from(document.querySelectorAll("[data-theme]")),
         gridPositionButtons: Array.from(document.querySelectorAll("[data-grid-position]")),
         dualGridButtons: Array.from(document.querySelectorAll("[data-dual-grid]")),
+        viewDepthButtons: Array.from(document.querySelectorAll("[data-view-depth]")),
+        viewDepthStrength: document.getElementById("viewDepthStrength"),
         selectionToolButton: document.getElementById("selectionToolButton"),
         brushToolButton: document.getElementById("brushToolButton"),
         shapeToolButton: document.getElementById("shapeToolButton"),
@@ -1906,6 +1921,10 @@
         selectionPicker: null,
         gridPosition: "below",
         dualStrokeGrid: false,
+        viewDepthEffect: {
+          enabled: true,
+          strength: 50,
+        },
         layers: [createLayer("Layer 1")],
         activeLayerId: null,
         editingLayerId: null,
@@ -2303,6 +2322,10 @@
           },
           gridPosition: state.gridPosition,
           dualStrokeGrid: state.dualStrokeGrid,
+          viewDepthEffect: {
+            enabled: !!state.viewDepthEffect.enabled,
+            strength: state.viewDepthEffect.strength,
+          },
           sceneSectionCollapsed: state.sceneSectionCollapsed,
           layerSectionCollapsed: state.layerSectionCollapsed,
           measurementSectionCollapsed: state.measurementSectionCollapsed,
@@ -2393,6 +2416,8 @@
           state.viewport.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number.isFinite(project.viewport?.zoom) ? project.viewport.zoom : 1));
           state.gridPosition = project.gridPosition === "above" ? "above" : "below";
           state.dualStrokeGrid = !!project.dualStrokeGrid;
+          state.viewDepthEffect.enabled = project.viewDepthEffect?.enabled !== false;
+          state.viewDepthEffect.strength = Math.max(0, Math.min(100, Number(project.viewDepthEffect?.strength) || 50));
           state.sceneSectionCollapsed = !!project.sceneSectionCollapsed;
           state.layerSectionCollapsed = !!project.layerSectionCollapsed;
           state.measurementSectionCollapsed = !!project.measurementSectionCollapsed;
@@ -2681,12 +2706,18 @@
       }
 
       function applyViewDepthShading(color, depthOffsetCells) {
+        if (!state.viewDepthEffect.enabled) {
+          return color;
+        }
         if (!Number.isFinite(depthOffsetCells) || depthOffsetCells <= 0) {
           return color;
         }
         const hsv = hexToHsv(color);
-        const nextSaturation = hsv.s * Math.max(0.7, 1 - depthOffsetCells * 0.0005);
-        const nextBrightness = hsv.v * Math.max(0.2, 1 - depthOffsetCells * 0.00165);
+        const strength = Math.max(0, Math.min(2, state.viewDepthEffect.strength / 50));
+        const saturationFloor = Math.max(0.35, 1 - 0.3 * strength);
+        const brightnessFloor = Math.max(0.05, 1 - 0.8 * strength);
+        const nextSaturation = hsv.s * Math.max(saturationFloor, 1 - depthOffsetCells * 0.0005 * strength);
+        const nextBrightness = hsv.v * Math.max(brightnessFloor, 1 - depthOffsetCells * 0.00165 * strength);
         return hsvToHex(hsv.h, nextSaturation, nextBrightness);
       }
 
@@ -4693,6 +4724,11 @@
         ui.dualGridButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.dualGrid === (state.dualStrokeGrid ? "on" : "off"));
         });
+        ui.viewDepthButtons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.viewDepth === (state.viewDepthEffect.enabled ? "on" : "off"));
+        });
+        ui.viewDepthStrength.value = String(state.viewDepthEffect.strength);
+        ui.viewDepthStrength.disabled = !state.viewDepthEffect.enabled;
       }
 
       function renderToolState() {
@@ -9639,6 +9675,20 @@
           setStatus(state.dualStrokeGrid ? "Dual stroke grid enabled." : "Dual stroke grid disabled.");
           render({ ui: true, static: true });
         });
+      });
+
+      ui.viewDepthButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          state.viewDepthEffect.enabled = button.dataset.viewDepth === "on";
+          setStatus(state.viewDepthEffect.enabled ? "View depth effect enabled." : "View depth effect disabled.");
+          render({ ui: true, content: true });
+        });
+      });
+
+      ui.viewDepthStrength.addEventListener("input", () => {
+        state.viewDepthEffect.strength = Math.max(0, Math.min(100, Number(ui.viewDepthStrength.value) || 0));
+        setStatus("View depth strength " + state.viewDepthEffect.strength + "%.");
+        render({ ui: true, content: true });
       });
 
       document.addEventListener(
