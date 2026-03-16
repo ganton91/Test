@@ -787,6 +787,8 @@
         display: none;
         padding: 14px;
         background: var(--canvas-bg);
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: 12px;
       }
 
       .canvas-shell.view-mode .view-output-shell {
@@ -804,6 +806,53 @@
         gap: 12px;
         min-width: 0;
         min-height: 0;
+      }
+
+      .view-output-grid.layout-1 {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr);
+      }
+
+      .view-output-grid.layout-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-rows: minmax(0, 1fr);
+      }
+
+      .view-layout-toolbar {
+        display: flex;
+        justify-content: flex-start;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .view-layout-group,
+      .view-pane-selector {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--bg-strong);
+      }
+
+      .view-layout-button,
+      .view-pane-selector-button {
+        padding: 7px 9px;
+        border-radius: 10px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .view-layout-button.active,
+      .view-pane-selector-button.active {
+        background: var(--accent-soft);
+        border-color: var(--line-strong);
+        color: var(--text);
       }
 
       .view-pane {
@@ -824,6 +873,13 @@
         letter-spacing: 0.06em;
         text-transform: uppercase;
         color: var(--muted);
+      }
+
+      .view-pane-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 8px;
       }
 
       .view-pane-surface {
@@ -1657,30 +1713,69 @@
             <canvas id="overlayCanvas"></canvas>
           </div>
           <div class="view-output-shell" id="viewOutputShell">
-            <div class="view-output-grid">
-              <section class="view-pane">
-                <div class="view-pane-title">Top to Bottom</div>
+            <div class="view-layout-toolbar">
+              <div class="view-layout-group">
+                <button class="view-layout-button active" type="button" data-view-layout="1">1 View</button>
+                <button class="view-layout-button" type="button" data-view-layout="2">2 Views</button>
+                <button class="view-layout-button" type="button" data-view-layout="4">4 Views</button>
+              </div>
+            </div>
+            <div class="view-output-grid" id="viewOutputGrid">
+              <section class="view-pane" data-view-slot="0">
+                <div class="view-pane-header">
+                  <div class="view-pane-title" id="viewPaneTitle0">Top to Bottom</div>
+                  <div class="view-pane-selector">
+                    <button class="view-pane-selector-button active" type="button" data-view-slot="0" data-view-direction="topToBottom">T-B</button>
+                    <button class="view-pane-selector-button" type="button" data-view-slot="0" data-view-direction="bottomToTop">B-T</button>
+                    <button class="view-pane-selector-button" type="button" data-view-slot="0" data-view-direction="leftToRight">L-R</button>
+                    <button class="view-pane-selector-button" type="button" data-view-slot="0" data-view-direction="rightToLeft">R-L</button>
+                  </div>
+                </div>
                 <div class="view-pane-surface view-pane-render-surface" id="viewFrontSurface">
                   <canvas class="view-pane-canvas hidden" id="viewFrontCanvas"></canvas>
                   <div class="view-pane-empty" id="viewFrontEmpty">Front view placeholder</div>
                 </div>
               </section>
-              <section class="view-pane">
-                <div class="view-pane-title">Bottom to Top</div>
+              <section class="view-pane" data-view-slot="1">
+                <div class="view-pane-header">
+                  <div class="view-pane-title" id="viewPaneTitle1">Bottom to Top</div>
+                  <div class="view-pane-selector">
+                    <button class="view-pane-selector-button" type="button" data-view-slot="1" data-view-direction="topToBottom">T-B</button>
+                    <button class="view-pane-selector-button active" type="button" data-view-slot="1" data-view-direction="bottomToTop">B-T</button>
+                    <button class="view-pane-selector-button" type="button" data-view-slot="1" data-view-direction="leftToRight">L-R</button>
+                    <button class="view-pane-selector-button" type="button" data-view-slot="1" data-view-direction="rightToLeft">R-L</button>
+                  </div>
+                </div>
                 <div class="view-pane-surface view-pane-render-surface" id="viewBackSurface">
                   <canvas class="view-pane-canvas hidden" id="viewBackCanvas"></canvas>
                   <div class="view-pane-empty" id="viewBackEmpty">Bottom to Top view placeholder</div>
                 </div>
               </section>
-              <section class="view-pane">
-                <div class="view-pane-title">Left to Right</div>
+              <section class="view-pane" data-view-slot="2">
+                <div class="view-pane-header">
+                  <div class="view-pane-title" id="viewPaneTitle2">Left to Right</div>
+                  <div class="view-pane-selector">
+                    <button class="view-pane-selector-button" type="button" data-view-slot="2" data-view-direction="topToBottom">T-B</button>
+                    <button class="view-pane-selector-button" type="button" data-view-slot="2" data-view-direction="bottomToTop">B-T</button>
+                    <button class="view-pane-selector-button active" type="button" data-view-slot="2" data-view-direction="leftToRight">L-R</button>
+                    <button class="view-pane-selector-button" type="button" data-view-slot="2" data-view-direction="rightToLeft">R-L</button>
+                  </div>
+                </div>
                 <div class="view-pane-surface view-pane-render-surface" id="viewLeftSurface">
                   <canvas class="view-pane-canvas hidden" id="viewLeftCanvas"></canvas>
                   <div class="view-pane-empty" id="viewLeftEmpty">Left to Right view placeholder</div>
                 </div>
               </section>
-              <section class="view-pane">
-                <div class="view-pane-title">Right to Left</div>
+              <section class="view-pane" data-view-slot="3">
+                <div class="view-pane-header">
+                  <div class="view-pane-title" id="viewPaneTitle3">Right to Left</div>
+                  <div class="view-pane-selector">
+                    <button class="view-pane-selector-button" type="button" data-view-slot="3" data-view-direction="topToBottom">T-B</button>
+                    <button class="view-pane-selector-button" type="button" data-view-slot="3" data-view-direction="bottomToTop">B-T</button>
+                    <button class="view-pane-selector-button" type="button" data-view-slot="3" data-view-direction="leftToRight">L-R</button>
+                    <button class="view-pane-selector-button active" type="button" data-view-slot="3" data-view-direction="rightToLeft">R-L</button>
+                  </div>
+                </div>
                 <div class="view-pane-surface view-pane-render-surface" id="viewRightSurface">
                   <canvas class="view-pane-canvas hidden" id="viewRightCanvas"></canvas>
                   <div class="view-pane-empty" id="viewRightEmpty">Right to Left view placeholder</div>
@@ -1986,6 +2081,16 @@
         selectionPicker: document.getElementById("selectionPicker"),
         viewSwitcher: document.getElementById("viewSwitcher"),
         viewOutputShell: document.getElementById("viewOutputShell"),
+        viewOutputGrid: document.getElementById("viewOutputGrid"),
+        viewLayoutButtons: Array.from(document.querySelectorAll("[data-view-layout]")),
+        viewPaneSlots: Array.from(document.querySelectorAll(".view-pane[data-view-slot]")),
+        viewPaneSelectorButtons: Array.from(document.querySelectorAll("[data-view-direction]")),
+        viewPaneTitles: [
+          document.getElementById("viewPaneTitle0"),
+          document.getElementById("viewPaneTitle1"),
+          document.getElementById("viewPaneTitle2"),
+          document.getElementById("viewPaneTitle3"),
+        ],
       };
 
       const staticCtx = ui.staticCanvas.getContext("2d");
@@ -2061,6 +2166,8 @@
         views: [],
         pendingViewCreation: null,
         activeCanvasViewTab: "main",
+        viewLayoutPreset: 4,
+        viewPaneDirections: ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"],
         activeViewId: null,
         editingViewId: null,
         dragViewId: null,
@@ -2521,6 +2628,8 @@
           shapePanelCollapsed: state.shapePanelCollapsed,
           outlinePanelCollapsed: state.outlinePanelCollapsed,
           activeCanvasViewTab: state.activeCanvasViewTab,
+          viewLayoutPreset: state.viewLayoutPreset,
+          viewPaneDirections: [...state.viewPaneDirections],
           activeTool: state.activeTool === "eyedropper" ? state.eyedropperSession?.previousTool || "select" : state.activeTool,
           activeSceneId: state.activeSceneId,
           activeLayerId: state.activeLayerId,
@@ -2631,6 +2740,14 @@
           state.brushPanelCollapsed = !!project.brushPanelCollapsed;
           state.shapePanelCollapsed = !!project.shapePanelCollapsed;
           state.outlinePanelCollapsed = !!project.outlinePanelCollapsed;
+          state.viewLayoutPreset = [1, 2, 4].includes(project.viewLayoutPreset) ? project.viewLayoutPreset : 4;
+          state.viewPaneDirections = Array.isArray(project.viewPaneDirections) && project.viewPaneDirections.length === 4
+            ? project.viewPaneDirections.map((direction, index) =>
+                ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"].includes(direction)
+                  ? direction
+                  : ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"][index]
+              )
+            : ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"];
           state.lastLayerAuthoringTool = project.lastLayerAuthoringTool === "shape" ? "shape" : "brush";
           state.lastMeasurementMode = ["points", "length", "area"].includes(project.lastMeasurementMode)
             ? project.lastMeasurementMode
@@ -2832,6 +2949,28 @@
         ui.canvasShell.classList.toggle("view-mode", inViewMode);
       }
 
+      function renderViewWorkspaceControls() {
+        ui.viewLayoutButtons.forEach((button) => {
+          button.classList.toggle("active", Number(button.dataset.viewLayout) === state.viewLayoutPreset);
+        });
+
+        const visibleCount = visibleViewPaneCount();
+        ui.viewOutputGrid.classList.toggle("layout-1", visibleCount === 1);
+        ui.viewOutputGrid.classList.toggle("layout-2", visibleCount === 2);
+        ui.viewOutputGrid.classList.toggle("layout-4", visibleCount === 4);
+
+        ui.viewPaneSlots.forEach((pane, index) => {
+          pane.classList.toggle("hidden", index >= visibleCount);
+          const title = ui.viewPaneTitles[index];
+          if (title) title.textContent = viewDirectionLabel(state.viewPaneDirections[index]);
+        });
+
+        ui.viewPaneSelectorButtons.forEach((button) => {
+          const slotIndex = Number(button.dataset.viewSlot);
+          button.classList.toggle("active", state.viewPaneDirections[slotIndex] === button.dataset.viewDirection);
+        });
+      }
+
       function layerRepresentativeColor(layer) {
         if (!layer) return DEFAULT_COLOR;
         for (const tile of Object.values(layer.tiles || {})) {
@@ -2849,6 +2988,24 @@
           height: Number.isFinite(existingConfig && existingConfig.height) ? existingConfig.height : 0,
           color: typeof (existingConfig && existingConfig.color) === "string" ? existingConfig.color : null,
         };
+      }
+
+      function viewDirectionLabel(direction) {
+        switch (direction) {
+          case "bottomToTop":
+            return "Bottom to Top";
+          case "leftToRight":
+            return "Left to Right";
+          case "rightToLeft":
+            return "Right to Left";
+          case "topToBottom":
+          default:
+            return "Top to Bottom";
+        }
+      }
+
+      function visibleViewPaneCount() {
+        return state.viewLayoutPreset === 1 ? 1 : state.viewLayoutPreset === 2 ? 2 : 4;
       }
 
       function viewCellBounds(bounds) {
@@ -3250,10 +3407,20 @@
       }
 
       function renderViewOutputs() {
-        renderDirectionalViewOutput(ui.viewFrontCanvas, ui.viewFrontEmpty, "topToBottom", "Top to Bottom view placeholder");
-        renderDirectionalViewOutput(ui.viewBackCanvas, ui.viewBackEmpty, "bottomToTop", "Bottom to Top view placeholder");
-        renderDirectionalViewOutput(ui.viewLeftCanvas, ui.viewLeftEmpty, "leftToRight", "Left to Right view placeholder");
-        renderDirectionalViewOutput(ui.viewRightCanvas, ui.viewRightEmpty, "rightToLeft", "Right to Left view placeholder");
+        const panes = [
+          { canvas: ui.viewFrontCanvas, empty: ui.viewFrontEmpty },
+          { canvas: ui.viewBackCanvas, empty: ui.viewBackEmpty },
+          { canvas: ui.viewLeftCanvas, empty: ui.viewLeftEmpty },
+          { canvas: ui.viewRightCanvas, empty: ui.viewRightEmpty },
+        ];
+        panes.forEach((pane, index) => {
+          renderDirectionalViewOutput(
+            pane.canvas,
+            pane.empty,
+            state.viewPaneDirections[index],
+            viewDirectionLabel(state.viewPaneDirections[index]) + " view placeholder"
+          );
+        });
       }
 
       function closeViewEditModal() {
@@ -5039,6 +5206,7 @@
           renderViewCreateState();
           renderCanvasModeHint();
           renderCanvasViewMode();
+          renderViewWorkspaceControls();
           renderSelectionPicker();
           renderViewEditModal();
           renderScenes();
@@ -10122,6 +10290,24 @@
         button.addEventListener("click", () => {
           state.viewDepthEffect.enabled = button.dataset.viewDepth === "on";
           setStatus(state.viewDepthEffect.enabled ? "View depth effect enabled." : "View depth effect disabled.");
+          render({ ui: true, content: true });
+        });
+      });
+
+      ui.viewLayoutButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          state.viewLayoutPreset = Number(button.dataset.viewLayout) || 4;
+          setStatus("View layout set to " + state.viewLayoutPreset + (state.viewLayoutPreset === 1 ? " pane." : " panes."));
+          render({ ui: true, content: true });
+        });
+      });
+
+      ui.viewPaneSelectorButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          const slotIndex = Number(button.dataset.viewSlot);
+          if (!Number.isFinite(slotIndex)) return;
+          state.viewPaneDirections[slotIndex] = button.dataset.viewDirection;
+          setStatus(viewDirectionLabel(button.dataset.viewDirection) + " shown in view slot.");
           render({ ui: true, content: true });
         });
       });
