@@ -20,44 +20,63 @@ This document should be treated as authoritative unless the user explicitly chan
 - UX direction: minimal, quiet, precise, compact controls, compact typography
 - Avoid default helper/explanatory filler text in the UI unless the user explicitly asks for it
 - Floating UI surfaces should use their own dedicated global tokens, separate from the shared `surface` / `bg-elevated` tokens used elsewhere
-- Brush dimensions are stored internally in cells, but the Brush Settings UI exposes them in centimeters (`5 cm` per cell)
-- Brush Settings includes a width/height link toggle:
-  - when linked, width and height stay equal and update together
-  - when unlinked, they can be edited independently
-- Brush Settings is now a standalone floating panel below the global `Color` panel:
-  - it is no longer attached to the `Brush` button
-  - it uses the same collapsible header/arrow behavior as the `Color` panel
-  - left-side floating panels should behave as one compact vertical stack, so lower panels move up automatically when upper panels collapse
-- Left floating panels such as `Color` and `Brush Settings` should reuse the same header format as sidebar sections:
-  - same arrow
-  - same title typography
-  - same compact header row treatment
-- Brush color is managed through a custom color UI:
-  - the underlying state and helpers should be treated as a global color subsystem, not as brush-only naming
-  - the color UI is now a global floating `Color` panel, not part of `Brush Settings`
-  - curated palette swatches in a single row and stretched across the full palette row width
-  - one swatch is always the active palette slot
-  - synchronized `HSB` sliders update the active swatch itself, not just a temporary brush color
-  - the active swatch also keeps a stable live `HSV` state so the sliders do not drift or jump when working near very low brightness
-  - an eyedropper mode that samples only from painted cells on the canvas
-  - the eyedropper also writes back into the active swatch
-  - when eyedropper mode is active, the brush footprint preview is hidden and the browser pick cursor is used without any extra overlay marker
-  - the `Color` panel is collapsible with the same arrow-toggle behavior used by the sidebar sections
-- `Measurements` is now a third annotation subsystem alongside `Scenes` and `Layers`
-- Measurements use the global `Color Palette` for new annotations:
-  - each new point / length / area stores its own color at creation time
-  - changing the global color affects the next measurement annotation, not existing ones
-- Measurement cards currently support the first safe phase:
-  - section + cards + shared active-state integration
-  - visible point annotations
-  - width and opacity controls
-  - visible `Length` and `Area` annotations are now enabled
-  - `Points` snap to the center of each `5 x 5 cm` cell
-  - `Length` and `Area` snap on a half-cell grid (`2.5 cm`)
-  - `Length` supports both click-drag-release and click-first / click-second workflows
-  - `Area` is polygon-based and closes when the first point is clicked again
-  - `Escape` should cancel an unfinished measurement draft before it exits measurement mode entirely
-  - while a measurement is active, right-click drag acts as a measurement eraser and removes whole point/length/area annotations from the active measurement
+
+## Paint And Annotation Systems
+
+- Brush dimensions are stored internally in cells, while `Brush Settings` exposes centimeters (`5 cm` per cell)
+- `Brush Settings` includes a width/height link toggle:
+  - linked = width and height stay equal
+  - unlinked = width and height can be edited independently
+- Brush supports `Shift` drafting:
+  - axis lock during drag
+  - sticky lock for that stroke
+  - pressing `Shift` mid-stroke resets the lock anchor to the current pointer position
+  - ghost preview follows the locked axis
+  - `Shift + click` continues a straight line from the previous brush point for both paint and erase
+- `Color` is a global floating color subsystem:
+  - curated swatches in one row
+  - one active swatch at all times
+  - `HSB` sliders update the active swatch itself
+  - the active swatch keeps stable live `HSV`
+  - eyedropper samples only painted canvas cells and writes back into the active swatch
+  - eyedropper hides the brush footprint preview and uses the browser pick cursor
+- Left floating panels such as `Color`, `Brush Settings`, `Shape Settings`, and `Outline Settings` should:
+  - reuse the same compact header language as sidebar sections
+  - collapse with the same arrow behavior
+  - behave like one compact vertical stack
+- `Shape` is a first-class paint tool alongside `Brush`:
+  - `Rectangular`
+  - `Elliptical`
+  - `Circular`
+  - `Polygon`
+  - `Rectangular`, `Elliptical`, and `Circular` support both drag and click-click workflows
+  - `Rectangular + Shift` = true square
+  - `Elliptical + Shift` = draw from center outward
+  - `Circular` = true circle
+  - `Circular + Shift` = center-to-radius
+  - `Polygon` uses custom double-click detection, not native browser `dblclick`
+  - `Polygon` closes by clicking the first point or by custom double-click
+  - `Escape` cancels the polygon draft
+- `Outline Settings` is a separate global paint subsystem for `Brush` and `Shape`:
+  - independent outline color palette
+  - independent eyedropper
+  - `Inside` / `Outside` / `No Fill`
+  - width in cell-based integer steps
+  - outline state is independent from the main fill color palette
+- `Measurements` is a first-class annotation subsystem alongside `Scenes` and `Layers`
+- New measurement annotations use the global `Color Palette` at creation time; later global color changes do not rewrite existing annotations
+- Measurements:
+  - support `Points`, `Length`, and `Area`
+  - use width and opacity controls
+  - snap on the shared half-cell grid (`2.5 cm`)
+  - therefore `Points` can land on corners, side midpoints, and centers
+  - `Length` supports both drag and click-click creation
+  - `Area` is polygonal and closes by first-point click or custom double-click
+  - right-click drag acts as a measurement eraser for the active measurement
+  - `Escape` is hierarchical:
+    - cancel the active draft first
+    - then return to the measurement's `Select` state
+    - only later fully deselect the measurement
 
 ## Core Interaction Model
 
@@ -70,11 +89,13 @@ This document should be treated as authoritative unless the user explicitly chan
 - Right click erases
 - Space + drag pans
 - Mouse wheel zooms
-- `Scenes`, `Layers`, and `Measurements` use one shared active-state model:
-  - only one `Scene`, one `Layer`, or one `Measurement` can be active at a time
-  - active `Layer` switches the app into `Brush`
-  - active `Scene` switches the app into scene transform mode
-  - active `Measurement` switches the app into measurement mode
+- `Scenes`, `Layers`, `Measurements`, and `Views` use one shared active-state model:
+  - only one active target family should own selection at a time
+  - activating an existing `Scene`, `Layer`, `Measurement`, or `View` from selection should prefer `Select` as the stable top-level tool state
+  - `Select` is conceptually `Select + Transform`, not a separate pre-transform mode
+  - existing `Layers`, `Scenes`, `Views`, and `Measurements` can expose transform controls while `Select` stays active
+  - creating a new `Layer` still drops into `Brush`
+  - creating a new `Measurement` still drops into the measurement authoring flow
   - `Escape`, clicking the same active card again, or manually choosing `Selection` clears all active state
 - Card interaction pattern for `Scenes` and `Layers` is shared:
   - click on an inactive card activates it
@@ -84,8 +105,23 @@ This document should be treated as authoritative unless the user explicitly chan
 - Selection hit priority must follow visual stacking:
   - check `Measurements` from topmost to bottommost first
   - check painted `Layers` from topmost to bottommost first
-  - then check painted `Layers` from topmost to bottommost
   - only if no measurement or painted layer is hit should selection fall through to `Scenes`
+- Once a `Measurement` is active in `Select`:
+  - the whole measurement can transform as a group:
+    - move
+    - `90°` rotate
+    - flip
+  - item-level transform is a second layer on top of that model:
+    - single click keeps whole-measurement selection
+    - double click can enter an individual measurement item
+    - `Point` item = move only
+    - `Length` item:
+      - body = move whole length
+      - endpoints = move that endpoint
+    - `Area` item:
+      - body = move whole area
+      - vertices = move that vertex
+  - when an individual `Length` or `Area` is active, its vertices should be treated as subobjects of that active item and respond to normal click-drag, not require a second double-click
 
 ## Layout Rules
 
@@ -103,7 +139,6 @@ This document should be treated as authoritative unless the user explicitly chan
   - clicking the section title toggles open/closed state
   - a small arrow at the left of the title indicates state
   - arrow points down when open and sideways when collapsed
-- Inactive `Scene` and `Layer` cards collapse to a compact state:
 - Inactive `Scene`, `Layer`, and `Measurement` cards collapse to a compact state:
   - only drag handle and name remain visible
   - `Hide` and `Delete` remain visible as compact inline controls in the name row
@@ -292,12 +327,25 @@ The current goal is to keep building `Milimetre` as a strong, minimal infinite c
   - `Layers`
   - `Scenes`
 - If marquee selection finds multiple hits, a contextual picker appears near the cursor so the user can choose the target item.
+- The shared canvas hint is now a global mode hint system:
+  - `Drag to create view box`
+  - `Pick two points to set scale`
+  - measurement tool prompts
+  - future workflow hints should reuse this same shared component instead of adding ad hoc status pills
 
 ## Views Subsystem
 
 - `Views` is now a first-class sidebar section below `Measurements`.
 - New views are created from the `+` button in the left panel and immediately enter first-box draw mode on the main canvas.
 - If the user cancels before completing the first rectangle, the empty pending view is removed completely.
+- The canvas now includes a floating shared `Main View / View n` switcher:
+  - `Main View` returns to the normal drawing canvas
+  - each created view gets its own selectable tab in the same pill
+  - the switcher is a floating canvas control, not a structural canvas header bar
+- Entering a specific `View` opens the dedicated `View` workspace:
+  - a 4-panel orthographic view layout
+  - one panel for each cardinal viewing direction
+  - `Main View` floating drawing tools and rulers are suppressed there where appropriate
 - Active view boxes use their own transform mode on the main canvas:
   - move
   - free resize from corner handles
