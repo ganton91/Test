@@ -1617,6 +1617,57 @@
                 </div>
               </div>
             </div>
+
+            <div class="tool-panel color-panel" id="outlinePanel">
+              <div class="section-header">
+                <div class="section-header-left">
+                  <button class="section-toggle" id="outlinePanelToggle" type="button" aria-expanded="true">
+                    <span class="section-toggle-arrow" aria-hidden="true"></span>
+                    <span class="section-header-title">Outline Settings</span>
+                  </button>
+                </div>
+              </div>
+              <div class="tool-fields">
+                <div class="field">
+                  <label>Outline Mode</label>
+                  <div class="tool-row shape-type-grid">
+                    <button class="ghost-button" id="outlineInsideButton" type="button">Inside</button>
+                    <button class="ghost-button" id="outlineOutsideButton" type="button">Outside</button>
+                    <button class="ghost-button" id="outlineNoFillButton" type="button">No Fill</button>
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="outlineWidth">Width</label>
+                  <input id="outlineWidth" type="range" min="1" max="12" step="1" value="1" />
+                </div>
+                <div class="field">
+                  <label>Outline Color</label>
+                  <div class="color-palette" id="outlinePalette">
+                    <button class="color-swatch" type="button" data-color="#111827" style="background:#111827" aria-label="Outline color #111827"></button>
+                    <button class="color-swatch" type="button" data-color="#f97316" style="background:#f97316" aria-label="Outline color #f97316"></button>
+                    <button class="color-swatch" type="button" data-color="#ef4444" style="background:#ef4444" aria-label="Outline color #ef4444"></button>
+                    <button class="color-swatch" type="button" data-color="#eab308" style="background:#eab308" aria-label="Outline color #eab308"></button>
+                    <button class="color-swatch" type="button" data-color="#22c55e" style="background:#22c55e" aria-label="Outline color #22c55e"></button>
+                    <button class="color-swatch" type="button" data-color="#14b8a6" style="background:#14b8a6" aria-label="Outline color #14b8a6"></button>
+                    <button class="color-swatch" type="button" data-color="#3b82f6" style="background:#3b82f6" aria-label="Outline color #3b82f6"></button>
+                    <button class="color-swatch" type="button" data-color="#8b5cf6" style="background:#8b5cf6" aria-label="Outline color #8b5cf6"></button>
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="outlineHue">Hue</label>
+                  <input id="outlineHue" type="range" min="0" max="360" step="1" value="0" />
+                </div>
+                <div class="field">
+                  <label for="outlineSaturation">Saturation</label>
+                  <input id="outlineSaturation" type="range" min="0" max="100" step="1" value="0" />
+                </div>
+                <div class="field">
+                  <label for="outlineBrightness">Brightness</label>
+                  <input id="outlineBrightness" type="range" min="0" max="100" step="1" value="0" />
+                </div>
+                <button class="ghost-button" id="outlineEyedropperButton" type="button">Eyedropper Tool</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1667,6 +1718,8 @@
         colorPanelToggle: document.getElementById("colorPanelToggle"),
         brushPanelToggle: document.getElementById("brushPanelToggle"),
         shapePanelToggle: document.getElementById("shapePanelToggle"),
+        outlinePanel: document.getElementById("outlinePanel"),
+        outlinePanelToggle: document.getElementById("outlinePanelToggle"),
         sceneAddButton: document.getElementById("sceneAddButton"),
         sceneImportInput: document.getElementById("sceneImportInput"),
         sceneList: document.getElementById("sceneList"),
@@ -1700,14 +1753,24 @@
         brushPanel: document.getElementById("brushPanel"),
         shapePanel: document.getElementById("shapePanel"),
         colorPalette: document.getElementById("colorPalette"),
-        colorPaletteButtons: Array.from(document.querySelectorAll(".color-swatch")),
+        colorPaletteButtons: Array.from(document.querySelectorAll("#colorPalette .color-swatch")),
+        outlinePalette: document.getElementById("outlinePalette"),
+        outlinePaletteButtons: Array.from(document.querySelectorAll("#outlinePalette .color-swatch")),
         colorHue: document.getElementById("colorHue"),
         colorSaturation: document.getElementById("colorSaturation"),
         colorBrightness: document.getElementById("colorBrightness"),
         colorEyedropperButton: document.getElementById("colorEyedropperButton"),
+        outlineHue: document.getElementById("outlineHue"),
+        outlineSaturation: document.getElementById("outlineSaturation"),
+        outlineBrightness: document.getElementById("outlineBrightness"),
+        outlineEyedropperButton: document.getElementById("outlineEyedropperButton"),
         brushWidth: document.getElementById("brushWidth"),
         brushLinkButton: document.getElementById("brushLinkButton"),
         brushHeight: document.getElementById("brushHeight"),
+        outlineWidth: document.getElementById("outlineWidth"),
+        outlineInsideButton: document.getElementById("outlineInsideButton"),
+        outlineOutsideButton: document.getElementById("outlineOutsideButton"),
+        outlineNoFillButton: document.getElementById("outlineNoFillButton"),
         shapeRectButton: document.getElementById("shapeRectButton"),
         shapeEllipticalButton: document.getElementById("shapeEllipticalButton"),
         shapeCircularButton: document.getElementById("shapeCircularButton"),
@@ -1747,6 +1810,16 @@
           activeSwatchIndex: 0,
           eyedropper: false,
         },
+        outline: {
+          side: null,
+          noFill: false,
+          width: 1,
+          active: DEFAULT_COLOR,
+          hsv: hexToHsv(DEFAULT_COLOR),
+          paletteColors: ui.outlinePaletteButtons.map((button) => button.dataset.color),
+          activeSwatchIndex: 0,
+          eyedropper: false,
+        },
         brush: {
           width: 1,
           height: 1,
@@ -1782,6 +1855,7 @@
         colorPanelCollapsed: false,
         brushPanelCollapsed: false,
         shapePanelCollapsed: false,
+        outlinePanelCollapsed: false,
         measurementDraft: null,
         selectionPicker: null,
         gridPosition: "below",
@@ -2617,6 +2691,65 @@
         render({ ui: true });
       }
 
+      function setActiveColor(color, options = {}) {
+        state.color.active = color;
+        if (options.hsv) {
+          state.color.hsv = {
+            h: options.hsv.h,
+            s: options.hsv.s,
+            v: options.hsv.v,
+          };
+        } else {
+          state.color.hsv = hexToHsv(color);
+        }
+      }
+
+      function setActiveOutlineColor(color, options = {}) {
+        state.outline.active = color;
+        if (options.hsv) {
+          state.outline.hsv = {
+            h: options.hsv.h,
+            s: options.hsv.s,
+            v: options.hsv.v,
+          };
+        } else {
+          state.outline.hsv = hexToHsv(color);
+        }
+      }
+
+      function setActiveColorSwatch(index) {
+        if (index < 0 || index >= state.color.paletteColors.length) return;
+        state.color.activeSwatchIndex = index;
+        setActiveColor(state.color.paletteColors[index]);
+      }
+
+      function setActiveOutlineSwatch(index) {
+        if (index < 0 || index >= state.outline.paletteColors.length) return;
+        state.outline.activeSwatchIndex = index;
+        setActiveOutlineColor(state.outline.paletteColors[index]);
+      }
+
+      function setColorSwatchColor(index, color, options = {}) {
+        if (index < 0 || index >= state.color.paletteColors.length) return;
+        state.color.paletteColors[index] = color;
+        state.color.activeSwatchIndex = index;
+        setActiveColor(color, options);
+      }
+
+      function setOutlineSwatchColor(index, color, options = {}) {
+        if (index < 0 || index >= state.outline.paletteColors.length) return;
+        state.outline.paletteColors[index] = color;
+        state.outline.activeSwatchIndex = index;
+        setActiveOutlineColor(color, options);
+      }
+
+      function setOutlineSide(side) {
+        state.outline.side = state.outline.side === side ? null : side;
+        if (state.outline.noFill && !state.outline.side) {
+          state.outline.side = "inside";
+        }
+      }
+
       function isEditingName() {
         return !!(state.editingLayerId || state.editingSceneId || state.editingMeasurementId || state.editingViewId);
       }
@@ -3162,9 +3295,17 @@
         ui.shapeCircularButton.classList.toggle("active", state.shape.type === "circle");
         ui.shapePolygonButton.classList.toggle("active", state.shape.type === "polygon");
         ui.colorEyedropperButton.classList.toggle("active", state.color.eyedropper);
+        ui.outlineInsideButton.classList.toggle("active", state.outline.side === "inside");
+        ui.outlineOutsideButton.classList.toggle("active", state.outline.side === "outside");
+        ui.outlineNoFillButton.classList.toggle("active", state.outline.noFill);
+        ui.outlineEyedropperButton.classList.toggle("active", state.outline.eyedropper);
         ui.colorHue.value = state.color.hsv.h;
         ui.colorSaturation.value = state.color.hsv.s;
         ui.colorBrightness.value = state.color.hsv.v;
+        ui.outlineHue.value = state.outline.hsv.h;
+        ui.outlineSaturation.value = state.outline.hsv.s;
+        ui.outlineBrightness.value = state.outline.hsv.v;
+        ui.outlineWidth.value = String(state.outline.width);
         ui.colorPaletteButtons.forEach((button, index) => {
           const color = state.color.paletteColors[index];
           button.style.background = color;
@@ -3172,13 +3313,18 @@
           button.setAttribute("aria-label", "Color " + color);
           button.classList.toggle("active", index === state.color.activeSwatchIndex);
         });
+        ui.outlinePaletteButtons.forEach((button, index) => {
+          const color = state.outline.paletteColors[index];
+          button.style.background = color;
+          button.dataset.color = color;
+          button.setAttribute("aria-label", "Outline color " + color);
+          button.classList.toggle("active", index === state.outline.activeSwatchIndex);
+        });
         ui.overlayCanvas.style.cursor =
-          state.activeTool === "brush"
-            ? state.color.eyedropper
+          state.activeTool === "brush" || state.activeTool === "shape"
+            ? state.color.eyedropper || state.outline.eyedropper
               ? "copy"
               : "crosshair"
-            : state.activeTool === "shape"
-            ? "crosshair"
             : state.activeTool === "measure"
             ? "crosshair"
             : state.activeTool === "viewbox"
@@ -3362,6 +3508,7 @@
         ui.colorPanel.classList.toggle("collapsed", state.colorPanelCollapsed);
         ui.brushPanel.classList.toggle("collapsed", state.brushPanelCollapsed);
         ui.shapePanel.classList.toggle("collapsed", state.shapePanelCollapsed);
+        ui.outlinePanel.classList.toggle("collapsed", state.outlinePanelCollapsed);
         ui.sceneSectionToggle.setAttribute("aria-expanded", String(!state.sceneSectionCollapsed));
         ui.measurementSectionToggle.setAttribute("aria-expanded", String(!state.measurementSectionCollapsed));
         ui.viewSectionToggle.setAttribute("aria-expanded", String(!state.viewSectionCollapsed));
@@ -3369,6 +3516,7 @@
         ui.colorPanelToggle.setAttribute("aria-expanded", String(!state.colorPanelCollapsed));
         ui.brushPanelToggle.setAttribute("aria-expanded", String(!state.brushPanelCollapsed));
         ui.shapePanelToggle.setAttribute("aria-expanded", String(!state.shapePanelCollapsed));
+        ui.outlinePanelToggle.setAttribute("aria-expanded", String(!state.outlinePanelCollapsed));
       }
 
       function renderViews() {
@@ -5382,16 +5530,16 @@
       }
 
       function paintCells(cellX, cellY, mode) {
-        const layer = activeLayer();
-        if (!layer) return false;
         const origin = brushOriginFromCell(cellX, cellY);
-        let changed = false;
-        for (let y = 0; y < state.brush.height; y += 1) {
-          for (let x = 0; x < state.brush.width; x += 1) {
-            changed = setCellColor(layer, origin.x + x, origin.y + y, mode === "paint" ? state.color.active : null) || changed;
-          }
-        }
-        return changed;
+        return applyOutlineAwarePaint(
+          cellsFromRectBounds({
+            minX: origin.x,
+            minY: origin.y,
+            maxX: origin.x + state.brush.width - 1,
+            maxY: origin.y + state.brush.height - 1,
+          }),
+          mode
+        );
       }
 
       function paintBrushLine(startCellX, startCellY, endCellX, endCellY, mode) {
@@ -5493,50 +5641,15 @@
       }
 
       function paintRectShape(bounds, mode) {
-        let changed = false;
-        for (let cellY = bounds.minY; cellY <= bounds.maxY; cellY += 1) {
-          for (let cellX = bounds.minX; cellX <= bounds.maxX; cellX += 1) {
-            changed = paintCells(cellX, cellY, mode) || changed;
-          }
-        }
-        return changed;
+        return applyOutlineAwarePaint(cellsFromRectBounds(bounds), mode);
       }
 
       function paintCircleShape(bounds, mode) {
-        const centerX = (bounds.minX + bounds.maxX) / 2;
-        const centerY = (bounds.minY + bounds.maxY) / 2;
-        const radiusX = (bounds.maxX - bounds.minX + 1) / 2;
-        const radiusY = (bounds.maxY - bounds.minY + 1) / 2;
-        let changed = false;
-
-        for (let cellY = bounds.minY; cellY <= bounds.maxY; cellY += 1) {
-          for (let cellX = bounds.minX; cellX <= bounds.maxX; cellX += 1) {
-            const normalizedX = (cellX - centerX) / Math.max(radiusX, 0.5);
-            const normalizedY = (cellY - centerY) / Math.max(radiusY, 0.5);
-            if (normalizedX * normalizedX + normalizedY * normalizedY <= 1) {
-              changed = paintCells(cellX, cellY, mode) || changed;
-            }
-          }
-        }
-
-        return changed;
+        return applyOutlineAwarePaint(cellsFromEllipseBounds(bounds), mode);
       }
 
       function paintCircularShape(interaction, mode) {
-        const spec = circleSpecFromInteraction(interaction);
-        const bounds = circleBoundsFromSpec(spec);
-        let changed = false;
-
-        for (let cellY = bounds.minY; cellY <= bounds.maxY; cellY += 1) {
-          for (let cellX = bounds.minX; cellX <= bounds.maxX; cellX += 1) {
-            const distance = Math.hypot(cellX - spec.centerX, cellY - spec.centerY);
-            if (distance <= spec.radius) {
-              changed = paintCells(cellX, cellY, mode) || changed;
-            }
-          }
-        }
-
-        return changed;
+        return applyOutlineAwarePaint(cellsFromCircleInteraction(interaction), mode);
       }
 
       function pointOnPolygonSegment(pointX, pointY, start, end) {
@@ -5563,7 +5676,54 @@
       }
 
       function paintPolygonShape(points, mode) {
-        if (points.length < 3) return false;
+        return applyOutlineAwarePaint(cellsFromPolygonPoints(points), mode);
+      }
+
+      function cellsFromRectBounds(bounds) {
+        const cells = [];
+        for (let cellY = bounds.minY; cellY <= bounds.maxY; cellY += 1) {
+          for (let cellX = bounds.minX; cellX <= bounds.maxX; cellX += 1) {
+            cells.push({ x: cellX, y: cellY });
+          }
+        }
+        return cells;
+      }
+
+      function cellsFromEllipseBounds(bounds) {
+        const centerX = (bounds.minX + bounds.maxX) / 2;
+        const centerY = (bounds.minY + bounds.maxY) / 2;
+        const radiusX = (bounds.maxX - bounds.minX + 1) / 2;
+        const radiusY = (bounds.maxY - bounds.minY + 1) / 2;
+        const cells = [];
+        for (let cellY = bounds.minY; cellY <= bounds.maxY; cellY += 1) {
+          for (let cellX = bounds.minX; cellX <= bounds.maxX; cellX += 1) {
+            const normalizedX = (cellX - centerX) / Math.max(radiusX, 0.5);
+            const normalizedY = (cellY - centerY) / Math.max(radiusY, 0.5);
+            if (normalizedX * normalizedX + normalizedY * normalizedY <= 1) {
+              cells.push({ x: cellX, y: cellY });
+            }
+          }
+        }
+        return cells;
+      }
+
+      function cellsFromCircleInteraction(interaction) {
+        const spec = circleSpecFromInteraction(interaction);
+        const bounds = circleBoundsFromSpec(spec);
+        const cells = [];
+        for (let cellY = bounds.minY; cellY <= bounds.maxY; cellY += 1) {
+          for (let cellX = bounds.minX; cellX <= bounds.maxX; cellX += 1) {
+            const distance = Math.hypot(cellX - spec.centerX, cellY - spec.centerY);
+            if (distance <= spec.radius) {
+              cells.push({ x: cellX, y: cellY });
+            }
+          }
+        }
+        return cells;
+      }
+
+      function cellsFromPolygonPoints(points) {
+        if (points.length < 3) return [];
         const bounds = points.reduce(
           (accumulator, point) => ({
             minX: Math.min(accumulator.minX, point.x),
@@ -5573,15 +5733,136 @@
           }),
           { minX: points[0].x, minY: points[0].y, maxX: points[0].x, maxY: points[0].y }
         );
-        let changed = false;
+        const cells = [];
         for (let cellY = bounds.minY; cellY <= bounds.maxY; cellY += 1) {
           for (let cellX = bounds.minX; cellX <= bounds.maxX; cellX += 1) {
             if (polygonContainsCell(cellX, cellY, points)) {
-              changed = paintCells(cellX, cellY, mode) || changed;
+              cells.push({ x: cellX, y: cellY });
             }
           }
         }
+        return cells;
+      }
+
+      function keyForCell(cellX, cellY) {
+        return cellX + ":" + cellY;
+      }
+
+      function boundaryCells(cellKeys) {
+        const result = new Set();
+        cellKeys.forEach((key) => {
+          const [x, y] = key.split(":").map(Number);
+          const neighbors = [
+            keyForCell(x - 1, y),
+            keyForCell(x + 1, y),
+            keyForCell(x, y - 1),
+            keyForCell(x, y + 1),
+          ];
+          if (neighbors.some((neighbor) => !cellKeys.has(neighbor))) {
+            result.add(key);
+          }
+        });
+        return result;
+      }
+
+      function insideOutlineCells(fillCells, width) {
+        let remaining = new Set(fillCells.map((cell) => keyForCell(cell.x, cell.y)));
+        const outline = new Set();
+        for (let step = 0; step < width && remaining.size; step += 1) {
+          const layer = boundaryCells(remaining);
+          layer.forEach((key) => outline.add(key));
+          layer.forEach((key) => remaining.delete(key));
+        }
+        return outline;
+      }
+
+      function outsideOutlineCells(fillCells, width) {
+        const occupied = new Set(fillCells.map((cell) => keyForCell(cell.x, cell.y)));
+        const outline = new Set();
+        for (let step = 0; step < width; step += 1) {
+          const layer = new Set();
+          occupied.forEach((key) => {
+            const [x, y] = key.split(":").map(Number);
+            [
+              keyForCell(x - 1, y - 1),
+              keyForCell(x - 1, y),
+              keyForCell(x - 1, y + 1),
+              keyForCell(x + 1, y),
+              keyForCell(x + 1, y - 1),
+              keyForCell(x + 1, y + 1),
+              keyForCell(x, y - 1),
+              keyForCell(x, y + 1),
+            ].forEach((neighbor) => {
+              if (!occupied.has(neighbor)) layer.add(neighbor);
+            });
+          });
+          layer.forEach((key) => {
+            outline.add(key);
+            occupied.add(key);
+          });
+        }
+        return outline;
+      }
+
+      function outlineTargetsForFillCells(fillCells) {
+        if (!state.outline.side) {
+          return {
+            fillCells,
+            outlineKeys: new Set(),
+          };
+        }
+        return {
+          fillCells,
+          outlineKeys:
+            state.outline.side === "inside"
+              ? insideOutlineCells(fillCells, state.outline.width)
+              : outsideOutlineCells(fillCells, state.outline.width),
+        };
+      }
+
+      function applyOutlineAwarePaint(fillCells, mode) {
+        const layer = activeLayer();
+        if (!layer || !fillCells.length) return false;
+        const { outlineKeys } = outlineTargetsForFillCells(fillCells);
+        let changed = false;
+
+        if (mode === "erase") {
+          const eraseKeys = new Set();
+          if (!state.outline.noFill) {
+            fillCells.forEach((cell) => eraseKeys.add(keyForCell(cell.x, cell.y)));
+          }
+          outlineKeys.forEach((key) => eraseKeys.add(key));
+          eraseKeys.forEach((key) => {
+            const [x, y] = key.split(":").map(Number);
+            changed = setCellColor(layer, x, y, null) || changed;
+          });
+          return changed;
+        }
+
+        if (!state.outline.noFill) {
+          fillCells.forEach((cell) => {
+            changed = setCellColor(layer, cell.x, cell.y, state.color.active) || changed;
+          });
+        }
+        outlineKeys.forEach((key) => {
+          const [x, y] = key.split(":").map(Number);
+          changed = setCellColor(layer, x, y, state.outline.active) || changed;
+        });
         return changed;
+      }
+
+      function drawCellPreview(ctx, cells, color, alpha) {
+        if (!cells.length) return;
+        const size = CELL_SIZE * state.viewport.zoom;
+        ctx.save();
+        ctx.fillStyle = hexToRgba(color, alpha);
+        cells.forEach((cell) => {
+          const x = snapPixel(state.viewport.x + cell.x * size);
+          const y = snapPixel(state.viewport.y + cell.y * size);
+          const snappedSize = Math.max(1, snapPixel(size));
+          ctx.fillRect(x, y, snappedSize, snappedSize);
+        });
+        ctx.restore();
       }
 
       function samplePaintColorAt(worldX, worldY) {
@@ -5773,6 +6054,20 @@
         setColorSwatchColor(state.color.activeSwatchIndex, color);
         state.color.eyedropper = false;
         setStatus("Color sampled from canvas.");
+        render({ ui: true, overlay: true });
+      }
+
+      function beginOutlineEyedropper(clientX, clientY) {
+        const pointer = worldFromClient(clientX, clientY);
+        const color = samplePaintColorAt(pointer.worldX, pointer.worldY);
+        if (!color) {
+          setStatus("Outline eyedropper needs a painted cell.");
+          render({ overlay: true });
+          return;
+        }
+        setOutlineSwatchColor(state.outline.activeSwatchIndex, color);
+        state.outline.eyedropper = false;
+        setStatus("Outline color sampled from canvas.");
         render({ ui: true, overlay: true });
       }
 
@@ -6043,6 +6338,10 @@
           if (!isRightClick) beginColorEyedropper(event.clientX, event.clientY);
           return;
         }
+        if (state.outline.eyedropper) {
+          if (!isRightClick) beginOutlineEyedropper(event.clientX, event.clientY);
+          return;
+        }
         if (state.activeTool === "viewbox" && !isRightClick) {
           beginViewBoxDraw(event.clientX, event.clientY);
           return;
@@ -6128,9 +6427,9 @@
               state.measurementDraft.hover = snapped;
             }
           } else if (state.activeTool === "brush") {
-            ui.overlayCanvas.style.cursor = state.color.eyedropper ? "copy" : "crosshair";
+            ui.overlayCanvas.style.cursor = state.color.eyedropper || state.outline.eyedropper ? "copy" : "crosshair";
           } else if (state.activeTool === "shape") {
-            ui.overlayCanvas.style.cursor = "crosshair";
+            ui.overlayCanvas.style.cursor = state.color.eyedropper || state.outline.eyedropper ? "copy" : "crosshair";
           } else if (state.activeTool === "viewbox") {
             ui.overlayCanvas.style.cursor = "crosshair";
           } else {
@@ -6465,6 +6764,12 @@
           render({ ui: true, overlay: true });
         });
       });
+      ui.outlinePaletteButtons.forEach((button, index) => {
+        button.addEventListener("click", () => {
+          setActiveOutlineSwatch(index);
+          render({ ui: true, overlay: true });
+        });
+      });
       const syncActiveColorFromHsv = () => {
         const nextHsv = {
           h: Number(ui.colorHue.value),
@@ -6474,12 +6779,31 @@
         setColorSwatchColor(state.color.activeSwatchIndex, hsvToHex(nextHsv.h, nextHsv.s, nextHsv.v), { hsv: nextHsv });
         render({ ui: true, overlay: true });
       };
+      const syncActiveOutlineFromHsv = () => {
+        const nextHsv = {
+          h: Number(ui.outlineHue.value),
+          s: Number(ui.outlineSaturation.value),
+          v: Number(ui.outlineBrightness.value),
+        };
+        setOutlineSwatchColor(state.outline.activeSwatchIndex, hsvToHex(nextHsv.h, nextHsv.s, nextHsv.v), { hsv: nextHsv });
+        render({ ui: true, overlay: true });
+      };
       ui.colorHue.addEventListener("input", syncActiveColorFromHsv);
       ui.colorSaturation.addEventListener("input", syncActiveColorFromHsv);
       ui.colorBrightness.addEventListener("input", syncActiveColorFromHsv);
+      ui.outlineHue.addEventListener("input", syncActiveOutlineFromHsv);
+      ui.outlineSaturation.addEventListener("input", syncActiveOutlineFromHsv);
+      ui.outlineBrightness.addEventListener("input", syncActiveOutlineFromHsv);
       ui.colorEyedropperButton.addEventListener("click", () => {
+        state.outline.eyedropper = false;
         state.color.eyedropper = !state.color.eyedropper;
         setStatus(state.color.eyedropper ? "Eyedropper active. Click a painted cell." : "Color eyedropper off.");
+        render({ ui: true, overlay: true });
+      });
+      ui.outlineEyedropperButton.addEventListener("click", () => {
+        state.color.eyedropper = false;
+        state.outline.eyedropper = !state.outline.eyedropper;
+        setStatus(state.outline.eyedropper ? "Outline eyedropper active." : "Outline eyedropper off.");
         render({ ui: true, overlay: true });
       });
       ui.brushWidth.addEventListener("input", () => {
@@ -6521,6 +6845,25 @@
         state.shape.type = "polygon";
         render({ ui: true, overlay: true });
       });
+      ui.outlineInsideButton.addEventListener("click", () => {
+        setOutlineSide("inside");
+        render({ ui: true, overlay: true });
+      });
+      ui.outlineOutsideButton.addEventListener("click", () => {
+        setOutlineSide("outside");
+        render({ ui: true, overlay: true });
+      });
+      ui.outlineNoFillButton.addEventListener("click", () => {
+        state.outline.noFill = !state.outline.noFill;
+        if (state.outline.noFill && !state.outline.side) {
+          state.outline.side = "inside";
+        }
+        render({ ui: true, overlay: true });
+      });
+      ui.outlineWidth.addEventListener("input", () => {
+        state.outline.width = Math.max(1, Number(ui.outlineWidth.value) || 1);
+        render({ ui: true, overlay: true });
+      });
 
       ui.sceneAddButton.addEventListener("click", () => {
         ui.sceneImportInput.value = "";
@@ -6548,6 +6891,10 @@
       });
       ui.shapePanelToggle.addEventListener("click", () => {
         state.shapePanelCollapsed = !state.shapePanelCollapsed;
+        render({ ui: true });
+      });
+      ui.outlinePanelToggle.addEventListener("click", () => {
+        state.outlinePanelCollapsed = !state.outlinePanelCollapsed;
         render({ ui: true });
       });
       ui.layerSectionToggle.addEventListener("click", () => {
@@ -6706,6 +7053,12 @@
         if (event.key === "Escape" && state.color.eyedropper) {
           state.color.eyedropper = false;
           setStatus("Color eyedropper off.");
+          render({ ui: true, overlay: true });
+          return;
+        }
+        if (event.key === "Escape" && state.outline.eyedropper) {
+          state.outline.eyedropper = false;
+          setStatus("Outline eyedropper off.");
           render({ ui: true, overlay: true });
           return;
         }
