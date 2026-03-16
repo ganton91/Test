@@ -2115,12 +2115,34 @@
         };
       }
 
+      function captureVisibilityState() {
+        return {
+          scenes: new Map(state.scenes.map((scene) => [scene.id, !!scene.visible])),
+          measurements: new Map(state.measurements.map((measurement) => [measurement.id, !!measurement.visible])),
+          views: new Map(state.views.map((view) => [view.id, !!view.visible])),
+          layers: new Map(state.layers.map((layer) => [layer.id, !!layer.visible])),
+        };
+      }
+
       function historySignature(snapshot) {
         return JSON.stringify({
           ...snapshot,
           scenes: snapshot.scenes.map((scene) => ({
             ...scene,
             image: undefined,
+            visible: undefined,
+          })),
+          measurements: snapshot.measurements.map((measurement) => ({
+            ...measurement,
+            visible: undefined,
+          })),
+          views: snapshot.views.map((view) => ({
+            ...view,
+            visible: undefined,
+          })),
+          layers: snapshot.layers.map((layer) => ({
+            ...layer,
+            visible: undefined,
           })),
         });
       }
@@ -2145,6 +2167,7 @@
 
       function restoreDocumentState(snapshot) {
         state.history.isRestoring = true;
+        const visibilityState = captureVisibilityState();
         closeModal(ui.settingsMenu);
         closeModal(ui.sceneScaleModal);
         if (state.viewEditDraft) {
@@ -2164,10 +2187,31 @@
         state.nextSceneNumber = snapshot.nextSceneNumber;
         state.nextMeasurementNumber = snapshot.nextMeasurementNumber;
         state.nextViewNumber = snapshot.nextViewNumber;
-        state.scenes = snapshot.scenes.map((scene) => ({ ...scene }));
-        state.measurements = snapshot.measurements.map(restoreMeasurementFromSnapshot);
-        state.views = snapshot.views.map(restoreViewFromSnapshot);
-        state.layers = snapshot.layers.map(restoreLayerFromSnapshot);
+        state.scenes = snapshot.scenes.map((scene) => ({
+          ...scene,
+          visible: visibilityState.scenes.has(scene.id) ? visibilityState.scenes.get(scene.id) : scene.visible,
+        }));
+        state.measurements = snapshot.measurements.map((measurementSnapshot) => {
+          const measurement = restoreMeasurementFromSnapshot(measurementSnapshot);
+          if (visibilityState.measurements.has(measurement.id)) {
+            measurement.visible = visibilityState.measurements.get(measurement.id);
+          }
+          return measurement;
+        });
+        state.views = snapshot.views.map((viewSnapshot) => {
+          const view = restoreViewFromSnapshot(viewSnapshot);
+          if (visibilityState.views.has(view.id)) {
+            view.visible = visibilityState.views.get(view.id);
+          }
+          return view;
+        });
+        state.layers = snapshot.layers.map((layerSnapshot) => {
+          const layer = restoreLayerFromSnapshot(layerSnapshot);
+          if (visibilityState.layers.has(layer.id)) {
+            layer.visible = visibilityState.layers.get(layer.id);
+          }
+          return layer;
+        });
         state.activeSceneId = state.scenes.some((scene) => scene.id === snapshot.activeSceneId) ? snapshot.activeSceneId : null;
         state.activeMeasurementId = state.measurements.some((measurement) => measurement.id === snapshot.activeMeasurementId)
           ? snapshot.activeMeasurementId
