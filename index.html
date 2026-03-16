@@ -2710,6 +2710,91 @@
         return false;
       }
 
+      function duplicateLayer(layerId) {
+        const index = state.layers.findIndex((entry) => entry.id === layerId);
+        if (index === -1) return false;
+        const source = state.layers[index];
+        const duplicate = createLayer(source.name);
+        duplicate.visible = source.visible;
+        duplicate.opacity = source.opacity;
+        duplicate.rotationQuarterTurns = normalizedQuarterTurns(source.rotationQuarterTurns || 0);
+        duplicate.cellCount = source.cellCount;
+        Object.values(source.tiles).forEach((tile) => {
+          const nextTile = createTile(duplicate, tile.tileX, tile.tileY);
+          nextTile.pixels = new Map(tile.pixels);
+          nextTile.dirty = true;
+        });
+        state.layers.splice(index, 0, duplicate);
+        setActiveLayerById(duplicate.id, { tool: "select" });
+        render({ ui: true, content: true, overlay: true });
+        return true;
+      }
+
+      function duplicateMeasurement(measurementId) {
+        const index = state.measurements.findIndex((entry) => entry.id === measurementId);
+        if (index === -1) return false;
+        const source = state.measurements[index];
+        const duplicate = createMeasurement(source.name);
+        duplicate.visible = source.visible;
+        duplicate.opacity = source.opacity;
+        duplicate.width = source.width;
+        duplicate.defaultColor = source.defaultColor;
+        duplicate.mode = source.mode;
+        duplicate.rotationQuarterTurns = normalizedQuarterTurns(source.rotationQuarterTurns || 0);
+        duplicate.points = source.points.map((point) => ({ ...point, id: "point-" + Math.random().toString(36).slice(2, 9) }));
+        duplicate.lengths = source.lengths.map((length) => ({
+          ...length,
+          id: "length-" + Math.random().toString(36).slice(2, 9),
+          start: { ...length.start },
+          end: { ...length.end },
+        }));
+        duplicate.areas = source.areas.map((area) => ({
+          ...area,
+          id: "area-" + Math.random().toString(36).slice(2, 9),
+          points: area.points.map((point) => ({ ...point })),
+        }));
+        state.measurements.splice(index, 0, duplicate);
+        setActiveMeasurementById(duplicate.id, { tool: "select" });
+        render({ ui: true, overlay: true });
+        return true;
+      }
+
+      function duplicateView(viewId) {
+        const index = state.views.findIndex((entry) => entry.id === viewId);
+        if (index === -1) return false;
+        const source = state.views[index];
+        const duplicate = createView(source.name);
+        duplicate.visible = source.visible;
+        duplicate.opacity = source.opacity;
+        duplicate.pending = !!source.pending;
+        duplicate.bounds = source.bounds ? { ...source.bounds } : null;
+        duplicate.layerConfigs = Object.fromEntries(
+          Object.entries(source.layerConfigs || {}).map(([layerId, config]) => [layerId, { ...config }])
+        );
+        duplicate.layerOrder = Array.isArray(source.layerOrder) ? [...source.layerOrder] : [];
+        state.views.splice(index, 0, duplicate);
+        setActiveViewById(duplicate.id, { tool: "select" });
+        if (state.activeCanvasViewTab === viewId) {
+          state.activeCanvasViewTab = duplicate.id;
+        }
+        render({ ui: true, overlay: true });
+        return true;
+      }
+
+      function duplicateScene(sceneId) {
+        const index = state.scenes.findIndex((entry) => entry.id === sceneId);
+        if (index === -1) return false;
+        const source = state.scenes[index];
+        const duplicate = {
+          ...source,
+          id: "scene-" + Math.random().toString(36).slice(2, 10),
+        };
+        state.scenes.splice(index, 0, duplicate);
+        setActiveSceneById(duplicate.id);
+        render({ ui: true, scenes: true, overlay: true });
+        return true;
+      }
+
       function toggleLayerActivation(layerId) {
         if (state.activeLayerId === layerId && !state.activeSceneId && !state.activeMeasurementId && !state.activeViewId) {
           state.editingLayerId = null;
@@ -4364,6 +4449,17 @@
           const inlineControls = document.createElement("div");
           inlineControls.className = "inline-controls";
 
+          const duplicateInline = document.createElement("button");
+          duplicateInline.className = "inline-icon";
+          duplicateInline.textContent = "+";
+          duplicateInline.title = "Duplicate view";
+          duplicateInline.addEventListener("click", (event) => {
+            event.stopPropagation();
+            if (!duplicateView(view.id)) return;
+            setStatus("View duplicated.");
+          });
+          inlineControls.appendChild(duplicateInline);
+
           const visibilityInline = document.createElement("button");
           visibilityInline.className = "inline-icon visibility-dot";
           visibilityInline.textContent = view.visible ? "●" : "○";
@@ -4511,6 +4607,17 @@
 
           const inlineControls = document.createElement("div");
           inlineControls.className = "inline-controls";
+
+          const duplicateInline = document.createElement("button");
+          duplicateInline.className = "inline-icon";
+          duplicateInline.textContent = "+";
+          duplicateInline.title = "Duplicate measurement";
+          duplicateInline.addEventListener("click", (event) => {
+            event.stopPropagation();
+            if (!duplicateMeasurement(measurement.id)) return;
+            setStatus("Measurement duplicated.");
+          });
+          inlineControls.appendChild(duplicateInline);
 
           const visibilityInline = document.createElement("button");
           visibilityInline.className = "inline-icon visibility-dot";
@@ -4705,6 +4812,17 @@
           const inlineControls = document.createElement("div");
           inlineControls.className = "inline-controls";
 
+          const duplicateInline = document.createElement("button");
+          duplicateInline.className = "inline-icon";
+          duplicateInline.textContent = "+";
+          duplicateInline.title = "Duplicate layer";
+          duplicateInline.addEventListener("click", (event) => {
+            event.stopPropagation();
+            if (!duplicateLayer(layer.id)) return;
+            setStatus("Layer duplicated.");
+          });
+          inlineControls.appendChild(duplicateInline);
+
           const visibilityInline = document.createElement("button");
           visibilityInline.className = "inline-icon visibility-dot";
           visibilityInline.textContent = layer.visible ? "●" : "○";
@@ -4869,6 +4987,17 @@
 
           const inlineControls = document.createElement("div");
           inlineControls.className = "inline-controls";
+
+          const duplicateInline = document.createElement("button");
+          duplicateInline.className = "inline-icon";
+          duplicateInline.textContent = "+";
+          duplicateInline.title = "Duplicate scene";
+          duplicateInline.addEventListener("click", (event) => {
+            event.stopPropagation();
+            if (!duplicateScene(scene.id)) return;
+            setStatus("Scene duplicated.");
+          });
+          inlineControls.appendChild(duplicateInline);
 
           const visibilityInline = document.createElement("button");
           visibilityInline.className = "inline-icon visibility-dot";
