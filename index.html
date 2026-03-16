@@ -8674,6 +8674,30 @@
         return { deltaX: 0, deltaY };
       }
 
+      function measurementPointWithAxisLock(interaction, anchorPoint, clientX, clientY, point, shiftKey) {
+        if (!interaction || !anchorPoint) {
+          return point;
+        }
+        if (!shiftKey) {
+          interaction.lockedAxis = null;
+          return point;
+        }
+        const anchorClientX = Number.isFinite(interaction.anchorClientX) ? interaction.anchorClientX : clientX;
+        const anchorClientY = Number.isFinite(interaction.anchorClientY) ? interaction.anchorClientY : clientY;
+        const deltaClientX = clientX - anchorClientX;
+        const deltaClientY = clientY - anchorClientY;
+        if (deltaClientX === 0 && deltaClientY === 0) {
+          return point;
+        }
+        if (!interaction.lockedAxis) {
+          interaction.lockedAxis = Math.abs(deltaClientX) > Math.abs(deltaClientY) ? "x" : "y";
+        }
+        if (interaction.lockedAxis === "x") {
+          return { x: point.x, y: anchorPoint.y };
+        }
+        return { x: anchorPoint.x, y: point.y };
+      }
+
       function resetBrushAxisLockAnchor(clientX, clientY) {
         if (!state.interaction || state.interaction.type !== "brush") return;
         const pointer = worldFromClient(clientX, clientY);
@@ -8781,17 +8805,25 @@
         return true;
       }
 
-      function beginMeasurementLength(clientX, clientY) {
+      function beginMeasurementLength(clientX, clientY, shiftKey) {
         const measurement = activeMeasurement();
         if (!measurement || measurement.mode !== "length") return;
         const pointer = worldFromClient(clientX, clientY);
-        const snapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
+        const rawSnapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
 
         if (
           state.measurementDraft &&
           state.measurementDraft.type === "length-click" &&
           state.measurementDraft.measurementId === measurement.id
         ) {
+          const snapped = measurementPointWithAxisLock(
+            state.measurementDraft,
+            state.measurementDraft.start,
+            clientX,
+            clientY,
+            rawSnapped,
+            shiftKey
+          );
           const committed = commitMeasurementLength(measurement, state.measurementDraft.start, snapped);
           state.measurementDraft = null;
           setStatus(committed ? "Measurement length added." : "Length needs two different points.");
@@ -8802,20 +8834,27 @@
         state.interaction = {
           type: "measurement-length-drag",
           measurementId: measurement.id,
-          start: snapped,
+          start: rawSnapped,
           startClientX: clientX,
           startClientY: clientY,
+          anchorClientX: clientX,
+          anchorClientY: clientY,
+          lockedAxis: null,
           moved: false,
         };
       }
 
-      function beginMeasurementArea(clientX, clientY) {
+      function beginMeasurementArea(clientX, clientY, shiftKey) {
         const measurement = activeMeasurement();
         if (!measurement || measurement.mode !== "area") return;
         const pointer = worldFromClient(clientX, clientY);
-        const snapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
+        const rawSnapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
         const draft = state.measurementDraft;
         const now = Date.now();
+        const snapped =
+          draft && draft.type === "area" && draft.measurementId === measurement.id && draft.points.length
+            ? measurementPointWithAxisLock(draft, draft.points[draft.points.length - 1], clientX, clientY, rawSnapped, shiftKey)
+            : rawSnapped;
         const previousClick = state.measurementAreaClickMemory;
         const isDoubleClick =
           !!previousClick &&
@@ -8837,6 +8876,9 @@
             measurementId: measurement.id,
             points: [snapped],
             hover: snapped,
+            anchorClientX: clientX,
+            anchorClientY: clientY,
+            lockedAxis: null,
           };
           setStatus("Area started. Keep clicking points and click the first point to close.");
           render({ overlay: true });
@@ -8883,6 +8925,9 @@
 
         draft.points.push(snapped);
         draft.hover = snapped;
+        draft.anchorClientX = clientX;
+        draft.anchorClientY = clientY;
+        draft.lockedAxis = null;
 
         setStatus("Area point added.");
         render({ overlay: true });
@@ -9188,8 +9233,8 @@
           const measurement = activeMeasurement();
           if (!measurement) return;
           if (measurement.mode === "points") addMeasurementPoint(event.clientX, event.clientY);
-          else if (measurement.mode === "length") beginMeasurementLength(event.clientX, event.clientY);
-          else if (measurement.mode === "area") beginMeasurementArea(event.clientX, event.clientY);
+          else if (measurement.mode === "length") beginMeasurementLength(event.clientX, event.clientY, event.shiftKey);
+          else if (measurement.mode === "area") beginMeasurementArea(event.clientX, event.clientY, event.shiftKey);
           return;
         }
         if (state.activeTool === "shape") {
@@ -9293,16 +9338,28 @@
             ui.overlayCanvas.style.cursor = cursorForViewHit(viewTransformHit(activeView(), pointer.worldX, pointer.worldY));
           } else if (state.activeTool === "measure") {
             ui.overlayCanvas.style.cursor = "crosshair";
-            if (
-              state.measurementDraft &&
-              state.measurementDraft.measurementId === state.activeMeasurementId &&
-              (state.measurementDraft.type === "length-click" || state.measurementDraft.type === "area")
-            ) {
-              const pointer = worldFromClient(event.clientX, event.clientY);
-              const snapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
-              state.measurementDraft.end = snapped;
-              state.measurementDraft.hover = snapped;
-            }
+          if (
+            state.measurementDraft &&
+            state.measurementDraft.measurementId === state.activeMeasurementId &&
+            (state.measurementDraft.type === "length-click" || state.measurementDraft.type === "area")
+          ) {
+            const pointer = worldFromClient(event.clientX, event.clientY);
+            const rawSnapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
+            const anchorPoint =
+              state.measurementDraft.type === "area"
+                ? state.measurementDraft.points[state.measurementDraft.points.length - 1]
+                : state.measurementDraft.start;
+            const snapped = measurementPointWithAxisLock(
+              state.measurementDraft,
+              anchorPoint,
+              event.clientX,
+              event.clientY,
+              rawSnapped,
+              event.shiftKey
+            );
+            state.measurementDraft.end = snapped;
+            state.measurementDraft.hover = snapped;
+          }
           } else if (state.activeTool === "brush") {
             ui.overlayCanvas.style.cursor = state.color.eyedropper || state.outline.eyedropper ? "copy" : "crosshair";
           } else if (state.activeTool === "shape") {
@@ -9611,7 +9668,15 @@
 
         if (state.interaction.type === "measurement-length-drag") {
           const pointer = worldFromClient(event.clientX, event.clientY);
-          const snapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
+          const rawSnapped = measurementVertexFromWorld(pointer.worldX, pointer.worldY);
+          const snapped = measurementPointWithAxisLock(
+            state.interaction,
+            state.interaction.start,
+            event.clientX,
+            event.clientY,
+            rawSnapped,
+            event.shiftKey
+          );
           const movedEnough =
             Math.abs(event.clientX - state.interaction.startClientX) > 3 ||
             Math.abs(event.clientY - state.interaction.startClientY) > 3;
@@ -9814,6 +9879,9 @@
               measurementId: measurement.id,
               start: state.interaction.start,
               end: state.interaction.start,
+              anchorClientX: state.interaction.startClientX,
+              anchorClientY: state.interaction.startClientY,
+              lockedAxis: null,
             };
             setStatus("Length started. Click the second point or drag.");
           }
