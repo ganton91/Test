@@ -830,22 +830,31 @@
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        padding: 4px;
+        padding: 3px;
         border: 1px solid var(--line);
-        border-radius: 14px;
+        border-radius: 10px;
         background: var(--bg-strong);
+      }
+
+      .view-layout-group {
+        padding: 4px;
+        gap: 5px;
       }
 
       .view-layout-button,
       .view-pane-selector-button {
-        padding: 7px 9px;
-        border-radius: 10px;
+        padding: 4px 5px;
+        border-radius: 7px;
         border: 1px solid transparent;
         background: transparent;
         color: var(--muted);
         font-size: 11px;
         font-weight: 600;
         white-space: nowrap;
+      }
+
+      .view-layout-button {
+        padding: 5px 7px;
       }
 
       .view-layout-button.active,
@@ -1715,9 +1724,9 @@
           <div class="view-output-shell" id="viewOutputShell">
             <div class="view-layout-toolbar">
               <div class="view-layout-group">
-                <button class="view-layout-button active" type="button" data-view-layout="1">1 View</button>
-                <button class="view-layout-button" type="button" data-view-layout="2">2 Views</button>
-                <button class="view-layout-button" type="button" data-view-layout="4">4 Views</button>
+                <button class="view-layout-button active" type="button" data-view-layout="1">1 Side</button>
+                <button class="view-layout-button" type="button" data-view-layout="2">2 Sides</button>
+                <button class="view-layout-button" type="button" data-view-layout="4">4 Sides</button>
               </div>
             </div>
             <div class="view-output-grid" id="viewOutputGrid">
