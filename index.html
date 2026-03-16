@@ -2446,7 +2446,6 @@
           activeMeasurementItem: state.activeMeasurementItem ? { ...state.activeMeasurementItem } : null,
           activeViewId: state.activeViewId,
           activeLayerId: state.activeLayerId,
-          activeTool: state.activeTool,
         };
       }
 
@@ -2557,7 +2556,6 @@
           : null;
         state.activeViewId = state.views.some((view) => view.id === snapshot.activeViewId) ? snapshot.activeViewId : null;
         state.activeLayerId = state.layers.some((layer) => layer.id === snapshot.activeLayerId) ? snapshot.activeLayerId : null;
-        state.activeTool = snapshot.activeTool;
         state.history.isRestoring = false;
         render({ ui: true, static: true, scenes: true, content: true, overlay: true, rulers: true });
       }
