@@ -229,6 +229,18 @@
         background: var(--surface);
         cursor: pointer;
         color: inherit;
+        transition: 140ms ease;
+      }
+
+      .section-header-action:hover {
+        background: var(--surface-strong);
+        border-color: var(--line-strong);
+      }
+
+      .section-header-action:active {
+        background: var(--accent-soft);
+        border-color: var(--line-strong);
+        transform: translateY(0.5px);
       }
 
       .section-header-action::before,
@@ -319,10 +331,6 @@
       .panel-section.collapsed .view-list,
       .panel-section.collapsed .layer-list,
       .panel-section.collapsed .empty-state {
-        display: none;
-      }
-
-      .panel-section.collapsed .section-header-action {
         display: none;
       }
 
@@ -6451,6 +6459,7 @@
       }
 
       function addMeasurement() {
+        state.measurementSectionCollapsed = false;
         const measurement = createMeasurement("Measurement " + state.nextMeasurementNumber++);
         state.measurements.unshift(measurement);
         setActiveMeasurementById(measurement.id);
@@ -6459,6 +6468,7 @@
       }
 
       function addView() {
+        state.viewSectionCollapsed = false;
         if (state.pendingViewCreation || (state.interaction && state.interaction.type === "viewbox-draw")) {
           setStatus("Finish the current view box or press Escape to cancel.");
           render({ ui: true, overlay: true });
@@ -6474,6 +6484,7 @@
       }
 
       function addLayer() {
+        state.layerSectionCollapsed = false;
         const layer = createLayer("Layer " + (state.layers.length + 1));
         state.layers.unshift(layer);
         setActiveLayerById(layer.id);
@@ -8382,6 +8393,8 @@
       });
 
       ui.sceneAddButton.addEventListener("click", () => {
+        state.sceneSectionCollapsed = false;
+        render({ ui: true });
         ui.sceneImportInput.value = "";
         ui.sceneImportInput.click();
       });
