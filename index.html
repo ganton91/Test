@@ -5183,39 +5183,11 @@
         }
 
         if (state.interaction && state.interaction.type === "shape") {
-          overlayCtx.save();
-          overlayCtx.fillStyle =
-            state.interaction.mode === "paint" ? hexToRgba(state.color.active, 0.18) : hexToRgba(getCssVar("--text"), 0.12);
-          overlayCtx.strokeStyle =
-            state.interaction.mode === "paint" ? hexToRgba(state.color.active, 0.56) : hexToRgba(getCssVar("--text"), 0.42);
-          if (state.interaction.shapeType === "circle") {
-            const spec = circleSpecFromInteraction(state.interaction);
-            const size = CELL_SIZE * state.viewport.zoom;
-            const centerX = snapPixel(state.viewport.x + (spec.centerX + 0.5) * size);
-            const centerY = snapPixel(state.viewport.y + (spec.centerY + 0.5) * size);
-            const radius = Math.max(size / 2, spec.radius * size);
-            overlayCtx.beginPath();
-            overlayCtx.ellipse(centerX, centerY, radius, radius, 0, 0, Math.PI * 2);
-            overlayCtx.fill();
-            overlayCtx.stroke();
-          } else {
-            const bounds = shapeBoundsFromInteraction(state.interaction);
-            const size = CELL_SIZE * state.viewport.zoom;
-            const x = snapPixel(state.viewport.x + bounds.minX * size);
-            const y = snapPixel(state.viewport.y + bounds.minY * size);
-            const width = Math.max(1, snapPixel((bounds.maxX - bounds.minX + 1) * size));
-            const height = Math.max(1, snapPixel((bounds.maxY - bounds.minY + 1) * size));
-            if (state.interaction.shapeType === "ellipse") {
-              overlayCtx.beginPath();
-              overlayCtx.ellipse(x + width / 2, y + height / 2, Math.max(0.5, width / 2), Math.max(0.5, height / 2), 0, 0, Math.PI * 2);
-              overlayCtx.fill();
-              overlayCtx.stroke();
-            } else {
-              overlayCtx.fillRect(x, y, width, height);
-              overlayCtx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
-            }
-          }
-          overlayCtx.restore();
+          drawShapePreviewOverlay(overlayCtx, state.interaction);
+        }
+
+        if (state.shapeDraft && state.shapeDraft.type === "shape-click") {
+          drawShapePreviewOverlay(overlayCtx, state.shapeDraft);
         }
 
         if (state.shapeDraft && state.shapeDraft.type === "polygon") {
@@ -5263,6 +5235,42 @@
           overlayCtx.restore();
         }
       }
+
+      function drawShapePreviewOverlay(overlayCtx, shapePreview) {
+          overlayCtx.save();
+          overlayCtx.fillStyle =
+            shapePreview.mode === "paint" ? hexToRgba(state.color.active, 0.18) : hexToRgba(getCssVar("--text"), 0.12);
+          overlayCtx.strokeStyle =
+            shapePreview.mode === "paint" ? hexToRgba(state.color.active, 0.56) : hexToRgba(getCssVar("--text"), 0.42);
+          if (shapePreview.shapeType === "circle") {
+            const spec = circleSpecFromInteraction(shapePreview);
+            const size = CELL_SIZE * state.viewport.zoom;
+            const centerX = snapPixel(state.viewport.x + (spec.centerX + 0.5) * size);
+            const centerY = snapPixel(state.viewport.y + (spec.centerY + 0.5) * size);
+            const radius = Math.max(size / 2, spec.radius * size);
+            overlayCtx.beginPath();
+            overlayCtx.ellipse(centerX, centerY, radius, radius, 0, 0, Math.PI * 2);
+            overlayCtx.fill();
+            overlayCtx.stroke();
+          } else {
+            const bounds = shapeBoundsFromInteraction(shapePreview);
+            const size = CELL_SIZE * state.viewport.zoom;
+            const x = snapPixel(state.viewport.x + bounds.minX * size);
+            const y = snapPixel(state.viewport.y + bounds.minY * size);
+            const width = Math.max(1, snapPixel((bounds.maxX - bounds.minX + 1) * size));
+            const height = Math.max(1, snapPixel((bounds.maxY - bounds.minY + 1) * size));
+            if (shapePreview.shapeType === "ellipse") {
+              overlayCtx.beginPath();
+              overlayCtx.ellipse(x + width / 2, y + height / 2, Math.max(0.5, width / 2), Math.max(0.5, height / 2), 0, 0, Math.PI * 2);
+              overlayCtx.fill();
+              overlayCtx.stroke();
+            } else {
+              overlayCtx.fillRect(x, y, width, height);
+              overlayCtx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+            }
+          }
+          overlayCtx.restore();
+        }
 
       function drawRulers() {
         const width = Math.round(ui.rulerTop.getBoundingClientRect().width);
@@ -5917,6 +5925,10 @@
         render({ ui: changed, content: true, overlay: true });
       }
 
+      function shapeCenteredMode(shapeType, shiftKey) {
+        return shiftKey && (shapeType === "ellipse" || shapeType === "circle");
+      }
+
       function beginShape(clientX, clientY, mode, centered) {
         const pointer = worldFromClient(clientX, clientY);
         const cell = cellFromWorld(pointer.worldX, pointer.worldY);
@@ -5930,9 +5942,44 @@
           startCellY: cell.y,
           currentCellX: cell.x,
           currentCellY: cell.y,
+          startClientX: clientX,
+          startClientY: clientY,
+          moved: false,
         };
         setStatus(mode === "paint" ? "Drag to paint a shape." : "Drag to erase a shape.");
         render({ overlay: true });
+      }
+
+      function shapeInteractionFromDraft(draft, currentCellX, currentCellY, centered) {
+        return {
+          type: "shape",
+          mode: draft.mode,
+          shapeType: draft.shapeType,
+          centered: shapeCenteredMode(draft.shapeType, centered),
+          startCellX: draft.startCellX,
+          startCellY: draft.startCellY,
+          currentCellX: Number.isInteger(currentCellX) ? currentCellX : draft.currentCellX,
+          currentCellY: Number.isInteger(currentCellY) ? currentCellY : draft.currentCellY,
+        };
+      }
+
+      function beginShapeClickDraft(interaction) {
+        state.shapeDraft = {
+          type: "shape-click",
+          mode: interaction.mode,
+          shapeType: interaction.shapeType,
+          centered: interaction.centered,
+          startCellX: interaction.startCellX,
+          startCellY: interaction.startCellY,
+          currentCellX: interaction.startCellX,
+          currentCellY: interaction.startCellY,
+        };
+      }
+
+      function commitShapeInteraction(interaction) {
+        if (interaction.shapeType === "circle") return paintCircularShape(interaction, interaction.mode);
+        if (interaction.shapeType === "ellipse") return paintCircleShape(shapeBoundsFromInteraction(interaction), interaction.mode);
+        return paintRectShape(shapeBoundsFromInteraction(interaction), interaction.mode);
       }
 
       function commitPolygonDraft(points, mode) {
@@ -6406,6 +6453,13 @@
         state.pointer.shiftKey = event.shiftKey;
 
         if (!state.interaction) {
+          if (state.shapeDraft && state.shapeDraft.type === "shape-click") {
+            const pointer = worldFromClient(event.clientX, event.clientY);
+            const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+            state.shapeDraft.centered = shapeCenteredMode(state.shapeDraft.shapeType, event.shiftKey);
+            state.shapeDraft.currentCellX = cell.x;
+            state.shapeDraft.currentCellY = cell.y;
+          }
           if (state.sceneCalibration && activeScene()) {
             ui.overlayCanvas.style.cursor = "crosshair";
           } else if (state.activeTool === "transform" && activeScene() && !activeScene().locked) {
@@ -6463,9 +6517,18 @@
         if (state.interaction.type === "shape") {
           const pointer = worldFromClient(event.clientX, event.clientY);
           const cell = cellFromWorld(pointer.worldX, pointer.worldY);
-          state.interaction.centered = event.shiftKey && (state.interaction.shapeType === "ellipse" || state.interaction.shapeType === "circle");
+          state.interaction.centered = shapeCenteredMode(state.interaction.shapeType, event.shiftKey);
           state.interaction.currentCellX = cell.x;
           state.interaction.currentCellY = cell.y;
+          if (
+            !state.interaction.moved &&
+            (cell.x !== state.interaction.startCellX ||
+              cell.y !== state.interaction.startCellY ||
+              Math.abs(event.clientX - state.interaction.startClientX) > 3 ||
+              Math.abs(event.clientY - state.interaction.startClientY) > 3)
+          ) {
+            state.interaction.moved = true;
+          }
           render({ overlay: true });
           return;
         }
@@ -6682,14 +6745,44 @@
         }
         if (state.interaction.type === "shape") {
           const interaction = state.interaction;
-          const changed =
-            interaction.shapeType === "circle"
-              ? paintCircularShape(interaction, interaction.mode)
-              : interaction.shapeType === "ellipse"
-              ? paintCircleShape(shapeBoundsFromInteraction(interaction), interaction.mode)
-              : paintRectShape(shapeBoundsFromInteraction(interaction), interaction.mode);
           state.interaction = null;
-          render({ ui: changed, content: true, overlay: true });
+          const pointer = worldFromClient(event.clientX, event.clientY);
+          const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+          interaction.centered = shapeCenteredMode(interaction.shapeType, event.shiftKey);
+          interaction.currentCellX = cell.x;
+          interaction.currentCellY = cell.y;
+
+          if (interaction.moved) {
+            const interactionToCommit =
+              state.shapeDraft &&
+              state.shapeDraft.type === "shape-click" &&
+              state.shapeDraft.mode === interaction.mode &&
+              state.shapeDraft.shapeType === interaction.shapeType
+                ? shapeInteractionFromDraft(state.shapeDraft, interaction.currentCellX, interaction.currentCellY, interaction.centered)
+                : interaction;
+            const changed = commitShapeInteraction(interactionToCommit);
+            state.shapeDraft = null;
+            render({ ui: changed, content: true, overlay: true });
+            return;
+          }
+
+          if (
+            state.shapeDraft &&
+            state.shapeDraft.type === "shape-click" &&
+            state.shapeDraft.mode === interaction.mode &&
+            state.shapeDraft.shapeType === interaction.shapeType
+          ) {
+            const changed = commitShapeInteraction(
+              shapeInteractionFromDraft(state.shapeDraft, interaction.currentCellX, interaction.currentCellY, interaction.centered)
+            );
+            state.shapeDraft = null;
+            render({ ui: changed, content: true, overlay: true });
+            return;
+          }
+
+          beginShapeClickDraft(interaction);
+          setStatus(interaction.mode === "paint" ? "Click second point to paint the shape." : "Click second point to erase the shape.");
+          render({ overlay: true });
           return;
         }
         if (state.interaction.type === "view-move" || state.interaction.type === "view-resize") {
