@@ -6894,7 +6894,7 @@
                   ? "move"
                   : "pointer"
                 : "default";
-          } else if (state.activeTool === "view" && activeView() && !activeView().pending) {
+          } else if (state.activeTool === "select" && activeView() && !activeView().pending) {
             const pointer = worldFromClient(event.clientX, event.clientY);
             ui.overlayCanvas.style.cursor = cursorForViewHit(viewTransformHit(activeView(), pointer.worldX, pointer.worldY));
           } else if (state.activeTool === "measure") {
