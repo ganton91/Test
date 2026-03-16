@@ -2689,6 +2689,37 @@
         });
       }
 
+      function mirrorLayerSnapshot(snapshot, axis) {
+        if (!snapshot.length) return [];
+        const bounds = snapshot.reduce(
+          (result, cell) => ({
+            minX: Math.min(result.minX, cell.x),
+            minY: Math.min(result.minY, cell.y),
+            maxX: Math.max(result.maxX, cell.x),
+            maxY: Math.max(result.maxY, cell.y),
+          }),
+          {
+            minX: snapshot[0].x,
+            minY: snapshot[0].y,
+            maxX: snapshot[0].x,
+            maxY: snapshot[0].y,
+          }
+        );
+        const centerX = (bounds.minX + bounds.maxX + 1) / 2;
+        const centerY = (bounds.minY + bounds.maxY + 1) / 2;
+        return snapshot.map((cell) => {
+          const pointX = cell.x + 0.5;
+          const pointY = cell.y + 0.5;
+          const mirroredX = axis === "horizontal" ? centerX - (pointX - centerX) : pointX;
+          const mirroredY = axis === "vertical" ? centerY - (pointY - centerY) : pointY;
+          return {
+            x: Math.floor(mirroredX),
+            y: Math.floor(mirroredY),
+            color: cell.color,
+          };
+        });
+      }
+
       function layerHandleWorldPositions(layer) {
         const bounds = layerCellBounds(layer);
         if (!bounds) return null;
@@ -2720,6 +2751,12 @@
           anchorX = minWorldX;
           anchorY = centerY;
         }
+        const normalX = rotateX - anchorX;
+        const normalY = rotateY - anchorY;
+        const normalLength = Math.hypot(normalX, normalY) || 1;
+        const tangentX = -normalY / normalLength;
+        const tangentY = normalX / normalLength;
+        const flipOffset = 18 / state.viewport.zoom;
         return {
           bounds: {
             minWorldX,
@@ -2733,6 +2770,14 @@
             x: rotateX,
             y: rotateY,
           },
+          flipHorizontal: {
+            x: rotateX - tangentX * flipOffset,
+            y: rotateY - tangentY * flipOffset,
+          },
+          flipVertical: {
+            x: rotateX + tangentX * flipOffset,
+            y: rotateY + tangentY * flipOffset,
+          },
         };
       }
 
@@ -2740,6 +2785,12 @@
         const handles = layerHandleWorldPositions(layer);
         if (!handles) return null;
         const radius = 10 / state.viewport.zoom;
+        if (Math.hypot(worldX - handles.flipHorizontal.x, worldY - handles.flipHorizontal.y) <= radius) {
+          return { type: "flip-horizontal" };
+        }
+        if (Math.hypot(worldX - handles.flipVertical.x, worldY - handles.flipVertical.y) <= radius) {
+          return { type: "flip-vertical" };
+        }
         if (Math.hypot(worldX - handles.rotate.x, worldY - handles.rotate.y) <= radius) {
           return { type: "rotate" };
         }
@@ -5184,6 +5235,8 @@
             const boxHeight = Math.max(1, snapPixel((handles.bounds.maxWorldY - handles.bounds.minWorldY) * state.viewport.zoom));
             const rotateHandle = worldToScreen(handles.rotate.x, handles.rotate.y);
             const rotateAnchor = worldToScreen(handles.rotateAnchor.x, handles.rotateAnchor.y);
+            const flipHorizontalHandle = worldToScreen(handles.flipHorizontal.x, handles.flipHorizontal.y);
+            const flipVerticalHandle = worldToScreen(handles.flipVertical.x, handles.flipVertical.y);
             overlayCtx.save();
             overlayCtx.strokeStyle = getCssVar("--selection");
             overlayCtx.lineWidth = 1;
@@ -5201,6 +5254,8 @@
             overlayCtx.fill();
             overlayCtx.stroke();
             overlayCtx.restore();
+            drawLayerFlipIcon(overlayCtx, flipHorizontalHandle, "horizontal");
+            drawLayerFlipIcon(overlayCtx, flipVerticalHandle, "vertical");
           }
         }
 
@@ -5453,6 +5508,46 @@
           }
           overlayCtx.restore();
         }
+
+      function drawLayerFlipIcon(context, handle, axis) {
+        context.save();
+        context.beginPath();
+        context.fillStyle = getCssVar("--bg-strong");
+        context.strokeStyle = getCssVar("--selection");
+        context.lineWidth = 1;
+        context.arc(handle.x, handle.y, 5, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+
+        context.beginPath();
+        context.strokeStyle = getCssVar("--selection");
+        context.lineWidth = 1;
+        if (axis === "horizontal") {
+          context.moveTo(handle.x - 4, handle.y);
+          context.lineTo(handle.x + 4, handle.y);
+          context.moveTo(handle.x - 4, handle.y);
+          context.lineTo(handle.x - 1.5, handle.y - 2);
+          context.moveTo(handle.x - 4, handle.y);
+          context.lineTo(handle.x - 1.5, handle.y + 2);
+          context.moveTo(handle.x + 4, handle.y);
+          context.lineTo(handle.x + 1.5, handle.y - 2);
+          context.moveTo(handle.x + 4, handle.y);
+          context.lineTo(handle.x + 1.5, handle.y + 2);
+        } else {
+          context.moveTo(handle.x, handle.y - 4);
+          context.lineTo(handle.x, handle.y + 4);
+          context.moveTo(handle.x, handle.y - 4);
+          context.lineTo(handle.x - 2, handle.y - 1.5);
+          context.moveTo(handle.x, handle.y - 4);
+          context.lineTo(handle.x + 2, handle.y - 1.5);
+          context.moveTo(handle.x, handle.y + 4);
+          context.lineTo(handle.x - 2, handle.y + 1.5);
+          context.moveTo(handle.x, handle.y + 4);
+          context.lineTo(handle.x + 2, handle.y + 1.5);
+        }
+        context.stroke();
+        context.restore();
+      }
 
       function drawRulers() {
         const width = Math.round(ui.rulerTop.getBoundingClientRect().width);
@@ -6592,6 +6687,12 @@
         if (!hit) return false;
         const cell = cellFromWorld(pointer.worldX, pointer.worldY);
         const snapshot = collectLayerCells(layer);
+        if (hit.type === "flip-horizontal" || hit.type === "flip-vertical") {
+          applyLayerCellSnapshot(layer, mirrorLayerSnapshot(snapshot, hit.type === "flip-horizontal" ? "horizontal" : "vertical"), 0, 0);
+          setStatus(hit.type === "flip-horizontal" ? "Layer flipped horizontally." : "Layer flipped vertically.");
+          render({ content: true, overlay: true });
+          return true;
+        }
         if (hit.type === "rotate") {
           const handles = layerHandleWorldPositions(layer);
           if (!handles) return false;
@@ -6728,7 +6829,14 @@
           } else if (state.activeTool === "select" && activeLayer()) {
             const pointer = worldFromClient(event.clientX, event.clientY);
             const hit = layerTransformHit(activeLayer(), pointer.worldX, pointer.worldY);
-            ui.overlayCanvas.style.cursor = hit ? (hit.type === "rotate" ? "grab" : "move") : "default";
+            ui.overlayCanvas.style.cursor =
+              hit
+                ? hit.type === "rotate"
+                  ? "grab"
+                  : hit.type === "move"
+                  ? "move"
+                  : "pointer"
+                : "default";
           } else if (state.activeTool === "view" && activeView() && !activeView().pending) {
             const pointer = worldFromClient(event.clientX, event.clientY);
             ui.overlayCanvas.style.cursor = cursorForViewHit(viewTransformHit(activeView(), pointer.worldX, pointer.worldY));
