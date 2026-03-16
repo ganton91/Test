@@ -944,6 +944,11 @@
         flex: 1;
       }
 
+      .shape-type-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
       .tool-panel.collapsed {
         padding-bottom: 6px;
       }
@@ -1603,10 +1608,11 @@
               <div class="tool-fields">
                 <div class="field">
                   <label>Shape Type</label>
-                  <div class="tool-row">
+                  <div class="tool-row shape-type-grid">
                     <button class="ghost-button" id="shapeRectButton" type="button">Rectangular</button>
                     <button class="ghost-button" id="shapeEllipticalButton" type="button">Elliptical</button>
                     <button class="ghost-button" id="shapeCircularButton" type="button">Circular</button>
+                    <button class="ghost-button" id="shapePolygonButton" type="button">Polygon</button>
                   </div>
                 </div>
               </div>
@@ -1705,6 +1711,7 @@
         shapeRectButton: document.getElementById("shapeRectButton"),
         shapeEllipticalButton: document.getElementById("shapeEllipticalButton"),
         shapeCircularButton: document.getElementById("shapeCircularButton"),
+        shapePolygonButton: document.getElementById("shapePolygonButton"),
         selectionPicker: document.getElementById("selectionPicker"),
         viewSwitcher: document.getElementById("viewSwitcher"),
         viewOutputShell: document.getElementById("viewOutputShell"),
@@ -1785,6 +1792,8 @@
         dragLayerId: null,
         layerSectionCollapsed: false,
         interaction: null,
+        shapeDraft: null,
+        polygonClickMemory: null,
         spacePan: false,
         renderState: {
           frame: 0,
@@ -3151,6 +3160,7 @@
         ui.shapeRectButton.classList.toggle("active", state.shape.type === "rect");
         ui.shapeEllipticalButton.classList.toggle("active", state.shape.type === "ellipse");
         ui.shapeCircularButton.classList.toggle("active", state.shape.type === "circle");
+        ui.shapePolygonButton.classList.toggle("active", state.shape.type === "polygon");
         ui.colorEyedropperButton.classList.toggle("active", state.color.eyedropper);
         ui.colorHue.value = state.color.hsv.h;
         ui.colorSaturation.value = state.color.hsv.s;
@@ -5059,6 +5069,51 @@
           }
           overlayCtx.restore();
         }
+
+        if (state.shapeDraft && state.shapeDraft.type === "polygon") {
+          const draftPoints = state.shapeDraft.points.slice();
+          const previewPoint = state.shapeDraft.hover || draftPoints[draftPoints.length - 1];
+          const previewPoints =
+            previewPoint &&
+            (previewPoint.x !== draftPoints[draftPoints.length - 1].x || previewPoint.y !== draftPoints[draftPoints.length - 1].y)
+              ? [...draftPoints, previewPoint]
+              : draftPoints;
+
+          overlayCtx.save();
+          overlayCtx.fillStyle =
+            state.shapeDraft.mode === "paint" ? hexToRgba(state.color.active, 0.14) : hexToRgba(getCssVar("--text"), 0.09);
+          overlayCtx.strokeStyle =
+            state.shapeDraft.mode === "paint" ? hexToRgba(state.color.active, 0.64) : hexToRgba(getCssVar("--text"), 0.42);
+          overlayCtx.lineWidth = 1.25;
+
+          if (previewPoints.length >= 2) {
+            overlayCtx.beginPath();
+            previewPoints.forEach((point, index) => {
+              const screenX = snapPixel(state.viewport.x + (point.x + 0.5) * CELL_SIZE * state.viewport.zoom);
+              const screenY = snapPixel(state.viewport.y + (point.y + 0.5) * CELL_SIZE * state.viewport.zoom);
+              if (index === 0) overlayCtx.moveTo(screenX, screenY);
+              else overlayCtx.lineTo(screenX, screenY);
+            });
+            if (draftPoints.length >= 3) {
+              overlayCtx.closePath();
+              overlayCtx.fill();
+            }
+            overlayCtx.stroke();
+          }
+
+          draftPoints.forEach((point, index) => {
+            const screenX = snapPixel(state.viewport.x + (point.x + 0.5) * CELL_SIZE * state.viewport.zoom);
+            const screenY = snapPixel(state.viewport.y + (point.y + 0.5) * CELL_SIZE * state.viewport.zoom);
+            overlayCtx.beginPath();
+            overlayCtx.fillStyle = index === 0 ? getCssVar("--crosshair") : getCssVar("--bg-strong");
+            overlayCtx.strokeStyle =
+              state.shapeDraft.mode === "paint" ? hexToRgba(state.color.active, 0.72) : hexToRgba(getCssVar("--text"), 0.5);
+            overlayCtx.arc(screenX, screenY, 4, 0, Math.PI * 2);
+            overlayCtx.fill();
+            overlayCtx.stroke();
+          });
+          overlayCtx.restore();
+        }
       }
 
       function drawRulers() {
@@ -5484,6 +5539,51 @@
         return changed;
       }
 
+      function pointOnPolygonSegment(pointX, pointY, start, end) {
+        const cross = (pointY - start.y) * (end.x - start.x) - (pointX - start.x) * (end.y - start.y);
+        if (Math.abs(cross) > 1e-6) return false;
+        const dot = (pointX - start.x) * (end.x - start.x) + (pointY - start.y) * (end.y - start.y);
+        if (dot < 0) return false;
+        const squaredLength = (end.x - start.x) ** 2 + (end.y - start.y) ** 2;
+        return dot <= squaredLength;
+      }
+
+      function polygonContainsCell(cellX, cellY, points) {
+        let inside = false;
+        for (let index = 0, previous = points.length - 1; index < points.length; previous = index, index += 1) {
+          const start = points[previous];
+          const end = points[index];
+          if (pointOnPolygonSegment(cellX, cellY, start, end)) return true;
+          const intersects =
+            start.y > cellY !== end.y > cellY &&
+            cellX < ((end.x - start.x) * (cellY - start.y)) / ((end.y - start.y) || 1e-6) + start.x;
+          if (intersects) inside = !inside;
+        }
+        return inside;
+      }
+
+      function paintPolygonShape(points, mode) {
+        if (points.length < 3) return false;
+        const bounds = points.reduce(
+          (accumulator, point) => ({
+            minX: Math.min(accumulator.minX, point.x),
+            minY: Math.min(accumulator.minY, point.y),
+            maxX: Math.max(accumulator.maxX, point.x),
+            maxY: Math.max(accumulator.maxY, point.y),
+          }),
+          { minX: points[0].x, minY: points[0].y, maxX: points[0].x, maxY: points[0].y }
+        );
+        let changed = false;
+        for (let cellY = bounds.minY; cellY <= bounds.maxY; cellY += 1) {
+          for (let cellX = bounds.minX; cellX <= bounds.maxX; cellX += 1) {
+            if (polygonContainsCell(cellX, cellY, points)) {
+              changed = paintCells(cellX, cellY, mode) || changed;
+            }
+          }
+        }
+        return changed;
+      }
+
       function samplePaintColorAt(worldX, worldY) {
         const layer = topPaintedLayerAt(worldX, worldY);
         if (!layer) return null;
@@ -5551,6 +5651,75 @@
           currentCellY: cell.y,
         };
         setStatus(mode === "paint" ? "Drag to paint a shape." : "Drag to erase a shape.");
+        render({ overlay: true });
+      }
+
+      function commitPolygonDraft(points, mode) {
+        const changed = paintPolygonShape(points, mode);
+        state.shapeDraft = null;
+        state.polygonClickMemory = null;
+        render({ ui: changed, content: true, overlay: true });
+      }
+
+      function cancelShapeDraft() {
+        if (!state.shapeDraft) return false;
+        state.shapeDraft = null;
+        state.polygonClickMemory = null;
+        return true;
+      }
+
+      function beginPolygonShape(clientX, clientY, mode) {
+        const pointer = worldFromClient(clientX, clientY);
+        const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+        const point = { x: cell.x, y: cell.y };
+        const draft = state.shapeDraft;
+        const now = Date.now();
+        const previousClick = state.polygonClickMemory;
+        const isDoubleClick =
+          !!previousClick &&
+          previousClick.mode === mode &&
+          now - previousClick.time <= 320 &&
+          Math.abs(previousClick.cellX - cell.x) <= 1 &&
+          Math.abs(previousClick.cellY - cell.y) <= 1;
+
+        state.polygonClickMemory = {
+          mode,
+          cellX: cell.x,
+          cellY: cell.y,
+          time: now,
+        };
+
+        if (!draft || draft.type !== "polygon" || draft.mode !== mode) {
+          state.shapeDraft = {
+            type: "polygon",
+            mode,
+            points: [point],
+            hover: point,
+          };
+          setStatus("Polygon started. Click points, click the first point to close, or double click to fill.");
+          render({ overlay: true });
+          return;
+        }
+
+        const firstPoint = draft.points[0];
+        if (draft.points.length >= 3 && point.x === firstPoint.x && point.y === firstPoint.y) {
+          commitPolygonDraft(draft.points.slice(), draft.mode);
+          return;
+        }
+
+        const lastPoint = draft.points[draft.points.length - 1];
+        const isNewPoint = point.x !== lastPoint.x || point.y !== lastPoint.y;
+        if (isNewPoint) {
+          draft.points.push(point);
+        }
+        draft.hover = point;
+
+        if (isDoubleClick && draft.points.length >= 3) {
+          commitPolygonDraft(draft.points.slice(), draft.mode);
+          return;
+        }
+
+        setStatus("Polygon point added.");
         render({ overlay: true });
       }
 
@@ -5901,7 +6070,11 @@
           return;
         }
         if (state.activeTool === "shape") {
-          beginShape(event.clientX, event.clientY, isRightClick ? "erase" : "paint", event.shiftKey);
+          if (state.shape.type === "polygon") {
+            beginPolygonShape(event.clientX, event.clientY, isRightClick ? "erase" : "paint");
+          } else {
+            beginShape(event.clientX, event.clientY, isRightClick ? "erase" : "paint", event.shiftKey);
+          }
           return;
         }
         if (state.activeTool === "view" && !isRightClick) {
@@ -5994,6 +6167,14 @@
           state.interaction.centered = event.shiftKey && (state.interaction.shapeType === "ellipse" || state.interaction.shapeType === "circle");
           state.interaction.currentCellX = cell.x;
           state.interaction.currentCellY = cell.y;
+          render({ overlay: true });
+          return;
+        }
+
+        if (state.shapeDraft && state.shapeDraft.type === "polygon") {
+          const pointer = worldFromClient(event.clientX, event.clientY);
+          const cell = cellFromWorld(pointer.worldX, pointer.worldY);
+          state.shapeDraft.hover = { x: cell.x, y: cell.y };
           render({ overlay: true });
           return;
         }
@@ -6236,6 +6417,9 @@
         if (tool !== "viewbox") {
           cancelPendingView();
         }
+        if (tool !== "shape") {
+          cancelShapeDraft();
+        }
         if (tool === "select") {
           clearActiveTarget();
         } else if (tool === "brush") {
@@ -6331,6 +6515,10 @@
       });
       ui.shapeCircularButton.addEventListener("click", () => {
         state.shape.type = "circle";
+        render({ ui: true, overlay: true });
+      });
+      ui.shapePolygonButton.addEventListener("click", () => {
+        state.shape.type = "polygon";
         render({ ui: true, overlay: true });
       });
 
@@ -6434,6 +6622,19 @@
       document.addEventListener(
         "pointerdown",
         (event) => {
+          if (!state.shapeDraft) return;
+          if (event.target === ui.overlayCanvas) return;
+          if (cancelShapeDraft()) {
+            setStatus("Shape draft cancelled.");
+            render({ overlay: true });
+          }
+        },
+        true
+      );
+
+      document.addEventListener(
+        "pointerdown",
+        (event) => {
           if (!isEditingName()) return;
           if (event.target.closest(".layer-name")) return;
           cancelRenameMode();
@@ -6488,6 +6689,12 @@
         if (event.key === "Escape" && cancelPendingView()) {
           setStatus("Empty view cancelled.");
           render({ ui: true, overlay: true });
+          return;
+        }
+        if (event.key === "Escape" && state.shapeDraft) {
+          cancelShapeDraft();
+          setStatus("Shape draft cancelled.");
+          render({ overlay: true });
           return;
         }
         if (event.code === "Space") state.spacePan = true;
