@@ -3356,6 +3356,17 @@
         return hadDraft;
       }
 
+      function cancelMeasurementInProgress() {
+        const hadDraft = !!state.measurementDraft;
+        const hadInteraction = !!(state.interaction && String(state.interaction.type || "").startsWith("measurement-"));
+        state.measurementDraft = null;
+        state.measurementAreaClickMemory = null;
+        if (hadInteraction) {
+          state.interaction = null;
+        }
+        return hadDraft || hadInteraction;
+      }
+
       function cancelPendingView() {
         let cancelled = false;
         if (state.pendingViewCreation) {
@@ -8074,9 +8085,15 @@
           return;
         }
         if (event.code === "Space") state.spacePan = true;
-        if (event.key === "Escape" && cancelMeasurementDraft()) {
+        if (event.key === "Escape" && state.activeTool === "measure" && cancelMeasurementInProgress()) {
           setStatus("Measurement draft cancelled.");
           render({ overlay: true });
+          return;
+        }
+        if (event.key === "Escape" && state.activeTool === "measure" && state.activeMeasurementId) {
+          setActiveMeasurementById(state.activeMeasurementId, { tool: "select" });
+          setStatus("Measurement selected.");
+          render({ ui: true, overlay: true });
           return;
         }
         if (event.key === "Escape" && state.color.eyedropper) {
