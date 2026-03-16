@@ -1837,6 +1837,7 @@
           inside: false,
           shiftKey: false,
         },
+        middleClickMemory: null,
         color: {
           active: DEFAULT_COLOR,
           hsv: hexToHsv(DEFAULT_COLOR),
@@ -2786,6 +2787,11 @@
           worldX: (screenX - state.viewport.x) / state.viewport.zoom,
           worldY: (screenY - state.viewport.y) / state.viewport.zoom,
         };
+      }
+
+      function centerViewportOrigin() {
+        state.viewport.x = ui.contentCanvas.clientWidth / 2;
+        state.viewport.y = ui.contentCanvas.clientHeight / 2;
       }
 
       function cellFromWorld(worldX, worldY) {
@@ -8059,6 +8065,28 @@
         const isRightClick = event.button === 2;
         const pickerDismissed = dismissSelectionPicker();
         if (pickerDismissed) render({ ui: true });
+        if (event.button === 1) {
+          const now = Date.now();
+          const previousClick = state.middleClickMemory;
+          const isDoubleMiddleClick =
+            !!previousClick &&
+            now - previousClick.time <= 320 &&
+            Math.abs(previousClick.clientX - event.clientX) <= 6 &&
+            Math.abs(previousClick.clientY - event.clientY) <= 6;
+          state.middleClickMemory = isDoubleMiddleClick
+            ? null
+            : {
+                clientX: event.clientX,
+                clientY: event.clientY,
+                time: now,
+              };
+          if (isDoubleMiddleClick) {
+            centerViewportOrigin();
+            setStatus("Canvas re-centered on 0,0.");
+            render({ static: true, scenes: true, content: true, overlay: true, rulers: true });
+            return;
+          }
+        }
         if (state.spacePan || event.button === 1) {
           beginPan(event.clientX, event.clientY);
           return;
@@ -9267,6 +9295,7 @@
 
       pushHistorySnapshot("Initial State");
       resizeCanvases();
+      centerViewportOrigin();
       render();
     </script>
   </body>
