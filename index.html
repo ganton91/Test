@@ -1612,12 +1612,12 @@
                 <div class="dimension-row">
                   <div class="field">
                     <label for="brushWidth">Width cm</label>
-                    <input id="brushWidth" type="number" min="5" max="500" step="5" value="5" />
+                    <input id="brushWidth" type="number" min="5" max="1000" step="5" value="5" />
                   </div>
                   <button class="dimension-link" id="brushLinkButton" type="button" aria-pressed="false" title="Link width and height">⛓</button>
                   <div class="field">
                     <label for="brushHeight">Height cm</label>
-                    <input id="brushHeight" type="number" min="5" max="500" step="5" value="5" />
+                    <input id="brushHeight" type="number" min="5" max="1000" step="5" value="5" />
                   </div>
                 </div>
               </div>
@@ -8444,7 +8444,8 @@
         if (event.shiftKey && state.activeTool === "brush" && activeLayer()) {
           const wheelDelta = Math.abs(event.deltaY) > Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
           if (wheelDelta !== 0) {
-            const nextWidth = Math.max(1, state.brush.width + (wheelDelta < 0 ? 1 : -1));
+            const maxBrushCells = centimetersToCells(1000);
+            const nextWidth = Math.min(maxBrushCells, Math.max(1, state.brush.width + (wheelDelta < 0 ? 1 : -1)));
             state.brush.width = nextWidth;
             if (state.brush.linked) {
               state.brush.height = nextWidth;
@@ -8612,7 +8613,8 @@
         render({ ui: true, overlay: true });
       });
       ui.brushWidth.addEventListener("input", () => {
-        const nextWidth = centimetersToCells(ui.brushWidth.value);
+        const maxBrushCells = centimetersToCells(1000);
+        const nextWidth = Math.min(maxBrushCells, centimetersToCells(ui.brushWidth.value));
         state.brush.width = nextWidth;
         if (state.brush.linked || state.brush.shape === "circle") {
           state.brush.height = nextWidth;
@@ -8620,7 +8622,8 @@
         render({ ui: true, overlay: true });
       });
       ui.brushHeight.addEventListener("input", () => {
-        const nextHeight = centimetersToCells(ui.brushHeight.value);
+        const maxBrushCells = centimetersToCells(1000);
+        const nextHeight = Math.min(maxBrushCells, centimetersToCells(ui.brushHeight.value));
         state.brush.height = nextHeight;
         if (state.brush.linked || state.brush.shape === "circle") {
           state.brush.width = nextHeight;
