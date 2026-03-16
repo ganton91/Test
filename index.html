@@ -2110,7 +2110,6 @@
           activeMeasurementId: state.activeMeasurementId,
           activeMeasurementItem: state.activeMeasurementItem ? { ...state.activeMeasurementItem } : null,
           activeViewId: state.activeViewId,
-          activeCanvasViewTab: state.activeCanvasViewTab,
           activeLayerId: state.activeLayerId,
           activeTool: state.activeTool,
         };
@@ -2177,10 +2176,6 @@
           ? { ...snapshot.activeMeasurementItem }
           : null;
         state.activeViewId = state.views.some((view) => view.id === snapshot.activeViewId) ? snapshot.activeViewId : null;
-        state.activeCanvasViewTab =
-          snapshot.activeCanvasViewTab === "main" || state.views.some((view) => view.id === snapshot.activeCanvasViewTab)
-            ? snapshot.activeCanvasViewTab
-            : "main";
         state.activeLayerId = state.layers.some((layer) => layer.id === snapshot.activeLayerId) ? snapshot.activeLayerId : null;
         state.activeTool = snapshot.activeTool;
         state.history.isRestoring = false;
