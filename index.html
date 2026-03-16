@@ -7653,6 +7653,7 @@
         }
 
         if (state.interaction.type === "layer-move") {
+          ui.overlayCanvas.style.cursor = "move";
           const layer = state.layers.find((entry) => entry.id === state.interaction.layerId);
           if (!layer) return;
           const pointer = worldFromClient(event.clientX, event.clientY);
@@ -7690,6 +7691,7 @@
         }
 
         if (state.interaction.type === "measurement-move") {
+          ui.overlayCanvas.style.cursor = "move";
           const measurement = state.measurements.find((entry) => entry.id === state.interaction.measurementId);
           if (!measurement) return;
           const pointer = worldFromClient(event.clientX, event.clientY);
@@ -7710,6 +7712,7 @@
         }
 
         if (state.interaction.type === "measurement-item-move") {
+          ui.overlayCanvas.style.cursor = "move";
           const measurement = state.measurements.find((entry) => entry.id === state.interaction.measurementId);
           if (!measurement) return;
           const target = state.interaction.target;
