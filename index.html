@@ -1326,7 +1326,7 @@
       .view-edit-column-headings,
       .view-edit-layer-row {
         display: grid;
-        grid-template-columns: 16px minmax(0, 1fr) 88px 88px 88px;
+        grid-template-columns: 16px minmax(0, 1fr) 56px 88px 88px 88px;
         gap: 10px;
         align-items: center;
       }
@@ -1385,6 +1385,33 @@
         background: var(--surface-strong);
         color: var(--muted);
         font-size: 13px;
+      }
+
+      .view-edit-color-input {
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: transparent;
+        cursor: pointer;
+        appearance: none;
+        -webkit-appearance: none;
+        overflow: hidden;
+      }
+
+      .view-edit-color-input::-webkit-color-swatch-wrapper {
+        padding: 0;
+      }
+
+      .view-edit-color-input::-webkit-color-swatch {
+        border: 0;
+        border-radius: 999px;
+      }
+
+      .view-edit-color-input::-moz-color-swatch {
+        border: 0;
+        border-radius: 999px;
       }
 
       .view-edit-empty {
@@ -1543,6 +1570,13 @@
               </div>
             </div>
             <div class="menu-section">
+              <div class="menu-title">Override View Colors</div>
+              <div class="menu-actions">
+                <button class="mode-button active" data-view-color-override="on">On</button>
+                <button class="mode-button" data-view-color-override="off">Off</button>
+              </div>
+            </div>
+            <div class="menu-section">
               <div class="menu-title">Outline</div>
               <div class="menu-actions">
                 <button class="mode-button active" data-view-outline="on">On</button>
@@ -1590,6 +1624,7 @@
             <div class="view-edit-column-headings" id="viewEditColumnHeadings">
               <span></span>
               <span>Layer</span>
+              <span>Color</span>
               <span>Height</span>
               <span>Start</span>
               <span>End</span>
@@ -1905,6 +1940,7 @@
         dualGridButtons: Array.from(document.querySelectorAll("[data-dual-grid]")),
         viewDepthButtons: Array.from(document.querySelectorAll("[data-view-depth]")),
         viewDepthModeButtons: Array.from(document.querySelectorAll("[data-view-depth-mode]")),
+        viewColorOverrideButtons: Array.from(document.querySelectorAll("[data-view-color-override]")),
         viewOutlineButtons: Array.from(document.querySelectorAll("[data-view-outline]")),
         viewSkyButtons: Array.from(document.querySelectorAll("[data-view-sky]")),
         viewGroundButtons: Array.from(document.querySelectorAll("[data-view-ground]")),
@@ -2045,6 +2081,7 @@
           strength: 0.05,
           mode: "shadow",
         },
+        viewColorOverride: true,
         viewDepthRepeat: {
           timeoutId: null,
           intervalId: null,
@@ -2458,6 +2495,7 @@
           },
           gridPosition: state.gridPosition,
           dualStrokeGrid: state.dualStrokeGrid,
+          viewColorOverride: !!state.viewColorOverride,
           viewDepthEffect: {
             enabled: !!state.viewDepthEffect.enabled,
             strength: state.viewDepthEffect.strength,
@@ -2564,6 +2602,7 @@
           state.viewport.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number.isFinite(project.viewport?.zoom) ? project.viewport.zoom : 1));
           state.gridPosition = project.gridPosition === "above" ? "above" : "below";
           state.dualStrokeGrid = !!project.dualStrokeGrid;
+          state.viewColorOverride = project.viewColorOverride !== false;
           state.viewDepthEffect.enabled = project.viewDepthEffect?.enabled !== false;
           state.viewDepthEffect.strength = Math.max(
             0.01,
@@ -2793,10 +2832,22 @@
         ui.canvasShell.classList.toggle("view-mode", inViewMode);
       }
 
+      function layerRepresentativeColor(layer) {
+        if (!layer) return DEFAULT_COLOR;
+        for (const tile of Object.values(layer.tiles || {})) {
+          const firstColor = tile?.pixels?.values?.().next?.();
+          if (firstColor && !firstColor.done && typeof firstColor.value === "string") {
+            return firstColor.value;
+          }
+        }
+        return DEFAULT_COLOR;
+      }
+
       function defaultViewLayerConfig(existingConfig = null) {
         return {
           baseElevation: Number.isFinite(existingConfig && existingConfig.baseElevation) ? existingConfig.baseElevation : 0,
           height: Number.isFinite(existingConfig && existingConfig.height) ? existingConfig.height : 0,
+          color: typeof (existingConfig && existingConfig.color) === "string" ? existingConfig.color : null,
         };
       }
 
@@ -2850,9 +2901,13 @@
           .map((layerId) => {
             const layer = state.layers.find((entry) => entry.id === layerId);
             if (!layer) return null;
+            const config = defaultViewLayerConfig(view.layerConfigs && view.layerConfigs[layerId]);
             return {
               layer,
-              config: defaultViewLayerConfig(view.layerConfigs && view.layerConfigs[layerId]),
+              config: {
+                ...config,
+                color: config.color || layerRepresentativeColor(layer),
+              },
             };
           })
           .filter(Boolean);
@@ -2999,6 +3054,7 @@
         const columnsByLayer = configuredLayers.map(({ layer, config }, orderIndex) => ({
           layerId: layer.id,
           colorByColumn: collectLayerProjectedColumns(layer, bounds, direction),
+          overrideColor: state.viewColorOverride ? config.color || layerRepresentativeColor(layer) : null,
           opacity: Math.max(0, Math.min(1, layer.opacity)),
           baseCells: Math.round(config.baseElevation * CELLS_PER_METER),
           heightCells: Math.max(0, Math.round(config.height * CELLS_PER_METER)),
@@ -3051,7 +3107,7 @@
               const existing = grid[rowIndex][projectedColumnIndex];
               const candidate = {
                 layerId: entry.layerId,
-                color: column.color,
+                color: entry.overrideColor || column.color,
                 depth: column.depth,
                 isCut: !!column.isCut,
                 opacity: entry.opacity,
@@ -3203,6 +3259,7 @@
               layerId,
               baseElevation: config.baseElevation,
               height: config.height,
+              color: config.color || (layer ? layerRepresentativeColor(layer) : DEFAULT_COLOR),
               name: layer ? layer.name : "Layer",
             };
           }),
@@ -3228,6 +3285,7 @@
           nextLayerConfigs[item.layerId] = {
             baseElevation: Number.isFinite(item.baseElevation) ? item.baseElevation : 0,
             height: Math.max(0, Number.isFinite(item.height) ? item.height : 0),
+            color: typeof item.color === "string" ? item.color : DEFAULT_COLOR,
           };
         });
         view.layerConfigs = nextLayerConfigs;
@@ -5011,6 +5069,9 @@
         ui.viewDepthModeButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewDepthMode === state.viewDepthEffect.mode);
         });
+        ui.viewColorOverrideButtons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.viewColorOverride === (state.viewColorOverride ? "on" : "off"));
+        });
         ui.viewOutlineButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewOutline === (state.viewOutlineEffect.enabled ? "on" : "off"));
         });
@@ -5218,6 +5279,18 @@
           name.className = "view-edit-layer-name";
           name.textContent = item.name;
           row.appendChild(name);
+
+          const colorInput = document.createElement("input");
+          colorInput.className = "view-edit-color-input";
+          colorInput.type = "color";
+          colorInput.value = item.color || DEFAULT_COLOR;
+          colorInput.setAttribute("aria-label", item.name + " view color");
+          colorInput.addEventListener("click", (event) => event.stopPropagation());
+          colorInput.addEventListener("pointerdown", (event) => event.stopPropagation());
+          colorInput.addEventListener("input", () => {
+            item.color = colorInput.value || DEFAULT_COLOR;
+          });
+          row.appendChild(colorInput);
 
           const heightField = document.createElement("div");
           heightField.className = "field view-edit-field";
@@ -10028,6 +10101,14 @@
         button.addEventListener("click", () => {
           state.viewDepthEffect.mode = button.dataset.viewDepthMode === "fog" ? "fog" : "shadow";
           setStatus(state.viewDepthEffect.mode === "fog" ? "View depth mode set to fog." : "View depth mode set to shadow.");
+          render({ ui: true, content: true });
+        });
+      });
+
+      ui.viewColorOverrideButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          state.viewColorOverride = button.dataset.viewColorOverride === "on";
+          setStatus(state.viewColorOverride ? "View color override enabled." : "View color override disabled.");
           render({ ui: true, content: true });
         });
       });
