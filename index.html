@@ -2147,6 +2147,7 @@
       const CENTIMETERS_PER_CELL = 5;
       const CELLS_PER_METER = 100 / CENTIMETERS_PER_CELL;
       const CELLS_PER_HALF_METER = 50 / CENTIMETERS_PER_CELL;
+      const VIEW_ELEVATION_STEP_METERS = 0.05;
       const TILE_SIZE = 32;
       const MIN_ZOOM = 0.12;
       const MAX_ZOOM = 3.6;
@@ -3557,21 +3558,38 @@
         }));
 
         const totalColumns = bounds[directionConfig.primaryMaxKey] - bounds[directionConfig.primaryMinKey] + 1;
-        const minBaseCells = columnsByLayer.reduce((min, entry) => {
-          if (!entry.heightCells || !entry.colorByColumn.size) return min;
-          return Math.min(min, entry.baseCells);
-        }, 0);
-        const maxTopCells = columnsByLayer.reduce((max, entry) => {
-          if (!entry.heightCells || !entry.colorByColumn.size) return max;
-          return Math.max(max, entry.baseCells + entry.heightCells);
-        }, 0);
-        const totalRows = maxTopCells - minBaseCells;
-        if (!totalColumns || !totalRows || !columnsByLayer.some((entry) => entry.heightCells > 0 && entry.colorByColumn.size > 0)) {
+        const renderableEntries = columnsByLayer.filter((entry) => entry.heightCells > 0 && entry.colorByColumn.size > 0);
+        if (!totalColumns || !renderableEntries.length) {
           canvas.classList.add("hidden");
           emptyState.classList.remove("hidden");
           emptyState.textContent = "Set layer heights in Edit Layers to build this view";
           return;
         }
+        const contentMinZ = renderableEntries.reduce((min, entry) => Math.min(min, entry.baseCells), Infinity);
+        const contentMaxZ = renderableEntries.reduce((max, entry) => Math.max(max, entry.baseCells + entry.heightCells), -Infinity);
+        const totalRows = contentMaxZ - contentMinZ;
+        if (!totalRows) {
+          canvas.classList.add("hidden");
+          emptyState.classList.remove("hidden");
+          emptyState.textContent = "Set layer heights in Edit Layers to build this view";
+          return;
+        }
+        let contentMinProjectedColumn = Infinity;
+        let contentMaxProjectedColumn = -Infinity;
+        for (const entry of renderableEntries) {
+          entry.colorByColumn.forEach((_, columnIndex) => {
+            const projectedColumnIndex = directionConfig.mirrorColumns ? totalColumns - 1 - columnIndex : columnIndex;
+            if (projectedColumnIndex < contentMinProjectedColumn) contentMinProjectedColumn = projectedColumnIndex;
+            if (projectedColumnIndex > contentMaxProjectedColumn) contentMaxProjectedColumn = projectedColumnIndex;
+          });
+        }
+        if (!Number.isFinite(contentMinProjectedColumn) || !Number.isFinite(contentMaxProjectedColumn)) {
+          canvas.classList.add("hidden");
+          emptyState.classList.remove("hidden");
+          emptyState.textContent = "No painted layers intersect this view";
+          return;
+        }
+        const contentColumns = contentMaxProjectedColumn - contentMinProjectedColumn + 1;
 
         canvas.classList.remove("hidden");
         emptyState.classList.add("hidden");
@@ -3580,13 +3598,89 @@
         const surfaceWidth = canvas.clientWidth;
         const surfaceHeight = canvas.clientHeight;
         const padding = 18;
-        const cellPixelSize = Math.max(1, Math.floor(Math.min((surfaceWidth - padding * 2) / totalColumns, (surfaceHeight - padding * 2) / totalRows)));
-        const drawWidth = totalColumns * cellPixelSize;
-        const drawHeight = totalRows * cellPixelSize;
+        const availableWidth = Math.max(1, surfaceWidth - padding * 2);
+        const availableHeight = Math.max(1, surfaceHeight - padding * 2);
+        const targetColumns = contentColumns > availableWidth ? Math.max(1, Math.floor(availableWidth)) : contentColumns;
+        const columnScaleX = contentColumns / targetColumns;
+        const targetRows = totalRows > availableHeight ? Math.max(1, Math.floor(availableHeight)) : totalRows;
+        const rowScaleY = totalRows / targetRows;
+        const drawEnvironmentBehindContent = !!state.viewSectionCutEffect.enabled;
+
+        const grid = Array.from({ length: totalRows }, () => Array(contentColumns).fill(null));
+        for (const entry of columnsByLayer) {
+          if (!entry.heightCells || !entry.colorByColumn.size) continue;
+          entry.colorByColumn.forEach((column, columnIndex) => {
+            const projectedColumnIndex = directionConfig.mirrorColumns ? totalColumns - 1 - columnIndex : columnIndex;
+            if (projectedColumnIndex < contentMinProjectedColumn || projectedColumnIndex > contentMaxProjectedColumn) return;
+            const adjustedColumnIndex = projectedColumnIndex - contentMinProjectedColumn;
+            for (let z = entry.baseCells; z < entry.baseCells + entry.heightCells; z += 1) {
+              if (z < contentMinZ || z >= contentMaxZ) continue;
+              const rowIndex = totalRows - 1 - (z - contentMinZ);
+              const existing = grid[rowIndex][adjustedColumnIndex];
+              const candidate = {
+                layerId: entry.layerId,
+                color: entry.overrideColor || column.color,
+                depth: column.depth,
+                isCut: !!column.isCut,
+                opacity: entry.opacity,
+                forceOutline: !!entry.outline,
+                outlineColor: entry.outlineColor || state.viewOutlineEffect.color,
+                outlineWidth: Math.max(1, Math.min(6, Number(entry.outlineWidth) || 1)),
+                orderIndex: entry.orderIndex,
+              };
+              if (
+                !existing ||
+                (directionConfig.frontBoundary === "min" ? candidate.depth < existing.depth : candidate.depth > existing.depth) ||
+                (candidate.depth === existing.depth && candidate.orderIndex < existing.orderIndex)
+              ) {
+                grid[rowIndex][adjustedColumnIndex] = candidate;
+              }
+            }
+          });
+        }
+
+        let renderGrid = grid;
+        let renderRows = totalRows;
+        let renderColumns = contentColumns;
+        if (targetColumns !== contentColumns || targetRows !== totalRows) {
+          const reducedRows = targetRows;
+          const reducedColumns = targetColumns;
+          const reducedGrid = Array.from({ length: reducedRows }, () => Array(reducedColumns).fill(null));
+          const isCandidateCloser = (candidate, existing) => {
+            if (!existing) return true;
+            if (directionConfig.frontBoundary === "min") {
+              if (candidate.depth !== existing.depth) return candidate.depth < existing.depth;
+            } else if (candidate.depth !== existing.depth) {
+              return candidate.depth > existing.depth;
+            }
+            return candidate.orderIndex < existing.orderIndex;
+          };
+          for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
+            for (let columnIndex = 0; columnIndex < contentColumns; columnIndex += 1) {
+              const cell = grid[rowIndex][columnIndex];
+              if (!cell) continue;
+              const reducedRow = Math.min(reducedRows - 1, Math.floor(rowIndex / rowScaleY));
+              const reducedColumn = Math.min(reducedColumns - 1, Math.floor(columnIndex / columnScaleX));
+              const existing = reducedGrid[reducedRow][reducedColumn];
+              if (isCandidateCloser(cell, existing)) {
+                reducedGrid[reducedRow][reducedColumn] = { ...cell };
+              } else if (existing) {
+                if (cell.isCut) existing.isCut = true;
+                if (cell.forceOutline) existing.forceOutline = true;
+              }
+            }
+          }
+          renderGrid = reducedGrid;
+          renderRows = reducedRows;
+          renderColumns = reducedColumns;
+        }
+
+        const cellPixelSize = Math.max(1, Math.floor(Math.min(availableWidth / renderColumns, availableHeight / renderRows)));
+        const drawWidth = renderColumns * cellPixelSize;
+        const drawHeight = renderRows * cellPixelSize;
         const offsetX = Math.floor((surfaceWidth - drawWidth) / 2);
         const offsetY = Math.floor((surfaceHeight - drawHeight) / 2);
-        const zeroLineY = offsetY + (maxTopCells - 0) * cellPixelSize + 0.5;
-        const drawEnvironmentBehindContent = !!state.viewSectionCutEffect.enabled;
+        const zeroLineY = offsetY + ((contentMaxZ - 0) / rowScaleY) * cellPixelSize + 0.5;
 
         context.clearRect(0, 0, surfaceWidth, surfaceHeight);
         context.fillStyle = activeViewSkyColor();
@@ -3608,41 +3702,10 @@
           }
         }
 
-        const grid = Array.from({ length: totalRows }, () => Array(totalColumns).fill(null));
-        for (const entry of columnsByLayer) {
-          if (!entry.heightCells || !entry.colorByColumn.size) continue;
-          entry.colorByColumn.forEach((column, columnIndex) => {
-            const projectedColumnIndex = directionConfig.mirrorColumns ? totalColumns - 1 - columnIndex : columnIndex;
-            for (let z = entry.baseCells; z < entry.baseCells + entry.heightCells; z += 1) {
-              if (z < minBaseCells || z >= maxTopCells) continue;
-              const rowIndex = totalRows - 1 - (z - minBaseCells);
-              const existing = grid[rowIndex][projectedColumnIndex];
-              const candidate = {
-                layerId: entry.layerId,
-                color: entry.overrideColor || column.color,
-                depth: column.depth,
-                isCut: !!column.isCut,
-                opacity: entry.opacity,
-                forceOutline: !!entry.outline,
-                outlineColor: entry.outlineColor || state.viewOutlineEffect.color,
-                outlineWidth: Math.max(1, Math.min(6, Number(entry.outlineWidth) || 1)),
-                orderIndex: entry.orderIndex,
-              };
-              if (
-                !existing ||
-                (directionConfig.frontBoundary === "min" ? candidate.depth < existing.depth : candidate.depth > existing.depth) ||
-                (candidate.depth === existing.depth && candidate.orderIndex < existing.orderIndex)
-              ) {
-                grid[rowIndex][projectedColumnIndex] = candidate;
-              }
-            }
-          });
-        }
-
         let nearestVisibleDepth = directionConfig.frontBoundary === "min" ? Infinity : -Infinity;
-        for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
-          for (let columnIndex = 0; columnIndex < totalColumns; columnIndex += 1) {
-            const cell = grid[rowIndex][columnIndex];
+        for (let rowIndex = 0; rowIndex < renderRows; rowIndex += 1) {
+          for (let columnIndex = 0; columnIndex < renderColumns; columnIndex += 1) {
+            const cell = renderGrid[rowIndex][columnIndex];
             if (!cell) continue;
             if (directionConfig.frontBoundary === "min") {
               nearestVisibleDepth = Math.min(nearestVisibleDepth, cell.depth);
@@ -3652,9 +3715,9 @@
           }
         }
 
-        for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
-          for (let columnIndex = 0; columnIndex < totalColumns; columnIndex += 1) {
-            const cell = grid[rowIndex][columnIndex];
+        for (let rowIndex = 0; rowIndex < renderRows; rowIndex += 1) {
+          for (let columnIndex = 0; columnIndex < renderColumns; columnIndex += 1) {
+            const cell = renderGrid[rowIndex][columnIndex];
             if (!cell) continue;
             const depthOffsetCells = directionConfig.frontBoundary === "min"
               ? cell.depth - nearestVisibleDepth
@@ -3665,7 +3728,7 @@
           }
         }
 
-        const hasForcedLayerOutline = grid.some((row) => row.some((cell) => cell && cell.forceOutline));
+        const hasForcedLayerOutline = renderGrid.some((row) => row.some((cell) => cell && cell.forceOutline));
         const drawViewOutlinePass = ({ globalPass, layerPass }) => {
           if ((!globalPass || !state.viewOutlineEffect.enabled) && (!layerPass || !hasForcedLayerOutline)) return;
           context.save();
@@ -3673,9 +3736,9 @@
             context.fillStyle = color;
             context.fillRect(rectX, rectY, rectWidth, rectHeight);
           };
-          for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
-            for (let columnIndex = 0; columnIndex < totalColumns; columnIndex += 1) {
-              const cell = grid[rowIndex][columnIndex];
+          for (let rowIndex = 0; rowIndex < renderRows; rowIndex += 1) {
+            for (let columnIndex = 0; columnIndex < renderColumns; columnIndex += 1) {
+              const cell = renderGrid[rowIndex][columnIndex];
               if (!cell) continue;
               const x = offsetX + columnIndex * cellPixelSize;
               const y = offsetY + rowIndex * cellPixelSize;
@@ -3685,10 +3748,10 @@
               const outlineColor = globalPass
                 ? state.viewOutlineEffect.color
                 : cell.outlineColor || state.viewOutlineEffect.color;
-              const topNeighbor = rowIndex > 0 ? grid[rowIndex - 1][columnIndex] : null;
-              const bottomNeighbor = rowIndex < totalRows - 1 ? grid[rowIndex + 1][columnIndex] : null;
-              const leftNeighbor = columnIndex > 0 ? grid[rowIndex][columnIndex - 1] : null;
-              const rightNeighbor = columnIndex < totalColumns - 1 ? grid[rowIndex][columnIndex + 1] : null;
+              const topNeighbor = rowIndex > 0 ? renderGrid[rowIndex - 1][columnIndex] : null;
+              const bottomNeighbor = rowIndex < renderRows - 1 ? renderGrid[rowIndex + 1][columnIndex] : null;
+              const leftNeighbor = columnIndex > 0 ? renderGrid[rowIndex][columnIndex - 1] : null;
+              const rightNeighbor = columnIndex < renderColumns - 1 ? renderGrid[rowIndex][columnIndex + 1] : null;
               const boundaryInfo = (neighbor) => {
                 if (layerPass && !cell.forceOutline) return { draw: false, outside: false };
                 if (globalPass && !state.viewOutlineEffect.enabled) return { draw: false, outside: false };
@@ -3777,9 +3840,9 @@
 
         if (state.viewSectionCutEffect.enabled) {
           context.save();
-          for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
-            for (let columnIndex = 0; columnIndex < totalColumns; columnIndex += 1) {
-              const cell = grid[rowIndex][columnIndex];
+          for (let rowIndex = 0; rowIndex < renderRows; rowIndex += 1) {
+            for (let columnIndex = 0; columnIndex < renderColumns; columnIndex += 1) {
+              const cell = renderGrid[rowIndex][columnIndex];
               if (!cell || !cell.isCut) continue;
               context.fillStyle = hexToRgba(state.viewSectionCutEffect.color || defaultViewSectionCutColor(), cell.opacity);
               context.fillRect(offsetX + columnIndex * cellPixelSize, offsetY + rowIndex * cellPixelSize, cellPixelSize, cellPixelSize);
@@ -3796,21 +3859,21 @@
             context.fillStyle = outlineColor;
             context.fillRect(rectX, rectY, rectWidth, rectHeight);
           };
-          for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
-            for (let columnIndex = 0; columnIndex < totalColumns; columnIndex += 1) {
-              const cell = grid[rowIndex][columnIndex];
+          for (let rowIndex = 0; rowIndex < renderRows; rowIndex += 1) {
+            for (let columnIndex = 0; columnIndex < renderColumns; columnIndex += 1) {
+              const cell = renderGrid[rowIndex][columnIndex];
               if (!cell || !cell.isCut) continue;
               const x = offsetX + columnIndex * cellPixelSize;
               const y = offsetY + rowIndex * cellPixelSize;
-              const topNeighbor = rowIndex > 0 ? grid[rowIndex - 1][columnIndex] : null;
-              const bottomNeighbor = rowIndex < totalRows - 1 ? grid[rowIndex + 1][columnIndex] : null;
-              const leftNeighbor = columnIndex > 0 ? grid[rowIndex][columnIndex - 1] : null;
-              const rightNeighbor = columnIndex < totalColumns - 1 ? grid[rowIndex][columnIndex + 1] : null;
-              const topLeftNeighbor = rowIndex > 0 && columnIndex > 0 ? grid[rowIndex - 1][columnIndex - 1] : null;
-              const topRightNeighbor = rowIndex > 0 && columnIndex < totalColumns - 1 ? grid[rowIndex - 1][columnIndex + 1] : null;
-              const bottomLeftNeighbor = rowIndex < totalRows - 1 && columnIndex > 0 ? grid[rowIndex + 1][columnIndex - 1] : null;
+              const topNeighbor = rowIndex > 0 ? renderGrid[rowIndex - 1][columnIndex] : null;
+              const bottomNeighbor = rowIndex < renderRows - 1 ? renderGrid[rowIndex + 1][columnIndex] : null;
+              const leftNeighbor = columnIndex > 0 ? renderGrid[rowIndex][columnIndex - 1] : null;
+              const rightNeighbor = columnIndex < renderColumns - 1 ? renderGrid[rowIndex][columnIndex + 1] : null;
+              const topLeftNeighbor = rowIndex > 0 && columnIndex > 0 ? renderGrid[rowIndex - 1][columnIndex - 1] : null;
+              const topRightNeighbor = rowIndex > 0 && columnIndex < renderColumns - 1 ? renderGrid[rowIndex - 1][columnIndex + 1] : null;
+              const bottomLeftNeighbor = rowIndex < renderRows - 1 && columnIndex > 0 ? renderGrid[rowIndex + 1][columnIndex - 1] : null;
               const bottomRightNeighbor =
-                rowIndex < totalRows - 1 && columnIndex < totalColumns - 1 ? grid[rowIndex + 1][columnIndex + 1] : null;
+                rowIndex < renderRows - 1 && columnIndex < renderColumns - 1 ? renderGrid[rowIndex + 1][columnIndex + 1] : null;
               const boundaryInfo = (neighbor) => (!neighbor || !neighbor.isCut ? { draw: true, outside: true } : { draw: false, outside: false });
               const topBoundary = boundaryInfo(topNeighbor);
               const bottomBoundary = boundaryInfo(bottomNeighbor);
@@ -3987,8 +4050,8 @@
             const config = defaultViewLayerConfig(view.layerConfigs && view.layerConfigs[layerId]);
             return {
               layerId,
-              baseElevation: config.baseElevation,
-              height: config.height,
+              baseElevation: snapViewElevationMeters(config.baseElevation),
+              height: snapViewElevationMeters(config.height, { allowNegative: false }),
               color: config.color || (layer ? layerRepresentativeColor(layer) : DEFAULT_COLOR),
               opacity: config.opacity,
               outline: config.outline,
@@ -4018,8 +4081,8 @@
         const currentLayerOrder = Array.isArray(view.layerOrder) ? view.layerOrder : [];
         draft.items.forEach((item) => {
           nextLayerConfigs[item.layerId] = {
-            baseElevation: Number.isFinite(item.baseElevation) ? item.baseElevation : 0,
-            height: Math.max(0, Number.isFinite(item.height) ? item.height : 0),
+            baseElevation: snapViewElevationMeters(Number.isFinite(item.baseElevation) ? item.baseElevation : 0),
+            height: snapViewElevationMeters(Number.isFinite(item.height) ? item.height : 0, { allowNegative: false }),
             color: typeof item.color === "string" ? item.color : DEFAULT_COLOR,
             opacity: Math.max(0, Math.min(1, Number.isFinite(item.opacity) ? item.opacity : 1)),
             outline: !!item.outline,
@@ -5293,6 +5356,15 @@
         return units / (CELLS_PER_METER * CELL_SIZE);
       }
 
+      function snapViewElevationMeters(value, options = {}) {
+        const allowNegative = options.allowNegative !== false;
+        const fallback = allowNegative ? 0 : 0;
+        if (!Number.isFinite(value)) return fallback;
+        const snapped = Math.round(value / VIEW_ELEVATION_STEP_METERS) * VIEW_ELEVATION_STEP_METERS;
+        const clamped = allowNegative ? snapped : Math.max(0, snapped);
+        return Math.round(clamped * 100) / 100;
+      }
+
       function formatMetersValue(value) {
         if (!Number.isFinite(value)) return "0.00m";
         return value.toFixed(Math.abs(value - Math.round(value)) < 0.001 ? 0 : 2) + "m";
@@ -6328,7 +6400,7 @@
           const heightInput = document.createElement("input");
           heightInput.type = "number";
           heightInput.min = "0";
-          heightInput.step = "0.1";
+          heightInput.step = "0.05";
           heightInput.value = String(item.height);
           heightInput.setAttribute("aria-label", item.name + " height");
           heightInput.addEventListener("click", (event) => event.stopPropagation());
@@ -6339,9 +6411,17 @@
             endingField.textContent = String(((Number(item.baseElevation) || 0) + (Number(item.height) || 0)).toFixed(2)).replace(/\.00$/, "");
           };
           heightInput.addEventListener("input", () => {
-            item.height = Number(heightInput.value);
+            const parsed = Number(heightInput.value);
+            item.height = Number.isFinite(parsed) ? parsed : 0;
             updateEndingField();
           });
+          const normalizeHeightValue = () => {
+            item.height = snapViewElevationMeters(Number(heightInput.value), { allowNegative: false });
+            heightInput.value = String(item.height);
+            updateEndingField();
+          };
+          heightInput.addEventListener("change", normalizeHeightValue);
+          heightInput.addEventListener("blur", normalizeHeightValue);
           heightField.appendChild(heightInput);
           row.appendChild(heightField);
 
@@ -6349,15 +6429,23 @@
           baseField.className = "field view-edit-field";
           const baseInput = document.createElement("input");
           baseInput.type = "number";
-          baseInput.step = "0.1";
+          baseInput.step = "0.05";
           baseInput.value = String(item.baseElevation);
           baseInput.setAttribute("aria-label", item.name + " start elevation");
           baseInput.addEventListener("click", (event) => event.stopPropagation());
           baseInput.addEventListener("pointerdown", (event) => event.stopPropagation());
           baseInput.addEventListener("input", () => {
-            item.baseElevation = Number(baseInput.value);
+            const parsed = Number(baseInput.value);
+            item.baseElevation = Number.isFinite(parsed) ? parsed : 0;
             updateEndingField();
           });
+          const normalizeBaseValue = () => {
+            item.baseElevation = snapViewElevationMeters(Number(baseInput.value));
+            baseInput.value = String(item.baseElevation);
+            updateEndingField();
+          };
+          baseInput.addEventListener("change", normalizeBaseValue);
+          baseInput.addEventListener("blur", normalizeBaseValue);
           baseField.appendChild(baseInput);
           row.appendChild(baseField);
 
