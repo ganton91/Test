@@ -1728,6 +1728,18 @@
               </div>
             </div>
             <div class="menu-section stacked-setting">
+              <div class="menu-title">Section Cut Outline</div>
+              <div class="menu-actions">
+                <button class="mode-button active" data-view-section-cut-outline="on">On</button>
+                <button class="mode-button" data-view-section-cut-outline="off">Off</button>
+                <input id="viewSectionCutOutlineColor" type="color" value="#111827" />
+              </div>
+              <div class="field settings-inline-range">
+                <label for="viewSectionCutOutlineWidth">Width</label>
+                <input id="viewSectionCutOutlineWidth" type="range" min="1" max="6" step="0.5" value="2" />
+              </div>
+            </div>
+            <div class="menu-section stacked-setting">
               <div class="menu-title">Outline</div>
               <div class="menu-actions">
                 <button class="mode-button active" data-view-outline="on">On</button>
@@ -2157,6 +2169,7 @@
         viewDepthModeButtons: Array.from(document.querySelectorAll("[data-view-depth-mode]")),
         viewColorOverrideButtons: Array.from(document.querySelectorAll("[data-view-color-override]")),
         viewSectionCutButtons: Array.from(document.querySelectorAll("[data-view-section-cut]")),
+        viewSectionCutOutlineButtons: Array.from(document.querySelectorAll("[data-view-section-cut-outline]")),
         viewOutlineButtons: Array.from(document.querySelectorAll("[data-view-outline]")),
         viewSkyButtons: Array.from(document.querySelectorAll("[data-view-sky]")),
         viewHorizonButtons: Array.from(document.querySelectorAll("[data-view-horizon]")),
@@ -2165,6 +2178,8 @@
         viewDepthStrengthIncrease: document.getElementById("viewDepthStrengthIncrease"),
         viewDepthStrengthValue: document.getElementById("viewDepthStrengthValue"),
         viewSectionCutColor: document.getElementById("viewSectionCutColor"),
+        viewSectionCutOutlineColor: document.getElementById("viewSectionCutOutlineColor"),
+        viewSectionCutOutlineWidth: document.getElementById("viewSectionCutOutlineWidth"),
         viewOutlineColor: document.getElementById("viewOutlineColor"),
         viewOutlineWidth: document.getElementById("viewOutlineWidth"),
         viewSkyColor: document.getElementById("viewSkyColor"),
@@ -2329,6 +2344,11 @@
         viewSectionCutEffect: {
           enabled: true,
           color: "#000000",
+        },
+        viewSectionCutOutlineEffect: {
+          enabled: true,
+          thickness: 2,
+          color: "#111827",
         },
         viewEnvironment: {
           skyEnabled: true,
@@ -2773,6 +2793,11 @@
             enabled: !!state.viewSectionCutEffect.enabled,
             color: state.viewSectionCutEffect.color,
           },
+          viewSectionCutOutlineEffect: {
+            enabled: !!state.viewSectionCutOutlineEffect.enabled,
+            thickness: state.viewSectionCutOutlineEffect.thickness,
+            color: state.viewSectionCutOutlineEffect.color,
+          },
           viewEnvironment: {
             skyEnabled: !!state.viewEnvironment.skyEnabled,
             skyColor: state.viewEnvironment.skyColor,
@@ -2900,6 +2925,15 @@
           state.viewSectionCutEffect.enabled = project.viewSectionCutEffect?.enabled !== false;
           state.viewSectionCutEffect.color =
             typeof project.viewSectionCutEffect?.color === "string" ? project.viewSectionCutEffect.color : defaultViewSectionCutColor();
+          state.viewSectionCutOutlineEffect.enabled = project.viewSectionCutOutlineEffect?.enabled !== false;
+          state.viewSectionCutOutlineEffect.thickness = Math.max(
+            1,
+            Math.min(6, Number(project.viewSectionCutOutlineEffect?.thickness) || 2)
+          );
+          state.viewSectionCutOutlineEffect.color =
+            typeof project.viewSectionCutOutlineEffect?.color === "string"
+              ? project.viewSectionCutOutlineEffect.color
+              : defaultViewSectionCutOutlineColor();
           state.viewEnvironment.skyEnabled = project.viewEnvironment?.skyEnabled !== false;
           state.viewEnvironment.skyColor = typeof project.viewEnvironment?.skyColor === "string" ? project.viewEnvironment.skyColor : "#f8fafc";
           state.viewEnvironment.horizonEnabled = project.viewEnvironment?.horizonEnabled !== false;
@@ -3614,6 +3648,78 @@
               if (!cell || !cell.isCut) continue;
               context.fillStyle = hexToRgba(state.viewSectionCutEffect.color || defaultViewSectionCutColor(), cell.opacity);
               context.fillRect(offsetX + columnIndex * cellPixelSize, offsetY + rowIndex * cellPixelSize, cellPixelSize, cellPixelSize);
+            }
+          }
+          context.restore();
+        }
+
+        if (state.viewSectionCutOutlineEffect.enabled) {
+          context.save();
+          const strokeThickness = Math.max(1, Number(state.viewSectionCutOutlineEffect.thickness) || 1);
+          const outlineColor = state.viewSectionCutOutlineEffect.color || defaultViewSectionCutOutlineColor();
+          const fillOutlineRect = (rectX, rectY, rectWidth, rectHeight) => {
+            context.fillStyle = outlineColor;
+            context.fillRect(rectX, rectY, rectWidth, rectHeight);
+          };
+          for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
+            for (let columnIndex = 0; columnIndex < totalColumns; columnIndex += 1) {
+              const cell = grid[rowIndex][columnIndex];
+              if (!cell || !cell.isCut) continue;
+              const x = offsetX + columnIndex * cellPixelSize;
+              const y = offsetY + rowIndex * cellPixelSize;
+              const topNeighbor = rowIndex > 0 ? grid[rowIndex - 1][columnIndex] : null;
+              const bottomNeighbor = rowIndex < totalRows - 1 ? grid[rowIndex + 1][columnIndex] : null;
+              const leftNeighbor = columnIndex > 0 ? grid[rowIndex][columnIndex - 1] : null;
+              const rightNeighbor = columnIndex < totalColumns - 1 ? grid[rowIndex][columnIndex + 1] : null;
+              const boundaryInfo = (neighbor) => (!neighbor || !neighbor.isCut ? { draw: true, outside: true } : { draw: false, outside: false });
+              const topBoundary = boundaryInfo(topNeighbor);
+              const bottomBoundary = boundaryInfo(bottomNeighbor);
+              const leftBoundary = boundaryInfo(leftNeighbor);
+              const rightBoundary = boundaryInfo(rightNeighbor);
+
+              if (topBoundary.draw) {
+                fillOutlineRect(x, y, cellPixelSize, strokeThickness);
+                if (topBoundary.outside) fillOutlineRect(x, y - strokeThickness, cellPixelSize, strokeThickness);
+              }
+              if (bottomBoundary.draw) {
+                fillOutlineRect(x, y + cellPixelSize - strokeThickness, cellPixelSize, strokeThickness);
+                if (bottomBoundary.outside) fillOutlineRect(x, y + cellPixelSize, cellPixelSize, strokeThickness);
+              }
+              if (leftBoundary.draw) {
+                fillOutlineRect(x, y, strokeThickness, cellPixelSize);
+                if (leftBoundary.outside) fillOutlineRect(x - strokeThickness, y, strokeThickness, cellPixelSize);
+              }
+              if (rightBoundary.draw) {
+                fillOutlineRect(x + cellPixelSize - strokeThickness, y, strokeThickness, cellPixelSize);
+                if (rightBoundary.outside) fillOutlineRect(x + cellPixelSize, y, strokeThickness, cellPixelSize);
+              }
+              if (topBoundary.draw && leftBoundary.draw) fillOutlineRect(x, y, strokeThickness, strokeThickness);
+              if (topBoundary.draw && rightBoundary.draw) {
+                fillOutlineRect(x + cellPixelSize - strokeThickness, y, strokeThickness, strokeThickness);
+              }
+              if (bottomBoundary.draw && leftBoundary.draw) {
+                fillOutlineRect(x, y + cellPixelSize - strokeThickness, strokeThickness, strokeThickness);
+              }
+              if (bottomBoundary.draw && rightBoundary.draw) {
+                fillOutlineRect(
+                  x + cellPixelSize - strokeThickness,
+                  y + cellPixelSize - strokeThickness,
+                  strokeThickness,
+                  strokeThickness
+                );
+              }
+              if (topBoundary.outside && leftBoundary.outside) {
+                fillOutlineRect(x - strokeThickness, y - strokeThickness, strokeThickness, strokeThickness);
+              }
+              if (topBoundary.outside && rightBoundary.outside) {
+                fillOutlineRect(x + cellPixelSize, y - strokeThickness, strokeThickness, strokeThickness);
+              }
+              if (bottomBoundary.outside && leftBoundary.outside) {
+                fillOutlineRect(x - strokeThickness, y + cellPixelSize, strokeThickness, strokeThickness);
+              }
+              if (bottomBoundary.outside && rightBoundary.outside) {
+                fillOutlineRect(x + cellPixelSize, y + cellPixelSize, strokeThickness, strokeThickness);
+              }
             }
           }
           context.restore();
@@ -4914,6 +5020,10 @@
         return state.theme === "dark" ? "#ffffff" : "#000000";
       }
 
+      function defaultViewSectionCutOutlineColor() {
+        return state.theme === "dark" ? "#ffffff" : "#111827";
+      }
+
       function defaultViewSkyColor() {
         return state.theme === "dark" ? "#000000" : "#ffffff";
       }
@@ -4950,6 +5060,11 @@
             enabled: !!state.viewSectionCutEffect.enabled,
             color: state.viewSectionCutEffect.color,
           },
+          viewSectionCutOutlineEffect: {
+            enabled: !!state.viewSectionCutOutlineEffect.enabled,
+            thickness: state.viewSectionCutOutlineEffect.thickness,
+            color: state.viewSectionCutOutlineEffect.color,
+          },
           viewEnvironment: {
             skyEnabled: !!state.viewEnvironment.skyEnabled,
             skyColor: state.viewEnvironment.skyColor,
@@ -4985,6 +5100,9 @@
         state.viewOutlineEffect.color = draft.viewOutlineEffect.color;
         state.viewSectionCutEffect.enabled = !!draft.viewSectionCutEffect.enabled;
         state.viewSectionCutEffect.color = draft.viewSectionCutEffect.color;
+        state.viewSectionCutOutlineEffect.enabled = !!draft.viewSectionCutOutlineEffect.enabled;
+        state.viewSectionCutOutlineEffect.thickness = draft.viewSectionCutOutlineEffect.thickness;
+        state.viewSectionCutOutlineEffect.color = draft.viewSectionCutOutlineEffect.color;
         state.viewEnvironment.skyEnabled = !!draft.viewEnvironment.skyEnabled;
         state.viewEnvironment.skyColor = draft.viewEnvironment.skyColor;
         state.viewEnvironment.horizonEnabled = !!draft.viewEnvironment.horizonEnabled;
@@ -5590,6 +5708,12 @@
         ui.viewSectionCutButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewSectionCut === (settings.viewSectionCutEffect.enabled ? "on" : "off"));
         });
+        ui.viewSectionCutOutlineButtons.forEach((button) => {
+          button.classList.toggle(
+            "active",
+            button.dataset.viewSectionCutOutline === (settings.viewSectionCutOutlineEffect.enabled ? "on" : "off")
+          );
+        });
         ui.viewOutlineButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewOutline === (settings.viewOutlineEffect.enabled ? "on" : "off"));
         });
@@ -5607,6 +5731,8 @@
         ui.viewDepthStrengthIncrease.disabled = !settings.viewDepthEffect.enabled;
         ui.viewDepthStrengthValue.disabled = !settings.viewDepthEffect.enabled;
         ui.viewSectionCutColor.value = settings.viewSectionCutEffect.color;
+        ui.viewSectionCutOutlineColor.value = settings.viewSectionCutOutlineEffect.color;
+        ui.viewSectionCutOutlineWidth.value = String(settings.viewSectionCutOutlineEffect.thickness);
         ui.viewOutlineColor.value = settings.viewOutlineEffect.color;
         ui.viewOutlineWidth.value = String(settings.viewOutlineEffect.thickness);
         ui.viewSkyColor.value = settings.viewEnvironment.skyColor;
@@ -10990,6 +11116,46 @@
         if (!state.settingsDraft) return;
         state.settingsDraft.viewSectionCutEffect.color = ui.viewSectionCutColor.value || defaultViewSectionCutColor();
         setStatus("Section cut color updated.");
+        updateThemeButtons();
+      });
+
+      ui.viewSectionCutOutlineButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          if (!state.settingsDraft) return;
+          state.settingsDraft.viewSectionCutOutlineEffect.enabled = button.dataset.viewSectionCutOutline === "on";
+          setStatus(
+            state.settingsDraft.viewSectionCutOutlineEffect.enabled
+              ? "Section cut outline enabled."
+              : "Section cut outline disabled."
+          );
+          updateThemeButtons();
+        });
+      });
+
+      ui.viewSectionCutOutlineColor.addEventListener("input", () => {
+        if (!state.settingsDraft) return;
+        state.settingsDraft.viewSectionCutOutlineEffect.color =
+          ui.viewSectionCutOutlineColor.value || defaultViewSectionCutOutlineColor();
+        setStatus("Section cut outline color updated.");
+        updateThemeButtons();
+      });
+
+      ui.viewSectionCutOutlineWidth.addEventListener("input", () => {
+        if (!state.settingsDraft) return;
+        state.settingsDraft.viewSectionCutOutlineEffect.thickness = Math.max(
+          1,
+          Math.min(6, Number(ui.viewSectionCutOutlineWidth.value) || 1)
+        );
+        updateThemeButtons();
+      });
+
+      ui.viewSectionCutOutlineWidth.addEventListener("change", () => {
+        if (!state.settingsDraft) return;
+        state.settingsDraft.viewSectionCutOutlineEffect.thickness = Math.max(
+          1,
+          Math.min(6, Number(ui.viewSectionCutOutlineWidth.value) || 1)
+        );
+        setStatus("Section cut outline width set to " + state.settingsDraft.viewSectionCutOutlineEffect.thickness + ".");
         updateThemeButtons();
       });
 
