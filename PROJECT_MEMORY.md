@@ -418,6 +418,9 @@ The current goal is to keep building `Milimetre` as a strong, minimal infinite c
   - export is raster and matches the currently rendered pane
   - filenames include the active view name and pane direction
   - the pane export control is disabled when that pane has no rendered output
+- When `Section Cut` is enabled in `Views`, `Ground` and `Horizon Line` render behind the view drawing instead of over it:
+  - this preserves underground / below-grade geometry visibility in section-style views
+  - when `Section Cut` is off, ground and horizon keep their normal foreground behavior
 
 ## Renderer Note
 

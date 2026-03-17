@@ -3537,10 +3537,27 @@
         const offsetX = Math.floor((surfaceWidth - drawWidth) / 2);
         const offsetY = Math.floor((surfaceHeight - drawHeight) / 2);
         const zeroLineY = offsetY + (maxTopCells - 0) * cellPixelSize + 0.5;
+        const drawEnvironmentBehindContent = !!state.viewSectionCutEffect.enabled;
 
         context.clearRect(0, 0, surfaceWidth, surfaceHeight);
         context.fillStyle = activeViewSkyColor();
         context.fillRect(0, 0, surfaceWidth, surfaceHeight);
+
+        if (drawEnvironmentBehindContent) {
+          if (zeroLineY < surfaceHeight) {
+            context.fillStyle = activeViewGroundColor();
+            context.fillRect(0, Math.max(0, zeroLineY), surfaceWidth, surfaceHeight - Math.max(0, zeroLineY));
+          }
+
+          if (state.viewEnvironment.horizonEnabled) {
+            context.strokeStyle = activeViewHorizonColor();
+            context.lineWidth = Math.max(2, Number(state.viewEnvironment.horizonWidth) || 2);
+            context.beginPath();
+            context.moveTo(0, zeroLineY);
+            context.lineTo(surfaceWidth, zeroLineY);
+            context.stroke();
+          }
+        }
 
         const grid = Array.from({ length: totalRows }, () => Array(totalColumns).fill(null));
         for (const entry of columnsByLayer) {
@@ -3811,18 +3828,20 @@
           context.restore();
         }
 
-        if (zeroLineY < surfaceHeight) {
-          context.fillStyle = activeViewGroundColor();
-          context.fillRect(0, Math.max(0, zeroLineY), surfaceWidth, surfaceHeight - Math.max(0, zeroLineY));
-        }
+        if (!drawEnvironmentBehindContent) {
+          if (zeroLineY < surfaceHeight) {
+            context.fillStyle = activeViewGroundColor();
+            context.fillRect(0, Math.max(0, zeroLineY), surfaceWidth, surfaceHeight - Math.max(0, zeroLineY));
+          }
 
-        if (state.viewEnvironment.horizonEnabled) {
-          context.strokeStyle = activeViewHorizonColor();
-          context.lineWidth = Math.max(2, Number(state.viewEnvironment.horizonWidth) || 2);
-          context.beginPath();
-          context.moveTo(0, zeroLineY);
-          context.lineTo(surfaceWidth, zeroLineY);
-          context.stroke();
+          if (state.viewEnvironment.horizonEnabled) {
+            context.strokeStyle = activeViewHorizonColor();
+            context.lineWidth = Math.max(2, Number(state.viewEnvironment.horizonWidth) || 2);
+            context.beginPath();
+            context.moveTo(0, zeroLineY);
+            context.lineTo(surfaceWidth, zeroLineY);
+            context.stroke();
+          }
         }
       }
 
