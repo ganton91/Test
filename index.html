@@ -1381,7 +1381,7 @@
       }
 
       .view-edit-modal {
-        width: min(760px, calc(100vw - 40px));
+        width: min(840px, calc(100vw - 40px));
       }
 
       .view-edit-section-title {
@@ -1391,7 +1391,7 @@
       .view-edit-column-headings,
       .view-edit-layer-row {
         display: grid;
-        grid-template-columns: 16px minmax(0, 1fr) 56px 132px 88px 88px 88px;
+        grid-template-columns: 16px minmax(0, 1fr) 56px 132px 58px 88px 88px 88px;
         gap: 10px;
         align-items: center;
       }
@@ -1469,6 +1469,15 @@
         font-weight: 600;
         color: var(--muted);
         text-align: right;
+      }
+
+      .view-edit-outline-toggle {
+        width: 16px;
+        height: 16px;
+        margin: 0;
+        justify-self: center;
+        accent-color: var(--text);
+        cursor: pointer;
       }
 
       .view-edit-color-input {
@@ -1710,6 +1719,7 @@
               <span>Layer</span>
               <span>Color</span>
               <span>Opacity</span>
+              <span>Outline</span>
               <span>Height</span>
               <span>Start</span>
               <span>End</span>
@@ -3042,6 +3052,7 @@
             Number.isFinite(existingConfig && existingConfig.opacity)
               ? Math.max(0, Math.min(1, existingConfig.opacity))
               : 1,
+          outline: !!(existingConfig && existingConfig.outline),
         };
       }
 
@@ -3268,6 +3279,7 @@
           colorByColumn: collectLayerProjectedColumns(layer, bounds, direction),
           overrideColor: state.viewColorOverride ? config.color || layerRepresentativeColor(layer) : null,
           opacity: Math.max(0, Math.min(1, state.viewColorOverride ? config.opacity : layer.opacity)),
+          outline: !!config.outline,
           baseCells: Math.round(config.baseElevation * CELLS_PER_METER),
           heightCells: Math.max(0, Math.round(config.height * CELLS_PER_METER)),
           orderIndex,
@@ -3323,6 +3335,7 @@
                 depth: column.depth,
                 isCut: !!column.isCut,
                 opacity: entry.opacity,
+                forceOutline: !!entry.outline,
                 orderIndex: entry.orderIndex,
               };
               if (
@@ -3364,7 +3377,8 @@
           }
         }
 
-        if (state.viewOutlineEffect.enabled) {
+        const hasForcedLayerOutline = grid.some((row) => row.some((cell) => cell && cell.forceOutline));
+        if (state.viewOutlineEffect.enabled || hasForcedLayerOutline) {
           context.save();
           context.fillStyle = state.viewOutlineEffect.color;
           const strokeThickness = 1;
@@ -3378,50 +3392,65 @@
               const bottomNeighbor = rowIndex < totalRows - 1 ? grid[rowIndex + 1][columnIndex] : null;
               const leftNeighbor = columnIndex > 0 ? grid[rowIndex][columnIndex - 1] : null;
               const rightNeighbor = columnIndex < totalColumns - 1 ? grid[rowIndex][columnIndex + 1] : null;
-              const sameVisibleSurface = (neighbor) =>
-                !!neighbor &&
-                neighbor.layerId === cell.layerId &&
-                neighbor.depth === cell.depth &&
-                neighbor.isCut === cell.isCut;
-              const topBoundary = !sameVisibleSurface(topNeighbor);
-              const bottomBoundary = !sameVisibleSurface(bottomNeighbor);
-              const leftBoundary = !sameVisibleSurface(leftNeighbor);
-              const rightBoundary = !sameVisibleSurface(rightNeighbor);
+              const cellOutlineEnabled = state.viewOutlineEffect.enabled || cell.forceOutline;
+              const boundaryInfo = (neighbor) => {
+                if (!cellOutlineEnabled) return { draw: false, outside: false };
+                if (!neighbor) return { draw: true, outside: true };
+                const surfaceChanged = neighbor.depth !== cell.depth || neighbor.isCut !== cell.isCut;
+                if (surfaceChanged) return { draw: true, outside: false };
+                const forcedLayerSeam =
+                  neighbor.layerId !== cell.layerId &&
+                  (cell.forceOutline || neighbor.forceOutline);
+                if (!forcedLayerSeam) return { draw: false, outside: false };
+                if (cell.forceOutline && !neighbor.forceOutline) {
+                  return { draw: true, outside: true };
+                }
+                if (!cell.forceOutline && neighbor.forceOutline) {
+                  return { draw: false, outside: false };
+                }
+                return cell.orderIndex <= neighbor.orderIndex
+                  ? { draw: true, outside: true }
+                  : { draw: false, outside: false };
+              };
+              const topBoundary = boundaryInfo(topNeighbor);
+              const bottomBoundary = boundaryInfo(bottomNeighbor);
+              const leftBoundary = boundaryInfo(leftNeighbor);
+              const rightBoundary = boundaryInfo(rightNeighbor);
 
-              if (topBoundary) {
+              if (topBoundary.draw) {
                 context.fillRect(x, y, cellPixelSize, strokeThickness);
-                if (!topNeighbor) {
+                if (topBoundary.outside) {
                   context.fillRect(x, y - strokeThickness, cellPixelSize, strokeThickness);
                 }
               }
-              if (bottomBoundary) {
+              if (bottomBoundary.draw) {
                 context.fillRect(x, y + cellPixelSize - strokeThickness, cellPixelSize, strokeThickness);
-                if (!bottomNeighbor) {
+                if (bottomBoundary.outside) {
                   context.fillRect(x, y + cellPixelSize, cellPixelSize, strokeThickness);
                 }
               }
-              if (leftBoundary) {
+              if (leftBoundary.draw) {
                 context.fillRect(x, y, strokeThickness, cellPixelSize);
-                if (!leftNeighbor) {
+                if (leftBoundary.outside) {
                   context.fillRect(x - strokeThickness, y, strokeThickness, cellPixelSize);
                 }
               }
-              if (rightBoundary) {
+              if (rightBoundary.draw) {
                 context.fillRect(x + cellPixelSize - strokeThickness, y, strokeThickness, cellPixelSize);
-                if (!rightNeighbor) {
+                if (rightBoundary.outside) {
                   context.fillRect(x + cellPixelSize, y, strokeThickness, cellPixelSize);
                 }
               }
-              if (topBoundary && leftBoundary) {
+              if (topBoundary.draw && leftBoundary.draw) {
                 context.fillRect(x, y, strokeThickness, strokeThickness);
               }
-              if (topBoundary && rightBoundary) {
+              if (topBoundary.draw && rightBoundary.draw) {
                 context.fillRect(x + cellPixelSize - strokeThickness, y, strokeThickness, strokeThickness);
               }
-              if (bottomBoundary && leftBoundary) {
+              if (bottomBoundary.draw && leftBoundary.draw) {
                 context.fillRect(x, y + cellPixelSize - strokeThickness, strokeThickness, strokeThickness);
               }
-              if (bottomBoundary && rightBoundary) {
+              if (bottomBoundary.draw && rightBoundary.draw) {
                 context.fillRect(
                   x + cellPixelSize - strokeThickness,
                   y + cellPixelSize - strokeThickness,
@@ -3429,16 +3458,16 @@
                   strokeThickness
                 );
               }
-              if (topBoundary && leftBoundary) {
+              if (topBoundary.outside && leftBoundary.outside) {
                 context.fillRect(x - strokeThickness, y - strokeThickness, strokeThickness, strokeThickness);
               }
-              if (topBoundary && rightBoundary) {
+              if (topBoundary.outside && rightBoundary.outside) {
                 context.fillRect(x + cellPixelSize, y - strokeThickness, strokeThickness, strokeThickness);
               }
-              if (bottomBoundary && leftBoundary) {
+              if (bottomBoundary.outside && leftBoundary.outside) {
                 context.fillRect(x - strokeThickness, y + cellPixelSize, strokeThickness, strokeThickness);
               }
-              if (bottomBoundary && rightBoundary) {
+              if (bottomBoundary.outside && rightBoundary.outside) {
                 context.fillRect(x + cellPixelSize, y + cellPixelSize, strokeThickness, strokeThickness);
               }
             }
@@ -3512,6 +3541,7 @@
               height: config.height,
               color: config.color || (layer ? layerRepresentativeColor(layer) : DEFAULT_COLOR),
               opacity: config.opacity,
+              outline: config.outline,
               name: layer ? layer.name : "Layer",
             };
           }),
@@ -3539,6 +3569,7 @@
             height: Math.max(0, Number.isFinite(item.height) ? item.height : 0),
             color: typeof item.color === "string" ? item.color : DEFAULT_COLOR,
             opacity: Math.max(0, Math.min(1, Number.isFinite(item.opacity) ? item.opacity : 1)),
+            outline: !!item.outline,
           };
         });
         view.layerConfigs = nextLayerConfigs;
@@ -5570,6 +5601,18 @@
           updateOpacityValue();
           opacityField.appendChild(opacityValue);
           row.appendChild(opacityField);
+
+          const outlineToggle = document.createElement("input");
+          outlineToggle.className = "view-edit-outline-toggle";
+          outlineToggle.type = "checkbox";
+          outlineToggle.checked = !!item.outline;
+          outlineToggle.setAttribute("aria-label", item.name + " keep outline");
+          outlineToggle.addEventListener("click", (event) => event.stopPropagation());
+          outlineToggle.addEventListener("pointerdown", (event) => event.stopPropagation());
+          outlineToggle.addEventListener("input", () => {
+            item.outline = outlineToggle.checked;
+          });
+          row.appendChild(outlineToggle);
 
           const heightField = document.createElement("div");
           heightField.className = "field view-edit-field";
