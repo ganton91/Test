@@ -1439,7 +1439,7 @@
       .view-edit-column-headings,
       .view-edit-layer-row {
         display: grid;
-        grid-template-columns: 16px minmax(0, 1fr) 56px 132px 58px 56px 112px 88px 88px 88px;
+        grid-template-columns: 16px minmax(0, 1fr) 56px 132px 58px 56px 112px 58px 88px 88px 88px;
         gap: 10px;
         align-items: center;
       }
@@ -1812,6 +1812,7 @@
               <span>Outline</span>
               <span>Line</span>
               <span>Width</span>
+              <span>Cut</span>
               <span>Height</span>
               <span>Start</span>
               <span>End</span>
@@ -3210,6 +3211,7 @@
             Number.isFinite(existingConfig && existingConfig.outlineWidth)
               ? Math.max(1, Math.min(6, existingConfig.outlineWidth))
               : 1,
+          excludeFromSectionCut: !!(existingConfig && existingConfig.excludeFromSectionCut),
         };
       }
 
@@ -3369,10 +3371,11 @@
         }
       }
 
-      function collectLayerProjectedColumns(layer, bounds, direction) {
+      function collectLayerProjectedColumns(layer, bounds, direction, options = {}) {
         const config = directionalViewConfig(direction);
         const columns = new Map();
         if (!layer || !bounds) return columns;
+        const excludeFromSectionCut = !!options.excludeFromSectionCut;
         const frontBoundaryValue = bounds[config.depthAxis === "y" ? (config.frontBoundary === "min" ? "minY" : "maxY") : config.frontBoundary === "min" ? "minX" : "maxX"];
         for (const tile of Object.values(layer.tiles)) {
           const tileMinX = tile.tileX * TILE_SIZE;
@@ -3396,7 +3399,7 @@
               columns.set(relativePrimary, {
                 color,
                 depth: depthValue,
-                isCut: depthValue === frontBoundaryValue,
+                isCut: !excludeFromSectionCut && depthValue === frontBoundaryValue,
               });
             }
           }
@@ -3433,7 +3436,9 @@
         const directionConfig = directionalViewConfig(direction);
         const columnsByLayer = configuredLayers.map(({ layer, config }, orderIndex) => ({
           layerId: layer.id,
-          colorByColumn: collectLayerProjectedColumns(layer, bounds, direction),
+          colorByColumn: collectLayerProjectedColumns(layer, bounds, direction, {
+            excludeFromSectionCut: !!config.excludeFromSectionCut,
+          }),
           overrideColor: state.viewColorOverride ? config.color || layerRepresentativeColor(layer) : null,
           opacity: Math.max(0, Math.min(1, state.viewColorOverride ? config.opacity : layer.opacity)),
           outline: !!config.outline,
@@ -3817,6 +3822,7 @@
               outline: config.outline,
               outlineColor: config.outlineColor || state.viewOutlineEffect.color,
               outlineWidth: config.outlineWidth,
+              excludeFromSectionCut: config.excludeFromSectionCut,
               name: layer ? layer.name : "Layer",
             };
           }),
@@ -3847,6 +3853,7 @@
             outline: !!item.outline,
             outlineColor: typeof item.outlineColor === "string" ? item.outlineColor : state.viewOutlineEffect.color,
             outlineWidth: Math.max(1, Math.min(6, Number.isFinite(item.outlineWidth) ? item.outlineWidth : 1)),
+            excludeFromSectionCut: !!item.excludeFromSectionCut,
           };
         });
         view.layerConfigs = nextLayerConfigs;
@@ -6039,6 +6046,18 @@
           updateOutlineWidthValue();
           outlineWidthField.appendChild(outlineWidthValue);
           row.appendChild(outlineWidthField);
+
+          const sectionCutToggle = document.createElement("input");
+          sectionCutToggle.className = "view-edit-outline-toggle";
+          sectionCutToggle.type = "checkbox";
+          sectionCutToggle.checked = !item.excludeFromSectionCut;
+          sectionCutToggle.setAttribute("aria-label", item.name + " include in section cut");
+          sectionCutToggle.addEventListener("click", (event) => event.stopPropagation());
+          sectionCutToggle.addEventListener("pointerdown", (event) => event.stopPropagation());
+          sectionCutToggle.addEventListener("input", () => {
+            item.excludeFromSectionCut = !sectionCutToggle.checked;
+          });
+          row.appendChild(sectionCutToggle);
 
           const heightField = document.createElement("div");
           heightField.className = "field view-edit-field";
