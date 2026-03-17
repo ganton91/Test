@@ -424,6 +424,15 @@ The current goal is to keep building `Milimetre` as a strong, minimal infinite c
 - `Per Layer Outline` in `Views` now keeps its `outside` stroke when the neighboring visible cell is actually behind it in depth:
   - neighbor-based suppression should only block `outside` for true foreground occluders
   - this is intended to preserve roof/window/edge strokes in projections where deeper masses sit behind the outlined layer
+- `Global Outline` and `Per Layer Outline` are intentionally both required because they solve different drawing problems:
+  - `Global Outline` is mass-based / surface-based
+  - it reads the merged visible masses of the view
+  - it ignores layer identity when neighboring visible surfaces sit on the same level
+  - therefore it gives the clean overall silhouette and major surface transitions without showing every internal layer seam
+  - `Per Layer Outline` is object-based / layer-based
+  - it is used selectively to emphasize specific layers as separate objects
+  - if enabled on many layers, it will reveal more internal separations than the global outline
+  - therefore the global outline should remain the clean whole-view language, while per-layer outline remains the targeted emphasis system
 
 ## Renderer Note
 
