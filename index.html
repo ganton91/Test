@@ -23,12 +23,12 @@
         --accent-soft: rgba(17, 24, 39, 0.08);
         --canvas-bg: #fcfcfb;
         --ruler-bg: rgba(248, 248, 246, 0.95);
-        --grid-5cm: rgb(20, 24, 28);
-        --grid-50cm: rgb(20, 24, 28);
-        --grid-1m: rgb(20, 24, 28);
+        --grid-5cm: rgb(8, 12, 16);
+        --grid-50cm: rgb(8, 12, 16);
+        --grid-1m: rgb(8, 12, 16);
         --crosshair: rgb(210, 45, 78);
         --selection: rgba(17, 24, 39, 0.82);
-        --grid-dual-stroke: #fcfcfb;
+        --grid-dual-stroke: #ffffff;
         --crosshair-dual-stroke: #fcfcfb;
         --shadow: 0 18px 48px rgba(17, 24, 39, 0.08);
         --floating-shadow: 0 8px 22px rgba(15, 23, 42, 0.12), 0 2px 8px rgba(15, 23, 42, 0.08);
@@ -57,7 +57,7 @@
         --grid-1m: rgb(255, 255, 255);
         --crosshair: rgb(255, 111, 145);
         --selection: rgba(255, 255, 255, 0.86);
-        --grid-dual-stroke: #11161a;
+        --grid-dual-stroke: #090c0f;
         --crosshair-dual-stroke: #11161a;
         --shadow: 0 20px 56px rgba(0, 0, 0, 0.32);
         --floating-shadow: 0 8px 22px rgba(0, 0, 0, 0.28), 0 2px 8px rgba(0, 0, 0, 0.18);
@@ -2446,7 +2446,19 @@
           activeMeasurementItem: state.activeMeasurementItem ? { ...state.activeMeasurementItem } : null,
           activeViewId: state.activeViewId,
           activeLayerId: state.activeLayerId,
+          activeTool: state.activeTool,
         };
+      }
+
+      function snapshotActiveContextSignature(snapshot) {
+        if (!snapshot) return "";
+        return JSON.stringify({
+          activeSceneId: snapshot.activeSceneId || null,
+          activeMeasurementId: snapshot.activeMeasurementId || null,
+          activeMeasurementItem: snapshot.activeMeasurementItem || null,
+          activeViewId: snapshot.activeViewId || null,
+          activeLayerId: snapshot.activeLayerId || null,
+        });
       }
 
       function captureVisibilityState() {
@@ -2502,6 +2514,7 @@
       function restoreDocumentState(snapshot) {
         state.history.isRestoring = true;
         const visibilityState = captureVisibilityState();
+        const previousContextSignature = snapshotActiveContextSignature(state);
         closeModal(ui.settingsMenu);
         closeModal(ui.sceneScaleModal);
         if (state.viewEditDraft) {
@@ -2556,6 +2569,10 @@
           : null;
         state.activeViewId = state.views.some((view) => view.id === snapshot.activeViewId) ? snapshot.activeViewId : null;
         state.activeLayerId = state.layers.some((layer) => layer.id === snapshot.activeLayerId) ? snapshot.activeLayerId : null;
+        const nextContextSignature = snapshotActiveContextSignature(snapshot);
+        if (previousContextSignature !== nextContextSignature) {
+          state.activeTool = snapshot.activeTool;
+        }
         state.history.isRestoring = false;
         render({ ui: true, static: true, scenes: true, content: true, overlay: true, rulers: true });
       }
