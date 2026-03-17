@@ -1898,7 +1898,8 @@
                 <div class="view-pane-header">
                   <div class="view-pane-title" id="viewPaneTitle0">Top to Bottom</div>
                   <div class="view-pane-header-actions">
-                    <button class="view-pane-export-button" type="button" data-view-export-slot="0">PNG</button>
+                    <button class="view-pane-export-button" type="button" data-view-export-slot="0" data-view-export-format="png">PNG</button>
+                    <button class="view-pane-export-button" type="button" data-view-export-slot="0" data-view-export-format="dxf">DXF</button>
                     <div class="view-pane-selector">
                       <button class="view-pane-selector-button active" type="button" data-view-slot="0" data-view-direction="topToBottom">T-B</button>
                       <button class="view-pane-selector-button" type="button" data-view-slot="0" data-view-direction="bottomToTop">B-T</button>
@@ -1916,7 +1917,8 @@
                 <div class="view-pane-header">
                   <div class="view-pane-title" id="viewPaneTitle1">Bottom to Top</div>
                   <div class="view-pane-header-actions">
-                    <button class="view-pane-export-button" type="button" data-view-export-slot="1">PNG</button>
+                    <button class="view-pane-export-button" type="button" data-view-export-slot="1" data-view-export-format="png">PNG</button>
+                    <button class="view-pane-export-button" type="button" data-view-export-slot="1" data-view-export-format="dxf">DXF</button>
                     <div class="view-pane-selector">
                       <button class="view-pane-selector-button" type="button" data-view-slot="1" data-view-direction="topToBottom">T-B</button>
                       <button class="view-pane-selector-button active" type="button" data-view-slot="1" data-view-direction="bottomToTop">B-T</button>
@@ -1934,7 +1936,8 @@
                 <div class="view-pane-header">
                   <div class="view-pane-title" id="viewPaneTitle2">Left to Right</div>
                   <div class="view-pane-header-actions">
-                    <button class="view-pane-export-button" type="button" data-view-export-slot="2">PNG</button>
+                    <button class="view-pane-export-button" type="button" data-view-export-slot="2" data-view-export-format="png">PNG</button>
+                    <button class="view-pane-export-button" type="button" data-view-export-slot="2" data-view-export-format="dxf">DXF</button>
                     <div class="view-pane-selector">
                       <button class="view-pane-selector-button" type="button" data-view-slot="2" data-view-direction="topToBottom">T-B</button>
                       <button class="view-pane-selector-button" type="button" data-view-slot="2" data-view-direction="bottomToTop">B-T</button>
@@ -1952,7 +1955,8 @@
                 <div class="view-pane-header">
                   <div class="view-pane-title" id="viewPaneTitle3">Right to Left</div>
                   <div class="view-pane-header-actions">
-                    <button class="view-pane-export-button" type="button" data-view-export-slot="3">PNG</button>
+                    <button class="view-pane-export-button" type="button" data-view-export-slot="3" data-view-export-format="png">PNG</button>
+                    <button class="view-pane-export-button" type="button" data-view-export-slot="3" data-view-export-format="dxf">DXF</button>
                     <div class="view-pane-selector">
                       <button class="view-pane-selector-button" type="button" data-view-slot="3" data-view-direction="topToBottom">T-B</button>
                       <button class="view-pane-selector-button" type="button" data-view-slot="3" data-view-direction="bottomToTop">B-T</button>
@@ -2149,6 +2153,7 @@
       const CELLS_PER_HALF_METER = 50 / CENTIMETERS_PER_CELL;
       const VIEW_ELEVATION_STEP_METERS = 0.05;
       const DEBUG_VIEW_CELL_GRID = false;
+      const DEBUG_VIEW_VECTOR_CONTOURS = false;
       const TILE_SIZE = 32;
       const MIN_ZOOM = 0.12;
       const MAX_ZOOM = 3.6;
@@ -3516,31 +3521,129 @@
         return columns;
       }
 
-      function renderDirectionalViewOutput(canvas, emptyState, direction, placeholder) {
-        if (!canvas || !emptyState) return;
-        const view = activeCanvasView();
-        if (!view) {
-          canvas.classList.add("hidden");
-          emptyState.classList.remove("hidden");
-          emptyState.textContent = placeholder;
-          return;
+      function buildViewRowRuns(renderGrid, styleResolver) {
+        const runs = [];
+        if (!Array.isArray(renderGrid) || !renderGrid.length) return runs;
+        const rowCount = renderGrid.length;
+        const columnCount = renderGrid[0] ? renderGrid[0].length : 0;
+        for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+          const row = renderGrid[rowIndex];
+          let columnIndex = 0;
+          while (columnIndex < columnCount) {
+            const cell = row[columnIndex];
+            const style = styleResolver(cell);
+            if (!style) {
+              columnIndex += 1;
+              continue;
+            }
+            let endColumn = columnIndex + 1;
+            while (endColumn < columnCount) {
+              const nextStyle = styleResolver(row[endColumn]);
+              if (!nextStyle || nextStyle.key !== style.key) break;
+              endColumn += 1;
+            }
+            runs.push({
+              rowIndex,
+              columnStart: columnIndex,
+              columnEnd: endColumn,
+              fillStyle: style.fillStyle,
+            });
+            columnIndex = endColumn;
+          }
+        }
+        return runs;
+      }
+
+      function gridDirectionIndex(fromX, fromY, toX, toY) {
+        if (toX > fromX) return 0;
+        if (toY > fromY) return 1;
+        if (toX < fromX) return 2;
+        return 3;
+      }
+
+      function buildViewContoursFromGrid(renderGrid, predicate) {
+        if (!Array.isArray(renderGrid) || !renderGrid.length) return [];
+        const rowCount = renderGrid.length;
+        const columnCount = renderGrid[0] ? renderGrid[0].length : 0;
+        if (!columnCount) return [];
+
+        const isFilled = (row, column) =>
+          row >= 0 && row < rowCount && column >= 0 && column < columnCount && !!predicate(renderGrid[row][column], row, column);
+
+        const edges = [];
+        for (let row = 0; row < rowCount; row += 1) {
+          for (let column = 0; column < columnCount; column += 1) {
+            if (!isFilled(row, column)) continue;
+            if (!isFilled(row - 1, column)) edges.push({ x1: column, y1: row, x2: column + 1, y2: row, used: false });
+            if (!isFilled(row, column + 1)) edges.push({ x1: column + 1, y1: row, x2: column + 1, y2: row + 1, used: false });
+            if (!isFilled(row + 1, column)) edges.push({ x1: column + 1, y1: row + 1, x2: column, y2: row + 1, used: false });
+            if (!isFilled(row, column - 1)) edges.push({ x1: column, y1: row + 1, x2: column, y2: row, used: false });
+          }
+        }
+        if (!edges.length) return [];
+
+        const keyOf = (x, y) => x + ":" + y;
+        const outgoing = new Map();
+        edges.forEach((edge, index) => {
+          const key = keyOf(edge.x1, edge.y1);
+          const list = outgoing.get(key);
+          if (list) list.push(index);
+          else outgoing.set(key, [index]);
+        });
+
+        const pickNextEdge = (x, y, incomingDir) => {
+          const candidates = outgoing.get(keyOf(x, y));
+          if (!candidates || !candidates.length) return -1;
+          const unused = candidates.filter((index) => !edges[index].used);
+          if (!unused.length) return -1;
+          if (incomingDir == null) return unused[0];
+          const priority = [(incomingDir + 1) % 4, incomingDir, (incomingDir + 3) % 4, (incomingDir + 2) % 4];
+          for (const desiredDir of priority) {
+            const match = unused.find((index) => {
+              const edge = edges[index];
+              return gridDirectionIndex(edge.x1, edge.y1, edge.x2, edge.y2) === desiredDir;
+            });
+            if (match !== undefined) return match;
+          }
+          return unused[0];
+        };
+
+        const loops = [];
+        for (let edgeIndex = 0; edgeIndex < edges.length; edgeIndex += 1) {
+          if (edges[edgeIndex].used) continue;
+          const start = edges[edgeIndex];
+          const loop = [{ x: start.x1, y: start.y1 }];
+          let current = edgeIndex;
+          let guard = edges.length * 6;
+          while (current !== -1 && guard > 0) {
+            guard -= 1;
+            const edge = edges[current];
+            if (edge.used) break;
+            edge.used = true;
+            const last = loop[loop.length - 1];
+            if (last.x !== edge.x2 || last.y !== edge.y2) {
+              loop.push({ x: edge.x2, y: edge.y2 });
+            }
+            if (edge.x2 === start.x1 && edge.y2 === start.y1) {
+              loops.push(loop);
+              break;
+            }
+            const incomingDir = gridDirectionIndex(edge.x1, edge.y1, edge.x2, edge.y2);
+            current = pickNextEdge(edge.x2, edge.y2, incomingDir);
+          }
         }
 
+        return loops.filter((loop) => loop.length >= 4);
+      }
+
+      function buildDirectionalOcclusionGrid(view, direction) {
+        if (!view) return { error: "no-view" };
         const bounds = viewCellBounds(view.bounds);
         if (!bounds || bounds.maxX < bounds.minX || bounds.maxY < bounds.minY) {
-          canvas.classList.add("hidden");
-          emptyState.classList.remove("hidden");
-          emptyState.textContent = "Draw a valid view box in Main View";
-          return;
+          return { error: "invalid-bounds" };
         }
-
         const configuredLayers = orderedConfiguredLayersForView(view);
-        if (!configuredLayers.length) {
-          canvas.classList.add("hidden");
-          emptyState.classList.remove("hidden");
-          emptyState.textContent = "No painted layers intersect this view";
-          return;
-        }
+        if (!configuredLayers.length) return { error: "no-layers" };
 
         const directionConfig = directionalViewConfig(direction);
         const columnsByLayer = configuredLayers.map(({ layer, config }, orderIndex) => ({
@@ -3561,20 +3664,14 @@
         const totalColumns = bounds[directionConfig.primaryMaxKey] - bounds[directionConfig.primaryMinKey] + 1;
         const renderableEntries = columnsByLayer.filter((entry) => entry.heightCells > 0 && entry.colorByColumn.size > 0);
         if (!totalColumns || !renderableEntries.length) {
-          canvas.classList.add("hidden");
-          emptyState.classList.remove("hidden");
-          emptyState.textContent = "Set layer heights in Edit Layers to build this view";
-          return;
+          return { error: "no-renderable" };
         }
+
         const contentMinZ = renderableEntries.reduce((min, entry) => Math.min(min, entry.baseCells), Infinity);
         const contentMaxZ = renderableEntries.reduce((max, entry) => Math.max(max, entry.baseCells + entry.heightCells), -Infinity);
         const totalRows = contentMaxZ - contentMinZ;
-        if (!totalRows) {
-          canvas.classList.add("hidden");
-          emptyState.classList.remove("hidden");
-          emptyState.textContent = "Set layer heights in Edit Layers to build this view";
-          return;
-        }
+        if (!totalRows) return { error: "no-renderable" };
+
         let contentMinProjectedColumn = Infinity;
         let contentMaxProjectedColumn = -Infinity;
         for (const entry of renderableEntries) {
@@ -3585,26 +3682,11 @@
           });
         }
         if (!Number.isFinite(contentMinProjectedColumn) || !Number.isFinite(contentMaxProjectedColumn)) {
-          canvas.classList.add("hidden");
-          emptyState.classList.remove("hidden");
-          emptyState.textContent = "No painted layers intersect this view";
-          return;
+          return { error: "no-painted" };
         }
         const contentColumns = contentMaxProjectedColumn - contentMinProjectedColumn + 1;
-
-        canvas.classList.remove("hidden");
-        emptyState.classList.add("hidden");
-        const context = canvas.getContext("2d");
-        resizeViewPaneCanvas(canvas, context);
-        const surfaceWidth = canvas.clientWidth;
-        const surfaceHeight = canvas.clientHeight;
-        const padding = 18;
-        const availableWidth = Math.max(1, surfaceWidth - padding * 2);
-        const availableHeight = Math.max(1, surfaceHeight - padding * 2);
-        const uniformSourceScale = Math.max(1, contentColumns / availableWidth, totalRows / availableHeight);
-        const drawEnvironmentBehindContent = !!state.viewSectionCutEffect.enabled;
-
         const grid = Array.from({ length: totalRows }, () => Array(contentColumns).fill(null));
+
         for (const entry of columnsByLayer) {
           if (!entry.heightCells || !entry.colorByColumn.size) continue;
           entry.colorByColumn.forEach((column, columnIndex) => {
@@ -3637,7 +3719,305 @@
           });
         }
 
-        let renderGrid = grid;
+        return {
+          directionConfig,
+          contentMinProjectedColumn,
+          contentMaxZ,
+          contentColumns,
+          totalRows,
+          grid,
+        };
+      }
+
+      function dxfNumber(value) {
+        if (!Number.isFinite(value)) return "0";
+        const normalized = Math.abs(value) < 1e-10 ? 0 : value;
+        return Number(normalized.toFixed(6)).toString();
+      }
+
+      function sanitizeDxfLayerName(name, fallback = "VIEW_GEOMETRY") {
+        const raw = String(name || "").trim().toUpperCase();
+        const compact = raw.replace(/\s+/g, "_").replace(/[^A-Z0-9_\-]/g, "_");
+        const collapsed = compact.replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+        return (collapsed || fallback).slice(0, 31);
+      }
+
+      function simplifyOrthogonalLoop(loop) {
+        if (!Array.isArray(loop) || loop.length < 4) return [];
+        const ring = loop.slice();
+        const first = ring[0];
+        const last = ring[ring.length - 1];
+        if (first && last && first.x === last.x && first.y === last.y) {
+          ring.pop();
+        }
+        if (ring.length < 3) return [];
+        const simplified = [];
+        for (let i = 0; i < ring.length; i += 1) {
+          const prev = ring[(i - 1 + ring.length) % ring.length];
+          const curr = ring[i];
+          const next = ring[(i + 1) % ring.length];
+          const collinearVertical = prev.x === curr.x && curr.x === next.x;
+          const collinearHorizontal = prev.y === curr.y && curr.y === next.y;
+          if (collinearVertical || collinearHorizontal) continue;
+          simplified.push(curr);
+        }
+        return simplified.length >= 3 ? simplified : [];
+      }
+
+      function encodeDxfPolyline(layerName, points) {
+        if (!Array.isArray(points) || points.length < 3) return "";
+        const body = [
+          "0",
+          "POLYLINE",
+          "8",
+          layerName,
+          "66",
+          "1",
+          "70",
+          "1",
+        ];
+        points.forEach((point) => {
+          body.push(
+            "0",
+            "VERTEX",
+            "8",
+            layerName,
+            "10",
+            dxfNumber(point.x),
+            "20",
+            dxfNumber(point.y),
+            "30",
+            "0"
+          );
+        });
+        body.push("0", "SEQEND", "8", layerName);
+        return body.join("\n") + "\n";
+      }
+
+      function encodeDxfLine(layerName, start, end) {
+        if (!start || !end) return "";
+        return [
+          "0",
+          "LINE",
+          "8",
+          layerName,
+          "10",
+          dxfNumber(start.x),
+          "20",
+          dxfNumber(start.y),
+          "30",
+          "0",
+          "11",
+          dxfNumber(end.x),
+          "21",
+          dxfNumber(end.y),
+          "31",
+          "0",
+        ].join("\n") + "\n";
+      }
+
+      function collectDxfBoundarySegments(renderGrid, shouldDrawBoundary) {
+        if (!Array.isArray(renderGrid) || !renderGrid.length) return [];
+        const rowCount = renderGrid.length;
+        const columnCount = renderGrid[0] ? renderGrid[0].length : 0;
+        if (!columnCount) return [];
+        const cellAt = (row, column) => (row >= 0 && row < rowCount && column >= 0 && column < columnCount ? renderGrid[row][column] : null);
+        const segmentMap = new Map();
+        const segmentKey = (x1, y1, x2, y2) => {
+          if (x1 < x2 || (x1 === x2 && y1 <= y2)) return x1 + ":" + y1 + ":" + x2 + ":" + y2;
+          return x2 + ":" + y2 + ":" + x1 + ":" + y1;
+        };
+        const addSegment = (x1, y1, x2, y2) => {
+          const key = segmentKey(x1, y1, x2, y2);
+          if (!segmentMap.has(key)) segmentMap.set(key, { x1, y1, x2, y2 });
+        };
+        const evaluateSide = (row, column, neighborRow, neighborColumn, x1, y1, x2, y2) => {
+          const cell = cellAt(row, column);
+          if (!cell) return;
+          const neighbor = cellAt(neighborRow, neighborColumn);
+          const drawFromCell = shouldDrawBoundary(cell, neighbor);
+          const drawFromNeighbor = neighbor ? shouldDrawBoundary(neighbor, cell) : false;
+          if (drawFromCell || drawFromNeighbor) addSegment(x1, y1, x2, y2);
+        };
+        for (let row = 0; row < rowCount; row += 1) {
+          for (let column = 0; column < columnCount; column += 1) {
+            if (!cellAt(row, column)) continue;
+            evaluateSide(row, column, row - 1, column, column, row, column + 1, row);
+            evaluateSide(row, column, row, column + 1, column + 1, row, column + 1, row + 1);
+            evaluateSide(row, column, row + 1, column, column + 1, row + 1, column, row + 1);
+            evaluateSide(row, column, row, column - 1, column, row + 1, column, row);
+          }
+        }
+        return Array.from(segmentMap.values());
+      }
+
+      function buildViewPaneDxfContent(slotIndex) {
+        const view = activeCanvasView();
+        if (!view) return { error: "no-view" };
+        const direction = state.viewPaneDirections[slotIndex];
+        const build = buildDirectionalOcclusionGrid(view, direction);
+        if (build.error) return { error: build.error };
+        const { grid, contentMaxZ, contentMinProjectedColumn, contentColumns } = build;
+        const layerIds = Array.from(
+          new Set(
+            grid.flatMap((row) => row.filter(Boolean).map((cell) => cell.layerId))
+          )
+        );
+        if (!layerIds.length) return { error: "no-entities" };
+
+        const toMetersPoints = (loop) => {
+          const simplified = simplifyOrthogonalLoop(loop);
+          if (!simplified.length) return [];
+          return simplified.map((point) => ({
+            x: (contentMinProjectedColumn + point.x) / CELLS_PER_METER,
+            y: (contentMaxZ - point.y) / CELLS_PER_METER,
+          }));
+        };
+        const toMetersPoint = (point) => ({
+          x: (contentMinProjectedColumn + point.x) / CELLS_PER_METER,
+          y: (contentMaxZ - point.y) / CELLS_PER_METER,
+        });
+
+        let entities = "";
+        layerIds.forEach((layerId) => {
+          const sourceLayer = state.layers.find((layer) => layer.id === layerId);
+          const layerName = sanitizeDxfLayerName("VIEW_" + (sourceLayer ? sourceLayer.name : layerId), "VIEW_LAYER");
+          const loops = buildViewContoursFromGrid(grid, (cell) => !!(cell && cell.layerId === layerId));
+          loops.forEach((loop) => {
+            entities += encodeDxfPolyline(layerName, toMetersPoints(loop));
+          });
+        });
+
+        if (state.viewSectionCutEffect.enabled) {
+          const cutLoops = buildViewContoursFromGrid(grid, (cell) => !!(cell && cell.isCut));
+          cutLoops.forEach((loop) => {
+            entities += encodeDxfPolyline("VIEW_SECTION_CUT", toMetersPoints(loop));
+          });
+        }
+
+        if (state.viewOutlineEffect.enabled) {
+          const globalOutlineSegments = collectDxfBoundarySegments(
+            grid,
+            (cell, neighbor) => !!cell && (!neighbor || neighbor.depth !== cell.depth || neighbor.isCut !== cell.isCut)
+          );
+          globalOutlineSegments.forEach((segment) => {
+            entities += encodeDxfLine(
+              "VIEW_OUTLINE_GLOBAL",
+              toMetersPoint({ x: segment.x1, y: segment.y1 }),
+              toMetersPoint({ x: segment.x2, y: segment.y2 })
+            );
+          });
+        }
+
+        const layerOutlineSegments = collectDxfBoundarySegments(grid, (cell, neighbor) => {
+          if (!cell || !cell.forceOutline) return false;
+          if (!neighbor) return true;
+          const surfaceChanged = neighbor.depth !== cell.depth || neighbor.isCut !== cell.isCut;
+          if (surfaceChanged) return true;
+          if (neighbor.layerId === cell.layerId) return false;
+          if (cell.forceOutline && !neighbor.forceOutline) return true;
+          if (!cell.forceOutline && neighbor.forceOutline) return false;
+          return cell.orderIndex <= neighbor.orderIndex;
+        });
+        layerOutlineSegments.forEach((segment) => {
+          entities += encodeDxfLine(
+            "VIEW_OUTLINE_LAYER",
+            toMetersPoint({ x: segment.x1, y: segment.y1 }),
+            toMetersPoint({ x: segment.x2, y: segment.y2 })
+          );
+        });
+
+        if (state.viewSectionCutOutlineEffect.enabled) {
+          const cutOutlineSegments = collectDxfBoundarySegments(
+            grid,
+            (cell, neighbor) => !!(cell && cell.isCut) && !(neighbor && neighbor.isCut)
+          );
+          cutOutlineSegments.forEach((segment) => {
+            entities += encodeDxfLine(
+              "VIEW_SECTION_CUT_OUTLINE",
+              toMetersPoint({ x: segment.x1, y: segment.y1 }),
+              toMetersPoint({ x: segment.x2, y: segment.y2 })
+            );
+          });
+        }
+
+        if (state.viewEnvironment.horizonEnabled) {
+          entities += encodeDxfLine(
+            "VIEW_HORIZON",
+            { x: contentMinProjectedColumn / CELLS_PER_METER, y: 0 },
+            { x: (contentMinProjectedColumn + contentColumns) / CELLS_PER_METER, y: 0 }
+          );
+        }
+
+        if (!entities) return { error: "no-entities" };
+
+        const dxf = [
+          "0",
+          "SECTION",
+          "2",
+          "HEADER",
+          "9",
+          "$ACADVER",
+          "1",
+          "AC1009",
+          "9",
+          "$INSUNITS",
+          "70",
+          "6",
+          "0",
+          "ENDSEC",
+          "0",
+          "SECTION",
+          "2",
+          "ENTITIES",
+        ].join("\n") + "\n" + entities + ["0", "ENDSEC", "0", "EOF"].join("\n") + "\n";
+
+        return { dxf, direction, view };
+      }
+
+      function renderDirectionalViewOutput(canvas, emptyState, direction, placeholder) {
+        if (!canvas || !emptyState) return;
+        const build = buildDirectionalOcclusionGrid(activeCanvasView(), direction);
+        if (build.error === "no-view") {
+          canvas.classList.add("hidden");
+          emptyState.classList.remove("hidden");
+          emptyState.textContent = placeholder;
+          return;
+        }
+        if (build.error === "invalid-bounds") {
+          canvas.classList.add("hidden");
+          emptyState.classList.remove("hidden");
+          emptyState.textContent = "Draw a valid view box in Main View";
+          return;
+        }
+        if (build.error === "no-layers" || build.error === "no-painted") {
+          canvas.classList.add("hidden");
+          emptyState.classList.remove("hidden");
+          emptyState.textContent = "No painted layers intersect this view";
+          return;
+        }
+        if (build.error === "no-renderable") {
+          canvas.classList.add("hidden");
+          emptyState.classList.remove("hidden");
+          emptyState.textContent = "Set layer heights in Edit Layers to build this view";
+          return;
+        }
+        const { directionConfig, contentColumns, totalRows, contentMaxZ } = build;
+
+        canvas.classList.remove("hidden");
+        emptyState.classList.add("hidden");
+        const context = canvas.getContext("2d");
+        resizeViewPaneCanvas(canvas, context);
+        const surfaceWidth = canvas.clientWidth;
+        const surfaceHeight = canvas.clientHeight;
+        const padding = 18;
+        const availableWidth = Math.max(1, surfaceWidth - padding * 2);
+        const availableHeight = Math.max(1, surfaceHeight - padding * 2);
+        const uniformSourceScale = Math.max(1, contentColumns / availableWidth, totalRows / availableHeight);
+        const drawEnvironmentBehindContent = !!state.viewSectionCutEffect.enabled;
+
+        const sourceGrid = build.grid;
+        let renderGrid = sourceGrid;
         let renderRows = totalRows;
         let renderColumns = contentColumns;
         if (uniformSourceScale > 1) {
@@ -3655,7 +4035,7 @@
           };
           for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
             for (let columnIndex = 0; columnIndex < contentColumns; columnIndex += 1) {
-              const cell = grid[rowIndex][columnIndex];
+              const cell = sourceGrid[rowIndex][columnIndex];
               if (!cell) continue;
               const reducedRow = Math.min(reducedRows - 1, Math.floor(rowIndex / uniformSourceScale));
               const reducedColumn = Math.min(reducedColumns - 1, Math.floor(columnIndex / uniformSourceScale));
@@ -3714,17 +4094,26 @@
           }
         }
 
-        for (let rowIndex = 0; rowIndex < renderRows; rowIndex += 1) {
-          for (let columnIndex = 0; columnIndex < renderColumns; columnIndex += 1) {
-            const cell = renderGrid[rowIndex][columnIndex];
-            if (!cell) continue;
-            const depthOffsetCells = directionConfig.frontBoundary === "min"
-              ? cell.depth - nearestVisibleDepth
-              : nearestVisibleDepth - cell.depth;
-            const shadedColor = applyViewDepthShading(cell.color, depthOffsetCells);
-            context.fillStyle = hexToRgba(shadedColor, cell.opacity);
-            context.fillRect(offsetX + columnIndex * cellPixelSize, offsetY + rowIndex * cellPixelSize, cellPixelSize, cellPixelSize);
-          }
+        const shadedRuns = buildViewRowRuns(renderGrid, (cell) => {
+          if (!cell) return null;
+          const depthOffsetCells = directionConfig.frontBoundary === "min"
+            ? cell.depth - nearestVisibleDepth
+            : nearestVisibleDepth - cell.depth;
+          const shadedColor = applyViewDepthShading(cell.color, depthOffsetCells);
+          const fillStyle = hexToRgba(shadedColor, cell.opacity);
+          return {
+            key: fillStyle,
+            fillStyle,
+          };
+        });
+        for (const run of shadedRuns) {
+          context.fillStyle = run.fillStyle;
+          context.fillRect(
+            offsetX + run.columnStart * cellPixelSize,
+            offsetY + run.rowIndex * cellPixelSize,
+            (run.columnEnd - run.columnStart) * cellPixelSize,
+            cellPixelSize
+          );
         }
 
         const hasForcedLayerOutline = renderGrid.some((row) => row.some((cell) => cell && cell.forceOutline));
@@ -3838,13 +4227,23 @@
 
         if (state.viewSectionCutEffect.enabled) {
           context.save();
-          for (let rowIndex = 0; rowIndex < renderRows; rowIndex += 1) {
-            for (let columnIndex = 0; columnIndex < renderColumns; columnIndex += 1) {
-              const cell = renderGrid[rowIndex][columnIndex];
-              if (!cell || !cell.isCut) continue;
-              context.fillStyle = hexToRgba(state.viewSectionCutEffect.color || defaultViewSectionCutColor(), cell.opacity);
-              context.fillRect(offsetX + columnIndex * cellPixelSize, offsetY + rowIndex * cellPixelSize, cellPixelSize, cellPixelSize);
-            }
+          const cutColor = state.viewSectionCutEffect.color || defaultViewSectionCutColor();
+          const cutRuns = buildViewRowRuns(renderGrid, (cell) => {
+            if (!cell || !cell.isCut) return null;
+            const fillStyle = hexToRgba(cutColor, cell.opacity);
+            return {
+              key: fillStyle,
+              fillStyle,
+            };
+          });
+          for (const run of cutRuns) {
+            context.fillStyle = run.fillStyle;
+            context.fillRect(
+              offsetX + run.columnStart * cellPixelSize,
+              offsetY + run.rowIndex * cellPixelSize,
+              (run.columnEnd - run.columnStart) * cellPixelSize,
+              cellPixelSize
+            );
           }
           context.restore();
         }
@@ -3978,6 +4377,24 @@
           context.stroke();
           context.restore();
         }
+
+        if (DEBUG_VIEW_VECTOR_CONTOURS) {
+          const loops = buildViewContoursFromGrid(renderGrid, (cell) => !!cell);
+          context.save();
+          context.strokeStyle = "rgba(34, 197, 94, 0.9)";
+          context.lineWidth = 1.25;
+          for (const loop of loops) {
+            if (!loop.length) continue;
+            context.beginPath();
+            context.moveTo(offsetX + loop[0].x * cellPixelSize + 0.5, offsetY + loop[0].y * cellPixelSize + 0.5);
+            for (let i = 1; i < loop.length; i += 1) {
+              context.lineTo(offsetX + loop[i].x * cellPixelSize + 0.5, offsetY + loop[i].y * cellPixelSize + 0.5);
+            }
+            context.closePath();
+            context.stroke();
+          }
+          context.restore();
+        }
       }
 
       function renderViewOutputs() {
@@ -4035,6 +4452,48 @@
           setStatus("PNG exported.");
           render({ ui: true });
         }, "image/png");
+      }
+
+      function exportViewPaneDxf(slotIndex) {
+        const paneCanvas = [ui.viewFrontCanvas, ui.viewBackCanvas, ui.viewLeftCanvas, ui.viewRightCanvas][slotIndex];
+        if (!paneCanvas || paneCanvas.classList.contains("hidden")) {
+          setStatus("Nothing to export in this view pane.");
+          render({ ui: true });
+          return;
+        }
+        const result = buildViewPaneDxfContent(slotIndex);
+        if (result.error) {
+          const message =
+            result.error === "no-view"
+              ? "Open a view tab to export DXF."
+              : result.error === "invalid-bounds"
+              ? "Draw a valid view box in Main View."
+              : result.error === "no-layers" || result.error === "no-painted"
+              ? "No painted layers intersect this view."
+              : result.error === "no-renderable"
+              ? "Set layer heights in Edit Layers to build this view."
+              : "Nothing to export as DXF.";
+          setStatus(message);
+          render({ ui: true });
+          return;
+        }
+        const filename =
+          "millimetre-view-" +
+          slugifyFilenamePart(result.view.name, "view") +
+          "-" +
+          slugifyFilenamePart(viewDirectionLabel(result.direction), "direction") +
+          ".dxf";
+        const blob = new Blob([result.dxf], { type: "application/dxf" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        setStatus("DXF exported.");
+        render({ ui: true });
       }
 
       function closeViewEditModal() {
@@ -11471,7 +11930,13 @@
       });
       ui.viewPaneExportButtons.forEach((button) => {
         button.addEventListener("click", () => {
-          exportViewPanePng(Number(button.dataset.viewExportSlot));
+          const slotIndex = Number(button.dataset.viewExportSlot);
+          const format = (button.dataset.viewExportFormat || "png").toLowerCase();
+          if (format === "dxf") {
+            exportViewPaneDxf(slotIndex);
+            return;
+          }
+          exportViewPanePng(slotIndex);
         });
       });
       ui.sceneScaleCancelButton.addEventListener("click", () => {

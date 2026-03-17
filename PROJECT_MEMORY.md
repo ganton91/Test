@@ -258,6 +258,36 @@ The following must remain true unless the user explicitly approves a renderer re
 - Zoom/pan behavior must remain stable and visually smooth
 - Ruler math must stay aligned with canvas world coordinates
 
+## View Outputs Decisions (March 2026)
+
+- `View Outputs` now use a locked-aspect AutoFit policy:
+  - a single uniform source scale is used for both axes (`uniformSourceScale`)
+  - this replaced independent X/Y reduction and fixed vertical-only compression
+  - fit still remains grid-quantized and pixel-snapped, so step-like size transitions are expected at thresholds
+
+- `View Outputs` rendering path was upgraded toward vector workflows:
+  - cell-by-cell fill was replaced by merged row runs (`buildViewRowRuns`) for faster drawing
+  - contour extraction from grid geometry was added (`buildViewContoursFromGrid`)
+  - optional contour debug overlay exists (`DEBUG_VIEW_VECTOR_CONTOURS`, default off)
+
+- Shared geometry builder introduced for consistency between render and export:
+  - `buildDirectionalOcclusionGrid(view, direction)` is now the canonical projected/occlusion grid source for side views
+
+- DXF export was introduced for view panes (in addition to PNG):
+  - each view pane now has `PNG` + `DXF` export actions
+  - DXF uses meter units (`$INSUNITS = 6`) and writes classic `POLYLINE/VERTEX/SEQEND` entities for compatibility
+  - exported geometry includes:
+    - per-visible-layer projected contours (separate CAD layers)
+    - section-cut contours (when enabled)
+    - global outline/depth boundaries
+    - per-layer outline boundaries
+    - section-cut outline boundaries (when enabled)
+    - horizon line (when enabled)
+  - contour simplification removes collinear vertices to reduce 5 cm stair-stepping on straight segments
+
+- Important current limitation:
+  - geometry is still derived from the 5 cm base grid model, so fully continuous (non-quantized) vector edges are not yet part of the system
+
 ## Protected Change List
 
 Before changing any of the following, Codex must warn the user first and explain the risk:
