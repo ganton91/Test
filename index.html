@@ -1735,6 +1735,10 @@
               </div>
             </div>
           </div>
+          <div class="calibration-actions">
+            <button class="ghost-button" id="settingsCloseButton">Close</button>
+            <button class="ghost-button" id="settingsApplyButton">Apply</button>
+          </div>
         </div>
         <div class="menu-panel modal-panel calibration-modal hidden" id="sceneScaleModal">
           <div class="menu-title">Scene Scale</div>
@@ -2095,6 +2099,8 @@
         canvasModeHint: document.getElementById("canvasModeHint"),
         settingsButton: document.getElementById("settingsButton"),
         settingsMenu: document.getElementById("settingsMenu"),
+        settingsCloseButton: document.getElementById("settingsCloseButton"),
+        settingsApplyButton: document.getElementById("settingsApplyButton"),
         sceneScaleModal: document.getElementById("sceneScaleModal"),
         sceneScaleMeters: document.getElementById("sceneScaleMeters"),
         sceneScaleCancelButton: document.getElementById("sceneScaleCancelButton"),
@@ -2258,6 +2264,7 @@
         dragViewId: null,
         viewSectionCollapsed: true,
         viewEditDraft: null,
+        settingsDraft: null,
         colorPanelCollapsed: false,
         brushPanelCollapsed: false,
         shapePanelCollapsed: false,
@@ -4859,6 +4866,65 @@
         return state.viewEnvironment.groundEnabled ? state.viewEnvironment.groundColor : defaultViewGroundColor();
       }
 
+      function createSettingsDraft() {
+        return {
+          theme: state.theme,
+          gridPosition: state.gridPosition,
+          dualStrokeGrid: state.dualStrokeGrid,
+          viewColorOverride: state.viewColorOverride,
+          viewDepthEffect: {
+            enabled: !!state.viewDepthEffect.enabled,
+            strength: state.viewDepthEffect.strength,
+            mode: state.viewDepthEffect.mode,
+          },
+          viewOutlineEffect: {
+            enabled: !!state.viewOutlineEffect.enabled,
+            thickness: state.viewOutlineEffect.thickness,
+            color: state.viewOutlineEffect.color,
+          },
+          viewEnvironment: {
+            skyEnabled: !!state.viewEnvironment.skyEnabled,
+            skyColor: state.viewEnvironment.skyColor,
+            horizonEnabled: !!state.viewEnvironment.horizonEnabled,
+            horizonColor: state.viewEnvironment.horizonColor,
+            horizonWidth: state.viewEnvironment.horizonWidth,
+            groundEnabled: !!state.viewEnvironment.groundEnabled,
+            groundColor: state.viewEnvironment.groundColor,
+          },
+        };
+      }
+
+      function currentSettingsSource() {
+        return isModalOpen(ui.settingsMenu) && state.settingsDraft ? state.settingsDraft : state;
+      }
+
+      function discardSettingsDraft() {
+        state.settingsDraft = null;
+      }
+
+      function applySettingsDraft() {
+        const draft = state.settingsDraft;
+        if (!draft) return false;
+        state.theme = draft.theme;
+        state.gridPosition = draft.gridPosition;
+        state.dualStrokeGrid = draft.dualStrokeGrid;
+        state.viewColorOverride = draft.viewColorOverride;
+        state.viewDepthEffect.enabled = !!draft.viewDepthEffect.enabled;
+        state.viewDepthEffect.strength = draft.viewDepthEffect.strength;
+        state.viewDepthEffect.mode = draft.viewDepthEffect.mode;
+        state.viewOutlineEffect.enabled = !!draft.viewOutlineEffect.enabled;
+        state.viewOutlineEffect.thickness = draft.viewOutlineEffect.thickness;
+        state.viewOutlineEffect.color = draft.viewOutlineEffect.color;
+        state.viewEnvironment.skyEnabled = !!draft.viewEnvironment.skyEnabled;
+        state.viewEnvironment.skyColor = draft.viewEnvironment.skyColor;
+        state.viewEnvironment.horizonEnabled = !!draft.viewEnvironment.horizonEnabled;
+        state.viewEnvironment.horizonColor = draft.viewEnvironment.horizonColor;
+        state.viewEnvironment.horizonWidth = draft.viewEnvironment.horizonWidth;
+        state.viewEnvironment.groundEnabled = !!draft.viewEnvironment.groundEnabled;
+        state.viewEnvironment.groundColor = draft.viewEnvironment.groundColor;
+        return true;
+      }
+
       function activeViewHorizonColor() {
         return state.viewEnvironment.horizonColor || defaultViewOutlineColor();
       }
@@ -5270,16 +5336,17 @@
       }
 
       function startViewDepthStrengthRepeat(step) {
-        if (!state.viewDepthEffect.enabled) return;
+        const settings = state.settingsDraft;
+        if (!settings || !settings.viewDepthEffect.enabled) return;
         stopViewDepthStrengthRepeat();
         state.viewDepthRepeat.suppressClick = true;
         const applyStep = () => {
-          state.viewDepthEffect.strength = Math.max(
+          settings.viewDepthEffect.strength = Math.max(
             0.01,
-            Math.min(100, Math.round((state.viewDepthEffect.strength + step) * 100) / 100)
+            Math.min(100, Math.round((settings.viewDepthEffect.strength + step) * 100) / 100)
           );
-          setStatus("View depth step " + state.viewDepthEffect.strength.toFixed(2) + "% per cell.");
-          render({ ui: true, content: true });
+          setStatus("View depth step " + settings.viewDepthEffect.strength.toFixed(2) + "% per cell.");
+          updateThemeButtons();
         };
         applyStep();
         state.viewDepthRepeat.timeoutId = setTimeout(() => {
@@ -5312,6 +5379,7 @@
         modal.classList.add("hidden");
         ui.modalBackdrop.classList.add("hidden");
         if (modal === ui.settingsMenu) {
+          discardSettingsDraft();
           ui.settingsButton.classList.remove("active");
         }
       }
@@ -5323,6 +5391,7 @@
         modal.classList.remove("hidden");
         ui.modalBackdrop.classList.remove("hidden");
         if (modal === ui.settingsMenu) {
+          state.settingsDraft = createSettingsDraft();
           ui.settingsButton.classList.add("active");
         }
       }
@@ -5426,43 +5495,44 @@
       }
 
       function updateThemeButtons() {
+        const settings = currentSettingsSource();
         ui.themeButtons.forEach((button) => {
-          button.classList.toggle("active", button.dataset.theme === state.theme);
+          button.classList.toggle("active", button.dataset.theme === settings.theme);
         });
         ui.gridPositionButtons.forEach((button) => {
-          button.classList.toggle("active", button.dataset.gridPosition === state.gridPosition);
+          button.classList.toggle("active", button.dataset.gridPosition === settings.gridPosition);
         });
         ui.dualGridButtons.forEach((button) => {
-          button.classList.toggle("active", button.dataset.dualGrid === (state.dualStrokeGrid ? "on" : "off"));
+          button.classList.toggle("active", button.dataset.dualGrid === (settings.dualStrokeGrid ? "on" : "off"));
         });
         ui.viewDepthModeButtons.forEach((button) => {
-          button.classList.toggle("active", button.dataset.viewDepthMode === state.viewDepthEffect.mode);
+          button.classList.toggle("active", button.dataset.viewDepthMode === settings.viewDepthEffect.mode);
         });
         ui.viewColorOverrideButtons.forEach((button) => {
-          button.classList.toggle("active", button.dataset.viewColorOverride === (state.viewColorOverride ? "on" : "off"));
+          button.classList.toggle("active", button.dataset.viewColorOverride === (settings.viewColorOverride ? "on" : "off"));
         });
         ui.viewOutlineButtons.forEach((button) => {
-          button.classList.toggle("active", button.dataset.viewOutline === (state.viewOutlineEffect.enabled ? "on" : "off"));
+          button.classList.toggle("active", button.dataset.viewOutline === (settings.viewOutlineEffect.enabled ? "on" : "off"));
         });
         ui.viewSkyButtons.forEach((button) => {
-          button.classList.toggle("active", button.dataset.viewSky === (state.viewEnvironment.skyEnabled ? "on" : "off"));
+          button.classList.toggle("active", button.dataset.viewSky === (settings.viewEnvironment.skyEnabled ? "on" : "off"));
         });
         ui.viewHorizonButtons.forEach((button) => {
-          button.classList.toggle("active", button.dataset.viewHorizon === (state.viewEnvironment.horizonEnabled ? "on" : "off"));
+          button.classList.toggle("active", button.dataset.viewHorizon === (settings.viewEnvironment.horizonEnabled ? "on" : "off"));
         });
         ui.viewGroundButtons.forEach((button) => {
-          button.classList.toggle("active", button.dataset.viewGround === (state.viewEnvironment.groundEnabled ? "on" : "off"));
+          button.classList.toggle("active", button.dataset.viewGround === (settings.viewEnvironment.groundEnabled ? "on" : "off"));
         });
-        ui.viewDepthStrengthValue.value = state.viewDepthEffect.strength.toFixed(2);
-        ui.viewDepthStrengthDecrease.disabled = !state.viewDepthEffect.enabled;
-        ui.viewDepthStrengthIncrease.disabled = !state.viewDepthEffect.enabled;
-        ui.viewDepthStrengthValue.disabled = !state.viewDepthEffect.enabled;
-        ui.viewOutlineColor.value = state.viewOutlineEffect.color;
-        ui.viewOutlineWidth.value = String(state.viewOutlineEffect.thickness);
-        ui.viewSkyColor.value = state.viewEnvironment.skyColor;
-        ui.viewHorizonColor.value = state.viewEnvironment.horizonColor;
-        ui.viewHorizonWidth.value = String(state.viewEnvironment.horizonWidth);
-        ui.viewGroundColor.value = state.viewEnvironment.groundColor;
+        ui.viewDepthStrengthValue.value = settings.viewDepthEffect.strength.toFixed(2);
+        ui.viewDepthStrengthDecrease.disabled = !settings.viewDepthEffect.enabled;
+        ui.viewDepthStrengthIncrease.disabled = !settings.viewDepthEffect.enabled;
+        ui.viewDepthStrengthValue.disabled = !settings.viewDepthEffect.enabled;
+        ui.viewOutlineColor.value = settings.viewOutlineEffect.color;
+        ui.viewOutlineWidth.value = String(settings.viewOutlineEffect.thickness);
+        ui.viewSkyColor.value = settings.viewEnvironment.skyColor;
+        ui.viewHorizonColor.value = settings.viewEnvironment.horizonColor;
+        ui.viewHorizonWidth.value = String(settings.viewEnvironment.horizonWidth);
+        ui.viewGroundColor.value = settings.viewEnvironment.groundColor;
       }
 
       function renderToolState() {
@@ -5954,7 +6024,7 @@
           actions.className = "layer-actions";
           const editButton = document.createElement("button");
           editButton.className = "layer-icon";
-          editButton.textContent = "Edit Layer Elevations";
+          editButton.textContent = "Layer Properties";
           editButton.title = "Edit view";
           editButton.addEventListener("click", (event) => {
             event.stopPropagation();
@@ -10719,6 +10789,16 @@
         render({ ui: true, overlay: true });
       });
       ui.sceneScaleApplyButton.addEventListener("click", applySceneCalibration);
+      ui.settingsCloseButton.addEventListener("click", () => {
+        closeModal(ui.settingsMenu);
+        setStatus("Settings closed.");
+        render({ ui: true });
+      });
+      ui.settingsApplyButton.addEventListener("click", () => {
+        if (!applySettingsDraft()) return;
+        setStatus("Settings applied.");
+        render({ ui: true, content: true, static: true, scenes: true, overlay: true, rulers: true });
+      });
       ui.viewEditCancelButton.addEventListener("click", () => {
         closeViewEditModal();
         setStatus("View layer editor closed.");
@@ -10736,25 +10816,28 @@
 
       ui.themeButtons.forEach((button) => {
         button.addEventListener("click", () => {
-          state.theme = button.dataset.theme;
-          setStatus((state.theme === "dark" ? "Dark" : "Light") + " mode active.");
-          render({ ui: true, static: true, scenes: true, content: true, overlay: true, rulers: true });
+          if (!state.settingsDraft) return;
+          state.settingsDraft.theme = button.dataset.theme;
+          setStatus((state.settingsDraft.theme === "dark" ? "Dark" : "Light") + " mode selected.");
+          updateThemeButtons();
         });
       });
 
       ui.gridPositionButtons.forEach((button) => {
         button.addEventListener("click", () => {
-          state.gridPosition = button.dataset.gridPosition;
-          setStatus(state.gridPosition === "above" ? "Grid shown above layers." : "Grid shown below layers.");
-          render({ ui: true });
+          if (!state.settingsDraft) return;
+          state.settingsDraft.gridPosition = button.dataset.gridPosition;
+          setStatus(state.settingsDraft.gridPosition === "above" ? "Grid above selected." : "Grid below selected.");
+          updateThemeButtons();
         });
       });
 
       ui.dualGridButtons.forEach((button) => {
         button.addEventListener("click", () => {
-          state.dualStrokeGrid = button.dataset.dualGrid === "on";
-          setStatus(state.dualStrokeGrid ? "Dual stroke grid enabled." : "Dual stroke grid disabled.");
-          render({ ui: true, static: true });
+          if (!state.settingsDraft) return;
+          state.settingsDraft.dualStrokeGrid = button.dataset.dualGrid === "on";
+          setStatus(state.settingsDraft.dualStrokeGrid ? "Dual stroke grid on selected." : "Dual stroke grid off selected.");
+          updateThemeButtons();
         });
       });
 
@@ -10778,107 +10861,121 @@
 
       ui.viewDepthModeButtons.forEach((button) => {
         button.addEventListener("click", () => {
-          state.viewDepthEffect.mode =
+          if (!state.settingsDraft) return;
+          state.settingsDraft.viewDepthEffect.mode =
             button.dataset.viewDepthMode === "fog"
               ? "fog"
               : button.dataset.viewDepthMode === "off"
               ? "off"
               : "shadow";
-          state.viewDepthEffect.enabled = state.viewDepthEffect.mode !== "off";
+          state.settingsDraft.viewDepthEffect.enabled = state.settingsDraft.viewDepthEffect.mode !== "off";
           setStatus(
-            state.viewDepthEffect.mode === "off"
+            state.settingsDraft.viewDepthEffect.mode === "off"
               ? "Depth effect off."
-              : state.viewDepthEffect.mode === "fog"
+              : state.settingsDraft.viewDepthEffect.mode === "fog"
               ? "Depth effect set to fog."
               : "Depth effect set to shadow."
           );
-          render({ ui: true, content: true });
+          updateThemeButtons();
         });
       });
 
       ui.viewColorOverrideButtons.forEach((button) => {
         button.addEventListener("click", () => {
-          state.viewColorOverride = button.dataset.viewColorOverride === "on";
-          setStatus(state.viewColorOverride ? "View color override enabled." : "View color override disabled.");
-          render({ ui: true, content: true });
+          if (!state.settingsDraft) return;
+          state.settingsDraft.viewColorOverride = button.dataset.viewColorOverride === "on";
+          setStatus(state.settingsDraft.viewColorOverride ? "Override colors enabled." : "Override colors disabled.");
+          updateThemeButtons();
         });
       });
 
       ui.viewOutlineButtons.forEach((button) => {
         button.addEventListener("click", () => {
-          state.viewOutlineEffect.enabled = button.dataset.viewOutline === "on";
-          setStatus(state.viewOutlineEffect.enabled ? "Global outline enabled." : "Global outline disabled.");
-          render({ ui: true, content: true });
+          if (!state.settingsDraft) return;
+          state.settingsDraft.viewOutlineEffect.enabled = button.dataset.viewOutline === "on";
+          setStatus(state.settingsDraft.viewOutlineEffect.enabled ? "Global outline enabled." : "Global outline disabled.");
+          updateThemeButtons();
         });
       });
 
       ui.viewOutlineColor.addEventListener("input", () => {
-        state.viewOutlineEffect.color = ui.viewOutlineColor.value || "#111827";
+        if (!state.settingsDraft) return;
+        state.settingsDraft.viewOutlineEffect.color = ui.viewOutlineColor.value || "#111827";
         setStatus("View outline color updated.");
-        render({ ui: true, content: true });
+        updateThemeButtons();
       });
 
       ui.viewOutlineWidth.addEventListener("input", () => {
-        state.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(ui.viewOutlineWidth.value) || 1));
-        render({ ui: true, content: true });
+        if (!state.settingsDraft) return;
+        state.settingsDraft.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(ui.viewOutlineWidth.value) || 1));
+        updateThemeButtons();
       });
 
       ui.viewOutlineWidth.addEventListener("change", () => {
-        state.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(ui.viewOutlineWidth.value) || 1));
-        setStatus("View outline width set to " + state.viewOutlineEffect.thickness + ".");
-        render({ ui: true, content: true });
+        if (!state.settingsDraft) return;
+        state.settingsDraft.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(ui.viewOutlineWidth.value) || 1));
+        setStatus("View outline width set to " + state.settingsDraft.viewOutlineEffect.thickness + ".");
+        updateThemeButtons();
       });
 
       ui.viewSkyColor.addEventListener("input", () => {
-        state.viewEnvironment.skyColor = ui.viewSkyColor.value || "#f8fafc";
+        if (!state.settingsDraft) return;
+        state.settingsDraft.viewEnvironment.skyColor = ui.viewSkyColor.value || "#f8fafc";
         setStatus("View sky color updated.");
-        render({ ui: true, content: true });
+        updateThemeButtons();
       });
 
       ui.viewSkyButtons.forEach((button) => {
         button.addEventListener("click", () => {
-          state.viewEnvironment.skyEnabled = button.dataset.viewSky === "on";
-          setStatus(state.viewEnvironment.skyEnabled ? "Custom sky color enabled." : "Sky using theme default.");
-          render({ ui: true, content: true });
+          if (!state.settingsDraft) return;
+          state.settingsDraft.viewEnvironment.skyEnabled = button.dataset.viewSky === "on";
+          setStatus(state.settingsDraft.viewEnvironment.skyEnabled ? "Custom sky color enabled." : "Sky using theme default.");
+          updateThemeButtons();
         });
       });
 
       ui.viewHorizonColor.addEventListener("input", () => {
-        state.viewEnvironment.horizonColor = ui.viewHorizonColor.value || defaultViewOutlineColor();
+        if (!state.settingsDraft) return;
+        state.settingsDraft.viewEnvironment.horizonColor = ui.viewHorizonColor.value || defaultViewOutlineColor();
         setStatus("Horizon line color updated.");
-        render({ ui: true, content: true });
+        updateThemeButtons();
       });
 
       ui.viewHorizonButtons.forEach((button) => {
         button.addEventListener("click", () => {
-          state.viewEnvironment.horizonEnabled = button.dataset.viewHorizon === "on";
-          setStatus(state.viewEnvironment.horizonEnabled ? "Horizon line enabled." : "Horizon line disabled.");
-          render({ ui: true, content: true });
+          if (!state.settingsDraft) return;
+          state.settingsDraft.viewEnvironment.horizonEnabled = button.dataset.viewHorizon === "on";
+          setStatus(state.settingsDraft.viewEnvironment.horizonEnabled ? "Horizon line enabled." : "Horizon line disabled.");
+          updateThemeButtons();
         });
       });
 
       ui.viewHorizonWidth.addEventListener("input", () => {
-        state.viewEnvironment.horizonWidth = Math.max(2, Math.min(12, Number(ui.viewHorizonWidth.value) || 2));
-        render({ ui: true, content: true });
+        if (!state.settingsDraft) return;
+        state.settingsDraft.viewEnvironment.horizonWidth = Math.max(2, Math.min(12, Number(ui.viewHorizonWidth.value) || 2));
+        updateThemeButtons();
       });
 
       ui.viewHorizonWidth.addEventListener("change", () => {
-        state.viewEnvironment.horizonWidth = Math.max(2, Math.min(12, Number(ui.viewHorizonWidth.value) || 2));
-        setStatus("Horizon line width set to " + state.viewEnvironment.horizonWidth + ".");
-        render({ ui: true, content: true });
+        if (!state.settingsDraft) return;
+        state.settingsDraft.viewEnvironment.horizonWidth = Math.max(2, Math.min(12, Number(ui.viewHorizonWidth.value) || 2));
+        setStatus("Horizon line width set to " + state.settingsDraft.viewEnvironment.horizonWidth + ".");
+        updateThemeButtons();
       });
 
       ui.viewGroundColor.addEventListener("input", () => {
-        state.viewEnvironment.groundColor = ui.viewGroundColor.value || "#d4d0c8";
+        if (!state.settingsDraft) return;
+        state.settingsDraft.viewEnvironment.groundColor = ui.viewGroundColor.value || "#d4d0c8";
         setStatus("View ground color updated.");
-        render({ ui: true, content: true });
+        updateThemeButtons();
       });
 
       ui.viewGroundButtons.forEach((button) => {
         button.addEventListener("click", () => {
-          state.viewEnvironment.groundEnabled = button.dataset.viewGround === "on";
-          setStatus(state.viewEnvironment.groundEnabled ? "Custom ground color enabled." : "Ground using theme default.");
-          render({ ui: true, content: true });
+          if (!state.settingsDraft) return;
+          state.settingsDraft.viewEnvironment.groundEnabled = button.dataset.viewGround === "on";
+          setStatus(state.settingsDraft.viewEnvironment.groundEnabled ? "Custom ground color enabled." : "Ground using theme default.");
+          updateThemeButtons();
         });
       });
 
@@ -10887,9 +10984,10 @@
           state.viewDepthRepeat.suppressClick = false;
           return;
         }
-        state.viewDepthEffect.strength = Math.max(0.01, Math.round((state.viewDepthEffect.strength - 0.01) * 100) / 100);
-        setStatus("View depth step " + state.viewDepthEffect.strength.toFixed(2) + "% per cell.");
-        render({ ui: true, content: true });
+        if (!state.settingsDraft) return;
+        state.settingsDraft.viewDepthEffect.strength = Math.max(0.01, Math.round((state.settingsDraft.viewDepthEffect.strength - 0.01) * 100) / 100);
+        setStatus("View depth step " + state.settingsDraft.viewDepthEffect.strength.toFixed(2) + "% per cell.");
+        updateThemeButtons();
       });
 
       ui.viewDepthStrengthIncrease.addEventListener("click", () => {
@@ -10897,9 +10995,10 @@
           state.viewDepthRepeat.suppressClick = false;
           return;
         }
-        state.viewDepthEffect.strength = Math.min(100, Math.round((state.viewDepthEffect.strength + 0.01) * 100) / 100);
-        setStatus("View depth step " + state.viewDepthEffect.strength.toFixed(2) + "% per cell.");
-        render({ ui: true, content: true });
+        if (!state.settingsDraft) return;
+        state.settingsDraft.viewDepthEffect.strength = Math.min(100, Math.round((state.settingsDraft.viewDepthEffect.strength + 0.01) * 100) / 100);
+        setStatus("View depth step " + state.settingsDraft.viewDepthEffect.strength.toFixed(2) + "% per cell.");
+        updateThemeButtons();
       });
 
       ui.viewDepthStrengthDecrease.addEventListener("pointerdown", (event) => {
@@ -10916,17 +11015,19 @@
       });
 
       ui.viewDepthStrengthValue.addEventListener("input", () => {
+        if (!state.settingsDraft) return;
         const nextValue = Number(ui.viewDepthStrengthValue.value);
-        state.viewDepthEffect.strength = Math.max(0.01, Math.min(100, Number.isFinite(nextValue) ? nextValue : state.viewDepthEffect.strength));
-        render({ ui: true, content: true });
+        state.settingsDraft.viewDepthEffect.strength = Math.max(0.01, Math.min(100, Number.isFinite(nextValue) ? nextValue : state.settingsDraft.viewDepthEffect.strength));
+        updateThemeButtons();
       });
 
       ui.viewDepthStrengthValue.addEventListener("change", () => {
+        if (!state.settingsDraft) return;
         const nextValue = Number(ui.viewDepthStrengthValue.value);
-        state.viewDepthEffect.strength = Math.max(0.01, Math.min(100, Number.isFinite(nextValue) ? nextValue : state.viewDepthEffect.strength));
-        ui.viewDepthStrengthValue.value = state.viewDepthEffect.strength.toFixed(2);
-        setStatus("View depth step " + state.viewDepthEffect.strength.toFixed(2) + "% per cell.");
-        render({ ui: true, content: true });
+        state.settingsDraft.viewDepthEffect.strength = Math.max(0.01, Math.min(100, Number.isFinite(nextValue) ? nextValue : state.settingsDraft.viewDepthEffect.strength));
+        ui.viewDepthStrengthValue.value = state.settingsDraft.viewDepthEffect.strength.toFixed(2);
+        setStatus("View depth step " + state.settingsDraft.viewDepthEffect.strength.toFixed(2) + "% per cell.");
+        updateThemeButtons();
       });
 
       document.addEventListener(
