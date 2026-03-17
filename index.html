@@ -2432,6 +2432,7 @@
           contentDirty: true,
           overlayDirty: true,
           rulersDirty: true,
+          viewOutputsDirty: true,
         },
         history: {
           undoStack: [],
@@ -5918,6 +5919,13 @@
         state.renderState.contentDirty = state.renderState.contentDirty || full || !!flags.content;
         state.renderState.overlayDirty = state.renderState.overlayDirty || full || !!flags.overlay;
         state.renderState.rulersDirty = state.renderState.rulersDirty || full || !!flags.rulers;
+        state.renderState.viewOutputsDirty =
+          state.renderState.viewOutputsDirty ||
+          full ||
+          !!flags.viewOutputs ||
+          !!flags.ui ||
+          !!flags.scenes ||
+          !!flags.content;
         if (state.renderState.frame) return;
         state.renderState.frame = window.requestAnimationFrame(flushRender);
       }
@@ -5948,7 +5956,6 @@
           ui.overlayCanvas.style.zIndex = "4";
           ui.brushWidth.value = cellsToCentimeters(state.brush.width);
           ui.brushHeight.value = cellsToCentimeters(state.brush.height);
-          renderViewOutputs();
           state.renderState.uiDirty = false;
         }
 
@@ -5964,7 +5971,6 @@
 
         if (state.renderState.contentDirty) {
           drawContentScene();
-          renderViewOutputs();
           state.renderState.contentDirty = false;
         }
 
@@ -5976,6 +5982,11 @@
         if (state.renderState.rulersDirty) {
           drawRulers();
           state.renderState.rulersDirty = false;
+        }
+
+        if (state.renderState.viewOutputsDirty) {
+          renderViewOutputs();
+          state.renderState.viewOutputsDirty = false;
         }
       }
 
