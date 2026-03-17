@@ -1306,6 +1306,29 @@
         gap: 16px;
       }
 
+      .menu-section.stacked-setting {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .menu-section.stacked-setting .menu-title {
+        align-self: flex-start;
+      }
+
+      .menu-section.stacked-setting .menu-actions,
+      .menu-section.stacked-setting .settings-inline-range {
+        align-self: flex-end;
+      }
+
+      .settings-inline-range {
+        width: min(220px, 100%);
+      }
+
+      .settings-inline-range label {
+        text-align: right;
+      }
+
       .settings-group + .settings-group {
         margin-top: 16px;
         padding-top: 14px;
@@ -1641,10 +1664,18 @@
           <div class="settings-group">
             <div class="settings-group-title">View</div>
             <div class="menu-section">
-              <div class="menu-title">View Depth Effect</div>
+              <div class="menu-title">Override Colors</div>
               <div class="menu-actions">
-                <button class="mode-button active" data-view-depth="on">On</button>
-                <button class="mode-button" data-view-depth="off">Off</button>
+                <button class="mode-button active" data-view-color-override="on">On</button>
+                <button class="mode-button" data-view-color-override="off">Off</button>
+              </div>
+            </div>
+            <div class="menu-section">
+              <div class="menu-title">Depth Effect</div>
+              <div class="menu-actions">
+                <button class="mode-button active" data-view-depth-mode="shadow">Shadow</button>
+                <button class="mode-button" data-view-depth-mode="fog">Fog</button>
+                <button class="mode-button" data-view-depth-mode="off">Off</button>
               </div>
             </div>
             <div class="menu-section">
@@ -1655,26 +1686,28 @@
                 <button class="mode-button stepper-button" id="viewDepthStrengthIncrease" type="button" aria-label="Increase depth strength">+</button>
               </div>
             </div>
-            <div class="menu-section">
-              <div class="menu-title">Depth Mode</div>
-              <div class="menu-actions">
-                <button class="mode-button active" data-view-depth-mode="shadow">Shadow</button>
-                <button class="mode-button" data-view-depth-mode="fog">Fog</button>
-              </div>
-            </div>
-            <div class="menu-section">
-              <div class="menu-title">Override View Colors</div>
-              <div class="menu-actions">
-                <button class="mode-button active" data-view-color-override="on">On</button>
-                <button class="mode-button" data-view-color-override="off">Off</button>
-              </div>
-            </div>
-            <div class="menu-section">
+            <div class="menu-section stacked-setting">
               <div class="menu-title">Outline</div>
               <div class="menu-actions">
                 <button class="mode-button active" data-view-outline="on">On</button>
                 <button class="mode-button" data-view-outline="off">Off</button>
                 <input id="viewOutlineColor" type="color" value="#111827" />
+              </div>
+              <div class="field settings-inline-range">
+                <label for="viewOutlineWidth">Width</label>
+                <input id="viewOutlineWidth" type="range" min="1" max="6" step="0.5" value="2" />
+              </div>
+            </div>
+            <div class="menu-section stacked-setting">
+              <div class="menu-title">Horizon Line</div>
+              <div class="menu-actions">
+                <button class="mode-button active" data-view-horizon="on">On</button>
+                <button class="mode-button" data-view-horizon="off">Off</button>
+                <input id="viewHorizonColor" type="color" value="#111827" />
+              </div>
+              <div class="field settings-inline-range">
+                <label for="viewHorizonWidth">Width</label>
+                <input id="viewHorizonWidth" type="range" min="2" max="12" step="1" value="6" />
               </div>
             </div>
             <div class="menu-section">
@@ -2073,17 +2106,20 @@
         themeButtons: Array.from(document.querySelectorAll("[data-theme]")),
         gridPositionButtons: Array.from(document.querySelectorAll("[data-grid-position]")),
         dualGridButtons: Array.from(document.querySelectorAll("[data-dual-grid]")),
-        viewDepthButtons: Array.from(document.querySelectorAll("[data-view-depth]")),
         viewDepthModeButtons: Array.from(document.querySelectorAll("[data-view-depth-mode]")),
         viewColorOverrideButtons: Array.from(document.querySelectorAll("[data-view-color-override]")),
         viewOutlineButtons: Array.from(document.querySelectorAll("[data-view-outline]")),
         viewSkyButtons: Array.from(document.querySelectorAll("[data-view-sky]")),
+        viewHorizonButtons: Array.from(document.querySelectorAll("[data-view-horizon]")),
         viewGroundButtons: Array.from(document.querySelectorAll("[data-view-ground]")),
         viewDepthStrengthDecrease: document.getElementById("viewDepthStrengthDecrease"),
         viewDepthStrengthIncrease: document.getElementById("viewDepthStrengthIncrease"),
         viewDepthStrengthValue: document.getElementById("viewDepthStrengthValue"),
         viewOutlineColor: document.getElementById("viewOutlineColor"),
+        viewOutlineWidth: document.getElementById("viewOutlineWidth"),
         viewSkyColor: document.getElementById("viewSkyColor"),
+        viewHorizonColor: document.getElementById("viewHorizonColor"),
+        viewHorizonWidth: document.getElementById("viewHorizonWidth"),
         viewGroundColor: document.getElementById("viewGroundColor"),
         selectionToolButton: document.getElementById("selectionToolButton"),
         brushToolButton: document.getElementById("brushToolButton"),
@@ -2236,12 +2272,15 @@
         },
         viewOutlineEffect: {
           enabled: true,
-          thickness: 1,
+          thickness: 2,
           color: "#111827",
         },
         viewEnvironment: {
           skyEnabled: true,
           skyColor: "#f8fafc",
+          horizonEnabled: true,
+          horizonColor: "#111827",
+          horizonWidth: 6,
           groundEnabled: true,
           groundColor: "#d4d0c8",
         },
@@ -2678,6 +2717,9 @@
           viewEnvironment: {
             skyEnabled: !!state.viewEnvironment.skyEnabled,
             skyColor: state.viewEnvironment.skyColor,
+            horizonEnabled: !!state.viewEnvironment.horizonEnabled,
+            horizonColor: state.viewEnvironment.horizonColor,
+            horizonWidth: state.viewEnvironment.horizonWidth,
             groundEnabled: !!state.viewEnvironment.groundEnabled,
             groundColor: state.viewEnvironment.groundColor,
           },
@@ -2774,7 +2816,14 @@
           state.gridPosition = project.gridPosition === "above" ? "above" : "below";
           state.dualStrokeGrid = !!project.dualStrokeGrid;
           state.viewColorOverride = project.viewColorOverride !== false;
-          state.viewDepthEffect.enabled = project.viewDepthEffect?.enabled !== false;
+          const importedDepthMode =
+            project.viewDepthEffect?.mode === "fog" || project.viewDepthEffect?.mode === "shadow" || project.viewDepthEffect?.mode === "off"
+              ? project.viewDepthEffect.mode
+              : project.viewDepthEffect?.enabled === false
+              ? "off"
+              : "shadow";
+          state.viewDepthEffect.mode = importedDepthMode;
+          state.viewDepthEffect.enabled = importedDepthMode !== "off";
           state.viewDepthEffect.strength = Math.max(
             0.01,
             Math.min(
@@ -2786,12 +2835,15 @@
               })()
             )
           );
-          state.viewDepthEffect.mode = project.viewDepthEffect?.mode === "fog" ? "fog" : "shadow";
           state.viewOutlineEffect.enabled = project.viewOutlineEffect?.enabled !== false;
-          state.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(project.viewOutlineEffect?.thickness) || 1));
+          state.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(project.viewOutlineEffect?.thickness) || 2));
           state.viewOutlineEffect.color = typeof project.viewOutlineEffect?.color === "string" ? project.viewOutlineEffect.color : defaultViewOutlineColor();
           state.viewEnvironment.skyEnabled = project.viewEnvironment?.skyEnabled !== false;
           state.viewEnvironment.skyColor = typeof project.viewEnvironment?.skyColor === "string" ? project.viewEnvironment.skyColor : "#f8fafc";
+          state.viewEnvironment.horizonEnabled = project.viewEnvironment?.horizonEnabled !== false;
+          state.viewEnvironment.horizonColor =
+            typeof project.viewEnvironment?.horizonColor === "string" ? project.viewEnvironment.horizonColor : defaultViewOutlineColor();
+          state.viewEnvironment.horizonWidth = Math.max(2, Math.min(12, Number(project.viewEnvironment?.horizonWidth) || 6));
           state.viewEnvironment.groundEnabled = project.viewEnvironment?.groundEnabled !== false;
           state.viewEnvironment.groundColor = typeof project.viewEnvironment?.groundColor === "string" ? project.viewEnvironment.groundColor : "#d4d0c8";
           state.sceneSectionCollapsed = !!project.sceneSectionCollapsed;
@@ -3155,7 +3207,7 @@
       }
 
       function applyViewDepthShading(color, depthOffsetCells) {
-        if (!state.viewDepthEffect.enabled) {
+        if (!state.viewDepthEffect.enabled || state.viewDepthEffect.mode === "off") {
           return color;
         }
         if (!Number.isFinite(depthOffsetCells) || depthOffsetCells <= 0) {
@@ -3385,10 +3437,10 @@
         }
 
         const hasForcedLayerOutline = grid.some((row) => row.some((cell) => cell && cell.forceOutline));
-        const strokeThickness = 1;
         const drawViewOutlinePass = ({ globalPass, layerPass }) => {
           if ((!globalPass || !state.viewOutlineEffect.enabled) && (!layerPass || !hasForcedLayerOutline)) return;
           context.save();
+          const strokeThickness = globalPass ? Math.max(1, Number(state.viewOutlineEffect.thickness) || 1) : 1;
           const fillOutlineRect = (color, rectX, rectY, rectWidth, rectHeight) => {
             context.fillStyle = color;
             context.fillRect(rectX, rectY, rectWidth, rectHeight);
@@ -3491,9 +3543,9 @@
           context.fillRect(0, Math.max(0, zeroLineY), surfaceWidth, surfaceHeight - Math.max(0, zeroLineY));
         }
 
-        if (state.viewOutlineEffect.enabled) {
-          context.strokeStyle = state.viewOutlineEffect.color;
-          context.lineWidth = 2.5;
+        if (state.viewEnvironment.horizonEnabled) {
+          context.strokeStyle = activeViewHorizonColor();
+          context.lineWidth = Math.max(2, Number(state.viewEnvironment.horizonWidth) || 2);
           context.beginPath();
           context.moveTo(0, zeroLineY);
           context.lineTo(surfaceWidth, zeroLineY);
@@ -4789,6 +4841,10 @@
         return state.viewEnvironment.groundEnabled ? state.viewEnvironment.groundColor : defaultViewGroundColor();
       }
 
+      function activeViewHorizonColor() {
+        return state.viewEnvironment.horizonColor || defaultViewOutlineColor();
+      }
+
       function viewBoxDimensionsText(view) {
         if (!view || !view.bounds) return "";
         const widthMeters = metersFromWorldUnits(view.bounds.maxX - view.bounds.minX);
@@ -5361,9 +5417,6 @@
         ui.dualGridButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.dualGrid === (state.dualStrokeGrid ? "on" : "off"));
         });
-        ui.viewDepthButtons.forEach((button) => {
-          button.classList.toggle("active", button.dataset.viewDepth === (state.viewDepthEffect.enabled ? "on" : "off"));
-        });
         ui.viewDepthModeButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewDepthMode === state.viewDepthEffect.mode);
         });
@@ -5376,6 +5429,9 @@
         ui.viewSkyButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewSky === (state.viewEnvironment.skyEnabled ? "on" : "off"));
         });
+        ui.viewHorizonButtons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.viewHorizon === (state.viewEnvironment.horizonEnabled ? "on" : "off"));
+        });
         ui.viewGroundButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewGround === (state.viewEnvironment.groundEnabled ? "on" : "off"));
         });
@@ -5384,7 +5440,10 @@
         ui.viewDepthStrengthIncrease.disabled = !state.viewDepthEffect.enabled;
         ui.viewDepthStrengthValue.disabled = !state.viewDepthEffect.enabled;
         ui.viewOutlineColor.value = state.viewOutlineEffect.color;
+        ui.viewOutlineWidth.value = String(state.viewOutlineEffect.thickness);
         ui.viewSkyColor.value = state.viewEnvironment.skyColor;
+        ui.viewHorizonColor.value = state.viewEnvironment.horizonColor;
+        ui.viewHorizonWidth.value = String(state.viewEnvironment.horizonWidth);
         ui.viewGroundColor.value = state.viewEnvironment.groundColor;
       }
 
@@ -10656,14 +10715,6 @@
         });
       });
 
-      ui.viewDepthButtons.forEach((button) => {
-        button.addEventListener("click", () => {
-          state.viewDepthEffect.enabled = button.dataset.viewDepth === "on";
-          setStatus(state.viewDepthEffect.enabled ? "View depth effect enabled." : "View depth effect disabled.");
-          render({ ui: true, content: true });
-        });
-      });
-
       ui.viewLayoutButtons.forEach((button) => {
         button.addEventListener("click", () => {
           state.viewLayoutPreset = Number(button.dataset.viewLayout) || 4;
@@ -10684,8 +10735,20 @@
 
       ui.viewDepthModeButtons.forEach((button) => {
         button.addEventListener("click", () => {
-          state.viewDepthEffect.mode = button.dataset.viewDepthMode === "fog" ? "fog" : "shadow";
-          setStatus(state.viewDepthEffect.mode === "fog" ? "View depth mode set to fog." : "View depth mode set to shadow.");
+          state.viewDepthEffect.mode =
+            button.dataset.viewDepthMode === "fog"
+              ? "fog"
+              : button.dataset.viewDepthMode === "off"
+              ? "off"
+              : "shadow";
+          state.viewDepthEffect.enabled = state.viewDepthEffect.mode !== "off";
+          setStatus(
+            state.viewDepthEffect.mode === "off"
+              ? "Depth effect off."
+              : state.viewDepthEffect.mode === "fog"
+              ? "Depth effect set to fog."
+              : "Depth effect set to shadow."
+          );
           render({ ui: true, content: true });
         });
       });
@@ -10701,7 +10764,7 @@
       ui.viewOutlineButtons.forEach((button) => {
         button.addEventListener("click", () => {
           state.viewOutlineEffect.enabled = button.dataset.viewOutline === "on";
-          setStatus(state.viewOutlineEffect.enabled ? "Custom outline color enabled." : "Outline using theme default.");
+          setStatus(state.viewOutlineEffect.enabled ? "Global outline enabled." : "Global outline disabled.");
           render({ ui: true, content: true });
         });
       });
@@ -10709,6 +10772,17 @@
       ui.viewOutlineColor.addEventListener("input", () => {
         state.viewOutlineEffect.color = ui.viewOutlineColor.value || "#111827";
         setStatus("View outline color updated.");
+        render({ ui: true, content: true });
+      });
+
+      ui.viewOutlineWidth.addEventListener("input", () => {
+        state.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(ui.viewOutlineWidth.value) || 1));
+        render({ ui: true, content: true });
+      });
+
+      ui.viewOutlineWidth.addEventListener("change", () => {
+        state.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(ui.viewOutlineWidth.value) || 1));
+        setStatus("View outline width set to " + state.viewOutlineEffect.thickness + ".");
         render({ ui: true, content: true });
       });
 
@@ -10724,6 +10798,31 @@
           setStatus(state.viewEnvironment.skyEnabled ? "Custom sky color enabled." : "Sky using theme default.");
           render({ ui: true, content: true });
         });
+      });
+
+      ui.viewHorizonColor.addEventListener("input", () => {
+        state.viewEnvironment.horizonColor = ui.viewHorizonColor.value || defaultViewOutlineColor();
+        setStatus("Horizon line color updated.");
+        render({ ui: true, content: true });
+      });
+
+      ui.viewHorizonButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          state.viewEnvironment.horizonEnabled = button.dataset.viewHorizon === "on";
+          setStatus(state.viewEnvironment.horizonEnabled ? "Horizon line enabled." : "Horizon line disabled.");
+          render({ ui: true, content: true });
+        });
+      });
+
+      ui.viewHorizonWidth.addEventListener("input", () => {
+        state.viewEnvironment.horizonWidth = Math.max(2, Math.min(12, Number(ui.viewHorizonWidth.value) || 2));
+        render({ ui: true, content: true });
+      });
+
+      ui.viewHorizonWidth.addEventListener("change", () => {
+        state.viewEnvironment.horizonWidth = Math.max(2, Math.min(12, Number(ui.viewHorizonWidth.value) || 2));
+        setStatus("Horizon line width set to " + state.viewEnvironment.horizonWidth + ".");
+        render({ ui: true, content: true });
       });
 
       ui.viewGroundColor.addEventListener("input", () => {
