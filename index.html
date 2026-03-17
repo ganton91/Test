@@ -1381,7 +1381,7 @@
       }
 
       .view-edit-modal {
-        width: min(840px, calc(100vw - 40px));
+        width: min(900px, calc(100vw - 40px));
       }
 
       .view-edit-section-title {
@@ -1391,7 +1391,7 @@
       .view-edit-column-headings,
       .view-edit-layer-row {
         display: grid;
-        grid-template-columns: 16px minmax(0, 1fr) 56px 132px 58px 88px 88px 88px;
+        grid-template-columns: 16px minmax(0, 1fr) 56px 132px 58px 56px 88px 88px 88px;
         gap: 10px;
         align-items: center;
       }
@@ -1720,6 +1720,7 @@
               <span>Color</span>
               <span>Opacity</span>
               <span>Outline</span>
+              <span>Line</span>
               <span>Height</span>
               <span>Start</span>
               <span>End</span>
@@ -3053,6 +3054,10 @@
               ? Math.max(0, Math.min(1, existingConfig.opacity))
               : 1,
           outline: !!(existingConfig && existingConfig.outline),
+          outlineColor:
+            typeof (existingConfig && existingConfig.outlineColor) === "string"
+              ? existingConfig.outlineColor
+              : state.viewOutlineEffect.color,
         };
       }
 
@@ -3280,6 +3285,7 @@
           overrideColor: state.viewColorOverride ? config.color || layerRepresentativeColor(layer) : null,
           opacity: Math.max(0, Math.min(1, state.viewColorOverride ? config.opacity : layer.opacity)),
           outline: !!config.outline,
+          outlineColor: config.outlineColor || state.viewOutlineEffect.color,
           baseCells: Math.round(config.baseElevation * CELLS_PER_METER),
           heightCells: Math.max(0, Math.round(config.height * CELLS_PER_METER)),
           orderIndex,
@@ -3336,6 +3342,7 @@
                 isCut: !!column.isCut,
                 opacity: entry.opacity,
                 forceOutline: !!entry.outline,
+                outlineColor: entry.outlineColor || state.viewOutlineEffect.color,
                 orderIndex: entry.orderIndex,
               };
               if (
@@ -3378,36 +3385,37 @@
         }
 
         const hasForcedLayerOutline = grid.some((row) => row.some((cell) => cell && cell.forceOutline));
-        if (state.viewOutlineEffect.enabled || hasForcedLayerOutline) {
+        const strokeThickness = 1;
+        const drawViewOutlinePass = ({ globalPass, layerPass }) => {
+          if ((!globalPass || !state.viewOutlineEffect.enabled) && (!layerPass || !hasForcedLayerOutline)) return;
           context.save();
-          context.fillStyle = state.viewOutlineEffect.color;
-          const strokeThickness = 1;
+          const fillOutlineRect = (color, rectX, rectY, rectWidth, rectHeight) => {
+            context.fillStyle = color;
+            context.fillRect(rectX, rectY, rectWidth, rectHeight);
+          };
           for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
             for (let columnIndex = 0; columnIndex < totalColumns; columnIndex += 1) {
               const cell = grid[rowIndex][columnIndex];
               if (!cell) continue;
               const x = offsetX + columnIndex * cellPixelSize;
               const y = offsetY + rowIndex * cellPixelSize;
+              const outlineColor = globalPass
+                ? state.viewOutlineEffect.color
+                : cell.outlineColor || state.viewOutlineEffect.color;
               const topNeighbor = rowIndex > 0 ? grid[rowIndex - 1][columnIndex] : null;
               const bottomNeighbor = rowIndex < totalRows - 1 ? grid[rowIndex + 1][columnIndex] : null;
               const leftNeighbor = columnIndex > 0 ? grid[rowIndex][columnIndex - 1] : null;
               const rightNeighbor = columnIndex < totalColumns - 1 ? grid[rowIndex][columnIndex + 1] : null;
-              const cellOutlineEnabled = state.viewOutlineEffect.enabled || cell.forceOutline;
               const boundaryInfo = (neighbor) => {
-                if (!cellOutlineEnabled) return { draw: false, outside: false };
+                if (layerPass && !cell.forceOutline) return { draw: false, outside: false };
+                if (globalPass && !state.viewOutlineEffect.enabled) return { draw: false, outside: false };
                 if (!neighbor) return { draw: true, outside: true };
                 const surfaceChanged = neighbor.depth !== cell.depth || neighbor.isCut !== cell.isCut;
                 if (surfaceChanged) return { draw: true, outside: false };
-                const forcedLayerSeam =
-                  neighbor.layerId !== cell.layerId &&
-                  (cell.forceOutline || neighbor.forceOutline);
-                if (!forcedLayerSeam) return { draw: false, outside: false };
-                if (cell.forceOutline && !neighbor.forceOutline) {
-                  return { draw: true, outside: true };
-                }
-                if (!cell.forceOutline && neighbor.forceOutline) {
-                  return { draw: false, outside: false };
-                }
+                if (!layerPass) return { draw: false, outside: false };
+                if (neighbor.layerId === cell.layerId) return { draw: false, outside: false };
+                if (cell.forceOutline && !neighbor.forceOutline) return { draw: true, outside: true };
+                if (!cell.forceOutline && neighbor.forceOutline) return { draw: false, outside: false };
                 return cell.orderIndex <= neighbor.orderIndex
                   ? { draw: true, outside: true }
                   : { draw: false, outside: false };
@@ -3418,40 +3426,41 @@
               const rightBoundary = boundaryInfo(rightNeighbor);
 
               if (topBoundary.draw) {
-                context.fillRect(x, y, cellPixelSize, strokeThickness);
+                fillOutlineRect(outlineColor, x, y, cellPixelSize, strokeThickness);
                 if (topBoundary.outside) {
-                  context.fillRect(x, y - strokeThickness, cellPixelSize, strokeThickness);
+                  fillOutlineRect(outlineColor, x, y - strokeThickness, cellPixelSize, strokeThickness);
                 }
               }
               if (bottomBoundary.draw) {
-                context.fillRect(x, y + cellPixelSize - strokeThickness, cellPixelSize, strokeThickness);
+                fillOutlineRect(outlineColor, x, y + cellPixelSize - strokeThickness, cellPixelSize, strokeThickness);
                 if (bottomBoundary.outside) {
-                  context.fillRect(x, y + cellPixelSize, cellPixelSize, strokeThickness);
+                  fillOutlineRect(outlineColor, x, y + cellPixelSize, cellPixelSize, strokeThickness);
                 }
               }
               if (leftBoundary.draw) {
-                context.fillRect(x, y, strokeThickness, cellPixelSize);
+                fillOutlineRect(outlineColor, x, y, strokeThickness, cellPixelSize);
                 if (leftBoundary.outside) {
-                  context.fillRect(x - strokeThickness, y, strokeThickness, cellPixelSize);
+                  fillOutlineRect(outlineColor, x - strokeThickness, y, strokeThickness, cellPixelSize);
                 }
               }
               if (rightBoundary.draw) {
-                context.fillRect(x + cellPixelSize - strokeThickness, y, strokeThickness, cellPixelSize);
+                fillOutlineRect(outlineColor, x + cellPixelSize - strokeThickness, y, strokeThickness, cellPixelSize);
                 if (rightBoundary.outside) {
-                  context.fillRect(x + cellPixelSize, y, strokeThickness, cellPixelSize);
+                  fillOutlineRect(outlineColor, x + cellPixelSize, y, strokeThickness, cellPixelSize);
                 }
               }
               if (topBoundary.draw && leftBoundary.draw) {
-                context.fillRect(x, y, strokeThickness, strokeThickness);
+                fillOutlineRect(outlineColor, x, y, strokeThickness, strokeThickness);
               }
               if (topBoundary.draw && rightBoundary.draw) {
-                context.fillRect(x + cellPixelSize - strokeThickness, y, strokeThickness, strokeThickness);
+                fillOutlineRect(outlineColor, x + cellPixelSize - strokeThickness, y, strokeThickness, strokeThickness);
               }
               if (bottomBoundary.draw && leftBoundary.draw) {
-                context.fillRect(x, y + cellPixelSize - strokeThickness, strokeThickness, strokeThickness);
+                fillOutlineRect(outlineColor, x, y + cellPixelSize - strokeThickness, strokeThickness, strokeThickness);
               }
               if (bottomBoundary.draw && rightBoundary.draw) {
-                context.fillRect(
+                fillOutlineRect(
+                  outlineColor,
                   x + cellPixelSize - strokeThickness,
                   y + cellPixelSize - strokeThickness,
                   strokeThickness,
@@ -3459,21 +3468,23 @@
                 );
               }
               if (topBoundary.outside && leftBoundary.outside) {
-                context.fillRect(x - strokeThickness, y - strokeThickness, strokeThickness, strokeThickness);
+                fillOutlineRect(outlineColor, x - strokeThickness, y - strokeThickness, strokeThickness, strokeThickness);
               }
               if (topBoundary.outside && rightBoundary.outside) {
-                context.fillRect(x + cellPixelSize, y - strokeThickness, strokeThickness, strokeThickness);
+                fillOutlineRect(outlineColor, x + cellPixelSize, y - strokeThickness, strokeThickness, strokeThickness);
               }
               if (bottomBoundary.outside && leftBoundary.outside) {
-                context.fillRect(x - strokeThickness, y + cellPixelSize, strokeThickness, strokeThickness);
+                fillOutlineRect(outlineColor, x - strokeThickness, y + cellPixelSize, strokeThickness, strokeThickness);
               }
               if (bottomBoundary.outside && rightBoundary.outside) {
-                context.fillRect(x + cellPixelSize, y + cellPixelSize, strokeThickness, strokeThickness);
+                fillOutlineRect(outlineColor, x + cellPixelSize, y + cellPixelSize, strokeThickness, strokeThickness);
               }
             }
           }
           context.restore();
-        }
+        };
+        drawViewOutlinePass({ globalPass: false, layerPass: true });
+        drawViewOutlinePass({ globalPass: true, layerPass: false });
 
         if (zeroLineY < surfaceHeight) {
           context.fillStyle = activeViewGroundColor();
@@ -3542,6 +3553,7 @@
               color: config.color || (layer ? layerRepresentativeColor(layer) : DEFAULT_COLOR),
               opacity: config.opacity,
               outline: config.outline,
+              outlineColor: config.outlineColor || state.viewOutlineEffect.color,
               name: layer ? layer.name : "Layer",
             };
           }),
@@ -3570,6 +3582,7 @@
             color: typeof item.color === "string" ? item.color : DEFAULT_COLOR,
             opacity: Math.max(0, Math.min(1, Number.isFinite(item.opacity) ? item.opacity : 1)),
             outline: !!item.outline,
+            outlineColor: typeof item.outlineColor === "string" ? item.outlineColor : state.viewOutlineEffect.color,
           };
         });
         view.layerConfigs = nextLayerConfigs;
@@ -5613,6 +5626,18 @@
             item.outline = outlineToggle.checked;
           });
           row.appendChild(outlineToggle);
+
+          const outlineColorInput = document.createElement("input");
+          outlineColorInput.className = "view-edit-color-input";
+          outlineColorInput.type = "color";
+          outlineColorInput.value = item.outlineColor || state.viewOutlineEffect.color;
+          outlineColorInput.setAttribute("aria-label", item.name + " outline color");
+          outlineColorInput.addEventListener("click", (event) => event.stopPropagation());
+          outlineColorInput.addEventListener("pointerdown", (event) => event.stopPropagation());
+          outlineColorInput.addEventListener("input", () => {
+            item.outlineColor = outlineColorInput.value || state.viewOutlineEffect.color;
+          });
+          row.appendChild(outlineColorInput);
 
           const heightField = document.createElement("div");
           heightField.className = "field view-edit-field";
