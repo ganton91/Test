@@ -7692,29 +7692,35 @@
       }
 
       function activateSelectionCandidate(candidate) {
+        const previousContextSignature = snapshotActiveContextSignature(state);
         dismissSelectionPicker();
         if (!candidate) return;
         if (candidate.kind === "view") {
           setActiveViewById(candidate.id);
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus("View active.");
           return;
         }
         if (candidate.kind === "measurement") {
           setActiveMeasurementById(candidate.id, { tool: "select" });
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus("Measurement selected.");
           return;
         }
         if (candidate.kind === "layer") {
           setActiveLayerById(candidate.id, { tool: "select" });
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus("Layer selected.");
           return;
         }
         setActiveSceneById(candidate.id);
+        pushHistoryContextBaseline(previousContextSignature, "Selection Change");
         const scene = activeScene();
         setStatus(scene && scene.locked ? "Locked scene selected." : "Scene selected.");
       }
 
       function resolveSelectionMarquee(interaction, clientX, clientY) {
+        const previousContextSignature = snapshotActiveContextSignature(state);
         const start = worldFromClient(interaction.startClientX, interaction.startClientY);
         const end = worldFromClient(clientX, clientY);
         const rect = normalizeWorldRect({ x: start.worldX, y: start.worldY }, { x: end.worldX, y: end.worldY });
@@ -7723,6 +7729,7 @@
 
         if (!candidates.length) {
           clearActiveTarget();
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus(containment ? "No fully contained items in marquee." : "No intersecting items in marquee.");
           render({ ui: true, overlay: true });
           return;
@@ -11829,7 +11836,9 @@
           return;
         }
         if (event.key === "Escape" && state.activeTool === "measure" && state.activeMeasurementId) {
+          const previousContextSignature = snapshotActiveContextSignature(state);
           setActiveMeasurementById(state.activeMeasurementId, { tool: "select" });
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus("Measurement selected.");
           render({ ui: true, overlay: true });
           return;
@@ -11839,13 +11848,17 @@
           && state.activeLayerId
           && (state.activeTool === "brush" || state.activeTool === "shape")
         ) {
+          const previousContextSignature = snapshotActiveContextSignature(state);
           setActiveLayerById(state.activeLayerId, { tool: "select" });
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus("Layer selected.");
           render({ ui: true, overlay: true });
           return;
         }
         if (event.key === "Escape") {
+          const previousContextSignature = snapshotActiveContextSignature(state);
           clearActiveTarget();
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus("Selection tool active.");
           render({ ui: true, overlay: true });
         }
