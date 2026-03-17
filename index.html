@@ -3671,6 +3671,11 @@
               const bottomNeighbor = rowIndex < totalRows - 1 ? grid[rowIndex + 1][columnIndex] : null;
               const leftNeighbor = columnIndex > 0 ? grid[rowIndex][columnIndex - 1] : null;
               const rightNeighbor = columnIndex < totalColumns - 1 ? grid[rowIndex][columnIndex + 1] : null;
+              const topLeftNeighbor = rowIndex > 0 && columnIndex > 0 ? grid[rowIndex - 1][columnIndex - 1] : null;
+              const topRightNeighbor = rowIndex > 0 && columnIndex < totalColumns - 1 ? grid[rowIndex - 1][columnIndex + 1] : null;
+              const bottomLeftNeighbor = rowIndex < totalRows - 1 && columnIndex > 0 ? grid[rowIndex + 1][columnIndex - 1] : null;
+              const bottomRightNeighbor =
+                rowIndex < totalRows - 1 && columnIndex < totalColumns - 1 ? grid[rowIndex + 1][columnIndex + 1] : null;
               const boundaryInfo = (neighbor) => (!neighbor || !neighbor.isCut ? { draw: true, outside: true } : { draw: false, outside: false });
               const topBoundary = boundaryInfo(topNeighbor);
               const bottomBoundary = boundaryInfo(bottomNeighbor);
@@ -3719,6 +3724,24 @@
               }
               if (bottomBoundary.outside && rightBoundary.outside) {
                 fillOutlineRect(x + cellPixelSize, y + cellPixelSize, strokeThickness, strokeThickness);
+              }
+
+              if (!topBoundary.draw && !leftBoundary.draw && (!topLeftNeighbor || !topLeftNeighbor.isCut)) {
+                fillOutlineRect(x, y, strokeThickness, strokeThickness);
+              }
+              if (!topBoundary.draw && !rightBoundary.draw && (!topRightNeighbor || !topRightNeighbor.isCut)) {
+                fillOutlineRect(x + cellPixelSize - strokeThickness, y, strokeThickness, strokeThickness);
+              }
+              if (!bottomBoundary.draw && !leftBoundary.draw && (!bottomLeftNeighbor || !bottomLeftNeighbor.isCut)) {
+                fillOutlineRect(x, y + cellPixelSize - strokeThickness, strokeThickness, strokeThickness);
+              }
+              if (!bottomBoundary.draw && !rightBoundary.draw && (!bottomRightNeighbor || !bottomRightNeighbor.isCut)) {
+                fillOutlineRect(
+                  x + cellPixelSize - strokeThickness,
+                  y + cellPixelSize - strokeThickness,
+                  strokeThickness,
+                  strokeThickness
+                );
               }
             }
           }
