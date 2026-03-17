@@ -5379,7 +5379,10 @@
         }, 260);
       }
 
-      function setCardDragPreview(event, card) {
+      const LEFT_PANEL_DRAG_PREVIEW_OFFSET = { x: 19, y: 21 };
+      const LAYER_PROPERTIES_DRAG_PREVIEW_OFFSET = { x: 20, y: 45 };
+
+      function setCardDragPreview(event, card, context = "left-panel") {
         if (!event.dataTransfer || !card) return;
         const preview = card.cloneNode(true);
         preview.style.position = "fixed";
@@ -5392,7 +5395,9 @@
         preview.style.boxShadow = getCssVar("--shadow");
         preview.classList.remove("dragging");
         document.body.appendChild(preview);
-        event.dataTransfer.setDragImage(preview, 24, 18);
+        const offset =
+          context === "layer-properties" ? LAYER_PROPERTIES_DRAG_PREVIEW_OFFSET : LEFT_PANEL_DRAG_PREVIEW_OFFSET;
+        event.dataTransfer.setDragImage(preview, offset.x, offset.y);
         requestAnimationFrame(() => preview.remove());
       }
 
@@ -5736,7 +5741,7 @@
           grip.addEventListener("dragstart", (event) => {
             draft.dragLayerId = item.layerId;
             event.dataTransfer.effectAllowed = "move";
-            setCardDragPreview(event, row);
+            setCardDragPreview(event, row, "layer-properties");
             render({ ui: true });
           });
           grip.addEventListener("dragend", () => {
@@ -5932,7 +5937,7 @@
           grip.addEventListener("dragstart", (event) => {
             state.dragViewId = view.id;
             event.dataTransfer.effectAllowed = "move";
-            setCardDragPreview(event, card);
+            setCardDragPreview(event, card, "left-panel");
             render({ ui: true });
           });
           grip.addEventListener("dragend", () => {
@@ -6096,7 +6101,7 @@
           grip.addEventListener("dragstart", (event) => {
             state.dragMeasurementId = measurement.id;
             event.dataTransfer.effectAllowed = "move";
-            setCardDragPreview(event, card);
+            setCardDragPreview(event, card, "left-panel");
             render({ ui: true });
           });
           grip.addEventListener("dragend", () => {
@@ -6298,7 +6303,7 @@
           grip.addEventListener("dragstart", (event) => {
             state.dragLayerId = layer.id;
             event.dataTransfer.effectAllowed = "move";
-            setCardDragPreview(event, card);
+            setCardDragPreview(event, card, "left-panel");
             render({ ui: true });
           });
           grip.addEventListener("dragend", () => {
@@ -6474,7 +6479,7 @@
           grip.addEventListener("dragstart", (event) => {
             state.dragSceneId = scene.id;
             event.dataTransfer.effectAllowed = "move";
-            setCardDragPreview(event, card);
+            setCardDragPreview(event, card, "left-panel");
             render({ ui: true });
           });
           grip.addEventListener("dragend", () => {
