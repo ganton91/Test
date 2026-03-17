@@ -2461,6 +2461,13 @@
         });
       }
 
+      function pushHistoryContextBaseline(previousContextSignature, label = "") {
+        if (state.history.isRestoring) return false;
+        const nextContextSignature = snapshotActiveContextSignature(state);
+        if (previousContextSignature === nextContextSignature) return false;
+        return pushHistorySnapshot(label);
+      }
+
       function captureVisibilityState() {
         return {
           scenes: new Map(state.scenes.map((scene) => [scene.id, !!scene.visible])),
@@ -10201,6 +10208,7 @@
       }
 
       function activateTool(tool) {
+        const previousContextSignature = snapshotActiveContextSignature(state);
         if ((state.color.eyedropper || state.outline.eyedropper || state.activeTool === "eyedropper") && tool !== "eyedropper") {
           stopEyedropperSession();
         }
@@ -10252,6 +10260,9 @@
           state.color.eyedropper = false;
         }
         state.activeTool = tool;
+        if (tool === "brush" || tool === "shape") {
+          pushHistoryContextBaseline(previousContextSignature);
+        }
         if (tool === "select") {
           if (state.activeLayerId) {
             setStatus("Layer selected.");
@@ -10277,6 +10288,7 @@
       }
 
       function activateMeasurementMode(mode) {
+        const previousContextSignature = snapshotActiveContextSignature(state);
         if (state.color.eyedropper || state.outline.eyedropper || state.activeTool === "eyedropper") {
           stopEyedropperSession();
         }
@@ -10293,6 +10305,7 @@
         }
         measurement.mode = mode;
         setActiveMeasurementById(measurement.id, { tool: "measure" });
+        pushHistoryContextBaseline(previousContextSignature);
         setStatus(
           mode === "points"
             ? "Points mode active."
