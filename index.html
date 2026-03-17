@@ -1719,6 +1719,14 @@
                 <button class="mode-button stepper-button" id="viewDepthStrengthIncrease" type="button" aria-label="Increase depth strength">+</button>
               </div>
             </div>
+            <div class="menu-section">
+              <div class="menu-title">Section Cut</div>
+              <div class="menu-actions">
+                <button class="mode-button active" data-view-section-cut="on">On</button>
+                <button class="mode-button" data-view-section-cut="off">Off</button>
+                <input id="viewSectionCutColor" type="color" value="#000000" />
+              </div>
+            </div>
             <div class="menu-section stacked-setting">
               <div class="menu-title">Outline</div>
               <div class="menu-actions">
@@ -2148,6 +2156,7 @@
         dualGridButtons: Array.from(document.querySelectorAll("[data-dual-grid]")),
         viewDepthModeButtons: Array.from(document.querySelectorAll("[data-view-depth-mode]")),
         viewColorOverrideButtons: Array.from(document.querySelectorAll("[data-view-color-override]")),
+        viewSectionCutButtons: Array.from(document.querySelectorAll("[data-view-section-cut]")),
         viewOutlineButtons: Array.from(document.querySelectorAll("[data-view-outline]")),
         viewSkyButtons: Array.from(document.querySelectorAll("[data-view-sky]")),
         viewHorizonButtons: Array.from(document.querySelectorAll("[data-view-horizon]")),
@@ -2155,6 +2164,7 @@
         viewDepthStrengthDecrease: document.getElementById("viewDepthStrengthDecrease"),
         viewDepthStrengthIncrease: document.getElementById("viewDepthStrengthIncrease"),
         viewDepthStrengthValue: document.getElementById("viewDepthStrengthValue"),
+        viewSectionCutColor: document.getElementById("viewSectionCutColor"),
         viewOutlineColor: document.getElementById("viewOutlineColor"),
         viewOutlineWidth: document.getElementById("viewOutlineWidth"),
         viewSkyColor: document.getElementById("viewSkyColor"),
@@ -2315,6 +2325,10 @@
           enabled: true,
           thickness: 2,
           color: "#111827",
+        },
+        viewSectionCutEffect: {
+          enabled: true,
+          color: "#000000",
         },
         viewEnvironment: {
           skyEnabled: true,
@@ -2755,6 +2769,10 @@
             thickness: state.viewOutlineEffect.thickness,
             color: state.viewOutlineEffect.color,
           },
+          viewSectionCutEffect: {
+            enabled: !!state.viewSectionCutEffect.enabled,
+            color: state.viewSectionCutEffect.color,
+          },
           viewEnvironment: {
             skyEnabled: !!state.viewEnvironment.skyEnabled,
             skyColor: state.viewEnvironment.skyColor,
@@ -2879,6 +2897,9 @@
           state.viewOutlineEffect.enabled = project.viewOutlineEffect?.enabled !== false;
           state.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(project.viewOutlineEffect?.thickness) || 2));
           state.viewOutlineEffect.color = typeof project.viewOutlineEffect?.color === "string" ? project.viewOutlineEffect.color : defaultViewOutlineColor();
+          state.viewSectionCutEffect.enabled = project.viewSectionCutEffect?.enabled !== false;
+          state.viewSectionCutEffect.color =
+            typeof project.viewSectionCutEffect?.color === "string" ? project.viewSectionCutEffect.color : defaultViewSectionCutColor();
           state.viewEnvironment.skyEnabled = project.viewEnvironment?.skyEnabled !== false;
           state.viewEnvironment.skyColor = typeof project.viewEnvironment?.skyColor === "string" ? project.viewEnvironment.skyColor : "#f8fafc";
           state.viewEnvironment.horizonEnabled = project.viewEnvironment?.horizonEnabled !== false;
@@ -3476,9 +3497,7 @@
               ? cell.depth - nearestVisibleDepth
               : nearestVisibleDepth - cell.depth;
             const shadedColor = applyViewDepthShading(cell.color, depthOffsetCells);
-            context.fillStyle = cell.isCut
-              ? hexToRgba(getCssVar("--text"), cell.opacity)
-              : hexToRgba(shadedColor, cell.opacity);
+            context.fillStyle = hexToRgba(shadedColor, cell.opacity);
             context.fillRect(offsetX + columnIndex * cellPixelSize, offsetY + rowIndex * cellPixelSize, cellPixelSize, cellPixelSize);
           }
         }
@@ -3586,6 +3605,19 @@
         };
         drawViewOutlinePass({ globalPass: false, layerPass: true });
         drawViewOutlinePass({ globalPass: true, layerPass: false });
+
+        if (state.viewSectionCutEffect.enabled) {
+          context.save();
+          for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
+            for (let columnIndex = 0; columnIndex < totalColumns; columnIndex += 1) {
+              const cell = grid[rowIndex][columnIndex];
+              if (!cell || !cell.isCut) continue;
+              context.fillStyle = hexToRgba(state.viewSectionCutEffect.color || defaultViewSectionCutColor(), cell.opacity);
+              context.fillRect(offsetX + columnIndex * cellPixelSize, offsetY + rowIndex * cellPixelSize, cellPixelSize, cellPixelSize);
+            }
+          }
+          context.restore();
+        }
 
         if (zeroLineY < surfaceHeight) {
           context.fillStyle = activeViewGroundColor();
@@ -4878,6 +4910,10 @@
         return state.theme === "dark" ? "#ffffff" : "#111827";
       }
 
+      function defaultViewSectionCutColor() {
+        return state.theme === "dark" ? "#ffffff" : "#000000";
+      }
+
       function defaultViewSkyColor() {
         return state.theme === "dark" ? "#000000" : "#ffffff";
       }
@@ -4909,6 +4945,10 @@
             enabled: !!state.viewOutlineEffect.enabled,
             thickness: state.viewOutlineEffect.thickness,
             color: state.viewOutlineEffect.color,
+          },
+          viewSectionCutEffect: {
+            enabled: !!state.viewSectionCutEffect.enabled,
+            color: state.viewSectionCutEffect.color,
           },
           viewEnvironment: {
             skyEnabled: !!state.viewEnvironment.skyEnabled,
@@ -4943,6 +4983,8 @@
         state.viewOutlineEffect.enabled = !!draft.viewOutlineEffect.enabled;
         state.viewOutlineEffect.thickness = draft.viewOutlineEffect.thickness;
         state.viewOutlineEffect.color = draft.viewOutlineEffect.color;
+        state.viewSectionCutEffect.enabled = !!draft.viewSectionCutEffect.enabled;
+        state.viewSectionCutEffect.color = draft.viewSectionCutEffect.color;
         state.viewEnvironment.skyEnabled = !!draft.viewEnvironment.skyEnabled;
         state.viewEnvironment.skyColor = draft.viewEnvironment.skyColor;
         state.viewEnvironment.horizonEnabled = !!draft.viewEnvironment.horizonEnabled;
@@ -5545,6 +5587,9 @@
         ui.viewColorOverrideButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewColorOverride === (settings.viewColorOverride ? "on" : "off"));
         });
+        ui.viewSectionCutButtons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.viewSectionCut === (settings.viewSectionCutEffect.enabled ? "on" : "off"));
+        });
         ui.viewOutlineButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewOutline === (settings.viewOutlineEffect.enabled ? "on" : "off"));
         });
@@ -5561,6 +5606,7 @@
         ui.viewDepthStrengthDecrease.disabled = !settings.viewDepthEffect.enabled;
         ui.viewDepthStrengthIncrease.disabled = !settings.viewDepthEffect.enabled;
         ui.viewDepthStrengthValue.disabled = !settings.viewDepthEffect.enabled;
+        ui.viewSectionCutColor.value = settings.viewSectionCutEffect.color;
         ui.viewOutlineColor.value = settings.viewOutlineEffect.color;
         ui.viewOutlineWidth.value = String(settings.viewOutlineEffect.thickness);
         ui.viewSkyColor.value = settings.viewEnvironment.skyColor;
@@ -10929,6 +10975,22 @@
           setStatus(state.settingsDraft.viewColorOverride ? "Override colors enabled." : "Override colors disabled.");
           updateThemeButtons();
         });
+      });
+
+      ui.viewSectionCutButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          if (!state.settingsDraft) return;
+          state.settingsDraft.viewSectionCutEffect.enabled = button.dataset.viewSectionCut === "on";
+          setStatus(state.settingsDraft.viewSectionCutEffect.enabled ? "Section cut enabled." : "Section cut disabled.");
+          updateThemeButtons();
+        });
+      });
+
+      ui.viewSectionCutColor.addEventListener("input", () => {
+        if (!state.settingsDraft) return;
+        state.settingsDraft.viewSectionCutEffect.color = ui.viewSectionCutColor.value || defaultViewSectionCutColor();
+        setStatus("Section cut color updated.");
+        updateThemeButtons();
       });
 
       ui.viewOutlineButtons.forEach((button) => {
