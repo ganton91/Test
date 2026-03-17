@@ -414,6 +414,10 @@ The current goal is to keep building `Milimetre` as a strong, minimal infinite c
   - no temporary draft stroke / polygon / measurement draft
   - no live eyedropper session
   - no imported undo/redo history stack
+- `Views` also support direct per-pane `PNG` export from the pane header:
+  - export is raster and matches the currently rendered pane
+  - filenames include the active view name and pane direction
+  - the pane export control is disabled when that pane has no rendered output
 
 ## Renderer Note
 

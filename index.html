@@ -891,6 +891,35 @@
         gap: 8px;
       }
 
+      .view-pane-header-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+
+      .view-pane-export-button {
+        padding: 4px 7px;
+        border-radius: 7px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .view-pane-export-button:hover:not(:disabled) {
+        color: var(--text);
+        border-color: var(--line-strong);
+        background: var(--bg-elevated);
+      }
+
+      .view-pane-export-button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+
       .view-pane-surface {
         flex: 1;
         min-height: 120px;
@@ -1856,11 +1885,14 @@
               <section class="view-pane" data-view-slot="0">
                 <div class="view-pane-header">
                   <div class="view-pane-title" id="viewPaneTitle0">Top to Bottom</div>
-                  <div class="view-pane-selector">
-                    <button class="view-pane-selector-button active" type="button" data-view-slot="0" data-view-direction="topToBottom">T-B</button>
-                    <button class="view-pane-selector-button" type="button" data-view-slot="0" data-view-direction="bottomToTop">B-T</button>
-                    <button class="view-pane-selector-button" type="button" data-view-slot="0" data-view-direction="leftToRight">L-R</button>
-                    <button class="view-pane-selector-button" type="button" data-view-slot="0" data-view-direction="rightToLeft">R-L</button>
+                  <div class="view-pane-header-actions">
+                    <button class="view-pane-export-button" type="button" data-view-export-slot="0">PNG</button>
+                    <div class="view-pane-selector">
+                      <button class="view-pane-selector-button active" type="button" data-view-slot="0" data-view-direction="topToBottom">T-B</button>
+                      <button class="view-pane-selector-button" type="button" data-view-slot="0" data-view-direction="bottomToTop">B-T</button>
+                      <button class="view-pane-selector-button" type="button" data-view-slot="0" data-view-direction="leftToRight">L-R</button>
+                      <button class="view-pane-selector-button" type="button" data-view-slot="0" data-view-direction="rightToLeft">R-L</button>
+                    </div>
                   </div>
                 </div>
                 <div class="view-pane-surface view-pane-render-surface" id="viewFrontSurface">
@@ -1871,11 +1903,14 @@
               <section class="view-pane" data-view-slot="1">
                 <div class="view-pane-header">
                   <div class="view-pane-title" id="viewPaneTitle1">Bottom to Top</div>
-                  <div class="view-pane-selector">
-                    <button class="view-pane-selector-button" type="button" data-view-slot="1" data-view-direction="topToBottom">T-B</button>
-                    <button class="view-pane-selector-button active" type="button" data-view-slot="1" data-view-direction="bottomToTop">B-T</button>
-                    <button class="view-pane-selector-button" type="button" data-view-slot="1" data-view-direction="leftToRight">L-R</button>
-                    <button class="view-pane-selector-button" type="button" data-view-slot="1" data-view-direction="rightToLeft">R-L</button>
+                  <div class="view-pane-header-actions">
+                    <button class="view-pane-export-button" type="button" data-view-export-slot="1">PNG</button>
+                    <div class="view-pane-selector">
+                      <button class="view-pane-selector-button" type="button" data-view-slot="1" data-view-direction="topToBottom">T-B</button>
+                      <button class="view-pane-selector-button active" type="button" data-view-slot="1" data-view-direction="bottomToTop">B-T</button>
+                      <button class="view-pane-selector-button" type="button" data-view-slot="1" data-view-direction="leftToRight">L-R</button>
+                      <button class="view-pane-selector-button" type="button" data-view-slot="1" data-view-direction="rightToLeft">R-L</button>
+                    </div>
                   </div>
                 </div>
                 <div class="view-pane-surface view-pane-render-surface" id="viewBackSurface">
@@ -1886,11 +1921,14 @@
               <section class="view-pane" data-view-slot="2">
                 <div class="view-pane-header">
                   <div class="view-pane-title" id="viewPaneTitle2">Left to Right</div>
-                  <div class="view-pane-selector">
-                    <button class="view-pane-selector-button" type="button" data-view-slot="2" data-view-direction="topToBottom">T-B</button>
-                    <button class="view-pane-selector-button" type="button" data-view-slot="2" data-view-direction="bottomToTop">B-T</button>
-                    <button class="view-pane-selector-button active" type="button" data-view-slot="2" data-view-direction="leftToRight">L-R</button>
-                    <button class="view-pane-selector-button" type="button" data-view-slot="2" data-view-direction="rightToLeft">R-L</button>
+                  <div class="view-pane-header-actions">
+                    <button class="view-pane-export-button" type="button" data-view-export-slot="2">PNG</button>
+                    <div class="view-pane-selector">
+                      <button class="view-pane-selector-button" type="button" data-view-slot="2" data-view-direction="topToBottom">T-B</button>
+                      <button class="view-pane-selector-button" type="button" data-view-slot="2" data-view-direction="bottomToTop">B-T</button>
+                      <button class="view-pane-selector-button active" type="button" data-view-slot="2" data-view-direction="leftToRight">L-R</button>
+                      <button class="view-pane-selector-button" type="button" data-view-slot="2" data-view-direction="rightToLeft">R-L</button>
+                    </div>
                   </div>
                 </div>
                 <div class="view-pane-surface view-pane-render-surface" id="viewLeftSurface">
@@ -1901,11 +1939,14 @@
               <section class="view-pane" data-view-slot="3">
                 <div class="view-pane-header">
                   <div class="view-pane-title" id="viewPaneTitle3">Right to Left</div>
-                  <div class="view-pane-selector">
-                    <button class="view-pane-selector-button" type="button" data-view-slot="3" data-view-direction="topToBottom">T-B</button>
-                    <button class="view-pane-selector-button" type="button" data-view-slot="3" data-view-direction="bottomToTop">B-T</button>
-                    <button class="view-pane-selector-button" type="button" data-view-slot="3" data-view-direction="leftToRight">L-R</button>
-                    <button class="view-pane-selector-button active" type="button" data-view-slot="3" data-view-direction="rightToLeft">R-L</button>
+                  <div class="view-pane-header-actions">
+                    <button class="view-pane-export-button" type="button" data-view-export-slot="3">PNG</button>
+                    <div class="view-pane-selector">
+                      <button class="view-pane-selector-button" type="button" data-view-slot="3" data-view-direction="topToBottom">T-B</button>
+                      <button class="view-pane-selector-button" type="button" data-view-slot="3" data-view-direction="bottomToTop">B-T</button>
+                      <button class="view-pane-selector-button" type="button" data-view-slot="3" data-view-direction="leftToRight">L-R</button>
+                      <button class="view-pane-selector-button active" type="button" data-view-slot="3" data-view-direction="rightToLeft">R-L</button>
+                    </div>
                   </div>
                 </div>
                 <div class="view-pane-surface view-pane-render-surface" id="viewRightSurface">
@@ -2227,6 +2268,7 @@
         viewLayoutButtons: Array.from(document.querySelectorAll("[data-view-layout]")),
         viewPaneSlots: Array.from(document.querySelectorAll(".view-pane[data-view-slot]")),
         viewPaneSelectorButtons: Array.from(document.querySelectorAll("[data-view-direction]")),
+        viewPaneExportButtons: Array.from(document.querySelectorAll("[data-view-export-slot]")),
         viewPaneTitles: [
           document.getElementById("viewPaneTitle0"),
           document.getElementById("viewPaneTitle1"),
@@ -3180,6 +3222,14 @@
           const slotIndex = Number(button.dataset.viewSlot);
           button.classList.toggle("active", state.viewPaneDirections[slotIndex] === button.dataset.viewDirection);
         });
+
+        ui.viewPaneExportButtons.forEach((button) => {
+          const slotIndex = Number(button.dataset.viewExportSlot);
+          const paneVisible = slotIndex < visibleCount;
+          const paneCanvas = [ui.viewFrontCanvas, ui.viewBackCanvas, ui.viewLeftCanvas, ui.viewRightCanvas][slotIndex];
+          button.classList.toggle("hidden", !paneVisible);
+          button.disabled = !paneVisible || !activeCanvasView() || !paneCanvas || paneCanvas.classList.contains("hidden");
+        });
       }
 
       function layerRepresentativeColor(layer) {
@@ -3227,6 +3277,14 @@
           default:
             return "Top to Bottom";
         }
+      }
+
+      function slugifyFilenamePart(value, fallback = "view") {
+        const normalized = String(value || "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+        return normalized || fallback;
       }
 
       function visibleViewPaneCount() {
@@ -3783,6 +3841,46 @@
             viewDirectionLabel(state.viewPaneDirections[index]) + " view placeholder"
           );
         });
+        renderViewWorkspaceControls();
+      }
+
+      function exportViewPanePng(slotIndex) {
+        const view = activeCanvasView();
+        if (!view) {
+          setStatus("Open a view tab to export PNG.");
+          render({ ui: true });
+          return;
+        }
+        const paneCanvas = [ui.viewFrontCanvas, ui.viewBackCanvas, ui.viewLeftCanvas, ui.viewRightCanvas][slotIndex];
+        if (!paneCanvas || paneCanvas.classList.contains("hidden")) {
+          setStatus("Nothing to export in this view pane.");
+          render({ ui: true });
+          return;
+        }
+        const direction = state.viewPaneDirections[slotIndex];
+        const filename =
+          "millimetre-view-" +
+          slugifyFilenamePart(view.name, "view") +
+          "-" +
+          slugifyFilenamePart(viewDirectionLabel(direction), "direction") +
+          ".png";
+        paneCanvas.toBlob((blob) => {
+          if (!blob) {
+            setStatus("PNG export failed.");
+            render({ ui: true });
+            return;
+          }
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+          setStatus("PNG exported.");
+          render({ ui: true });
+        }, "image/png");
       }
 
       function closeViewEditModal() {
@@ -11037,6 +11135,11 @@
       ui.importButton.addEventListener("click", () => {
         ui.projectImportInput.value = "";
         ui.projectImportInput.click();
+      });
+      ui.viewPaneExportButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          exportViewPanePng(Number(button.dataset.viewExportSlot));
+        });
       });
       ui.sceneScaleCancelButton.addEventListener("click", () => {
         closeModal(ui.sceneScaleModal);
