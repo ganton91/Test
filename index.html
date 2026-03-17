@@ -3676,13 +3676,12 @@
           renderColumns = reducedColumns;
         }
 
-        const devicePixelRatio = window.devicePixelRatio || 1;
         const rawCellPixelSize = Math.max(1, Math.min(availableWidth / renderColumns, availableHeight / renderRows));
-        const cellPixelSize = Math.max(1, Math.floor(rawCellPixelSize * devicePixelRatio) / devicePixelRatio);
+        const cellPixelSize = Math.max(1, snapPixel(rawCellPixelSize, "floor"));
         const drawWidth = renderColumns * cellPixelSize;
         const drawHeight = renderRows * cellPixelSize;
-        const offsetX = Math.round(((surfaceWidth - drawWidth) / 2) * devicePixelRatio) / devicePixelRatio;
-        const offsetY = Math.round(((surfaceHeight - drawHeight) / 2) * devicePixelRatio) / devicePixelRatio;
+        const offsetX = snapPixel((surfaceWidth - drawWidth) / 2);
+        const offsetY = snapPixel((surfaceHeight - drawHeight) / 2);
         const zeroLineY = offsetY + ((contentMaxZ - 0) / rowScaleY) * cellPixelSize + 0.5;
 
         context.clearRect(0, 0, surfaceWidth, surfaceHeight);
@@ -7304,9 +7303,12 @@
         context.imageSmoothingEnabled = false;
       }
 
-      function snapPixel(value) {
+      function snapPixel(value, mode = "round") {
         const ratio = window.devicePixelRatio || 1;
-        return Math.round(value * ratio) / ratio;
+        const scaled = value * ratio;
+        if (mode === "floor") return Math.floor(scaled) / ratio;
+        if (mode === "ceil") return Math.ceil(scaled) / ratio;
+        return Math.round(scaled) / ratio;
       }
 
       function resizeCanvases() {
