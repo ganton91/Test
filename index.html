@@ -3602,8 +3602,6 @@
         const availableWidth = Math.max(1, surfaceWidth - padding * 2);
         const availableHeight = Math.max(1, surfaceHeight - padding * 2);
         const uniformSourceScale = Math.max(1, contentColumns / availableWidth, totalRows / availableHeight);
-        const columnScaleX = uniformSourceScale;
-        const rowScaleY = uniformSourceScale;
         const drawEnvironmentBehindContent = !!state.viewSectionCutEffect.enabled;
 
         const grid = Array.from({ length: totalRows }, () => Array(contentColumns).fill(null));
@@ -3681,7 +3679,7 @@
         const drawHeight = renderRows * cellPixelSize;
         const offsetX = snapPixel((surfaceWidth - drawWidth) / 2);
         const offsetY = snapPixel((surfaceHeight - drawHeight) / 2);
-        const zeroLineY = offsetY + ((contentMaxZ - 0) / rowScaleY) * cellPixelSize + 0.5;
+        const zeroLineY = offsetY + (contentMaxZ / uniformSourceScale) * cellPixelSize + 0.5;
 
         context.clearRect(0, 0, surfaceWidth, surfaceHeight);
         context.fillStyle = activeViewSkyColor();
@@ -3741,6 +3739,7 @@
             for (let columnIndex = 0; columnIndex < renderColumns; columnIndex += 1) {
               const cell = renderGrid[rowIndex][columnIndex];
               if (!cell) continue;
+              if (layerPass && !cell.forceOutline) continue;
               const x = offsetX + columnIndex * cellPixelSize;
               const y = offsetY + rowIndex * cellPixelSize;
               const strokeThickness = globalPass
@@ -3754,8 +3753,6 @@
               const leftNeighbor = columnIndex > 0 ? renderGrid[rowIndex][columnIndex - 1] : null;
               const rightNeighbor = columnIndex < renderColumns - 1 ? renderGrid[rowIndex][columnIndex + 1] : null;
               const boundaryInfo = (neighbor) => {
-                if (layerPass && !cell.forceOutline) return { draw: false, outside: false };
-                if (globalPass && !state.viewOutlineEffect.enabled) return { draw: false, outside: false };
                 if (!neighbor) return { draw: true, outside: true };
                 const surfaceChanged = neighbor.depth !== cell.depth || neighbor.isCut !== cell.isCut;
                 if (surfaceChanged) {
@@ -3969,12 +3966,12 @@
           context.lineWidth = 1;
           context.beginPath();
           for (let sourceColumn = 0; sourceColumn <= contentColumns; sourceColumn += 1) {
-            const x = offsetX + (sourceColumn / columnScaleX) * cellPixelSize + 0.5;
+            const x = offsetX + (sourceColumn / uniformSourceScale) * cellPixelSize + 0.5;
             context.moveTo(x, offsetY);
             context.lineTo(x, offsetY + drawHeight);
           }
           for (let sourceRow = 0; sourceRow <= totalRows; sourceRow += 1) {
-            const y = offsetY + (sourceRow / rowScaleY) * cellPixelSize + 0.5;
+            const y = offsetY + (sourceRow / uniformSourceScale) * cellPixelSize + 0.5;
             context.moveTo(offsetX, y);
             context.lineTo(offsetX + drawWidth, y);
           }
