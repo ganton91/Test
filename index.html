@@ -3601,10 +3601,9 @@
         const padding = 18;
         const availableWidth = Math.max(1, surfaceWidth - padding * 2);
         const availableHeight = Math.max(1, surfaceHeight - padding * 2);
-        const targetColumns = contentColumns > availableWidth ? Math.max(1, Math.floor(availableWidth)) : contentColumns;
-        const columnScaleX = contentColumns / targetColumns;
-        const targetRows = totalRows > availableHeight ? Math.max(1, Math.floor(availableHeight)) : totalRows;
-        const rowScaleY = totalRows / targetRows;
+        const uniformSourceScale = Math.max(1, contentColumns / availableWidth, totalRows / availableHeight);
+        const columnScaleX = uniformSourceScale;
+        const rowScaleY = uniformSourceScale;
         const drawEnvironmentBehindContent = !!state.viewSectionCutEffect.enabled;
 
         const grid = Array.from({ length: totalRows }, () => Array(contentColumns).fill(null));
@@ -3643,9 +3642,9 @@
         let renderGrid = grid;
         let renderRows = totalRows;
         let renderColumns = contentColumns;
-        if (targetColumns !== contentColumns || targetRows !== totalRows) {
-          const reducedRows = targetRows;
-          const reducedColumns = targetColumns;
+        if (uniformSourceScale > 1) {
+          const reducedRows = Math.max(1, Math.floor((totalRows - 1) / uniformSourceScale) + 1);
+          const reducedColumns = Math.max(1, Math.floor((contentColumns - 1) / uniformSourceScale) + 1);
           const reducedGrid = Array.from({ length: reducedRows }, () => Array(reducedColumns).fill(null));
           const isCandidateCloser = (candidate, existing) => {
             if (!existing) return true;
@@ -3660,8 +3659,8 @@
             for (let columnIndex = 0; columnIndex < contentColumns; columnIndex += 1) {
               const cell = grid[rowIndex][columnIndex];
               if (!cell) continue;
-              const reducedRow = Math.min(reducedRows - 1, Math.floor(rowIndex / rowScaleY));
-              const reducedColumn = Math.min(reducedColumns - 1, Math.floor(columnIndex / columnScaleX));
+              const reducedRow = Math.min(reducedRows - 1, Math.floor(rowIndex / uniformSourceScale));
+              const reducedColumn = Math.min(reducedColumns - 1, Math.floor(columnIndex / uniformSourceScale));
               const existing = reducedGrid[reducedRow][reducedColumn];
               if (isCandidateCloser(cell, existing)) {
                 reducedGrid[reducedRow][reducedColumn] = { ...cell };
