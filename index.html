@@ -2441,6 +2441,12 @@
           isRestoring: false,
         },
         renameSession: null,
+        listRenderCache: {
+          views: "",
+          measurements: "",
+          layers: "",
+          scenes: "",
+        },
       };
 
       state.activeLayerId = state.layers[0].id;
@@ -5943,7 +5949,6 @@
           renderViewCreateState();
           renderCanvasModeHint();
           renderCanvasViewMode();
-          renderViewWorkspaceControls();
           renderSelectionPicker();
           renderViewEditModal();
           renderScenes();
@@ -6415,7 +6420,37 @@
         ui.outlinePanelToggle.setAttribute("aria-expanded", String(!state.outlinePanelCollapsed));
       }
 
+      function shouldRerenderList(cacheKey, signature) {
+        if (state.listRenderCache[cacheKey] === signature) return false;
+        state.listRenderCache[cacheKey] = signature;
+        return true;
+      }
+
       function renderViews() {
+        const signature = JSON.stringify({
+          activeViewId: state.activeViewId,
+          activeLayerId: state.activeLayerId,
+          activeSceneId: state.activeSceneId,
+          activeMeasurementId: state.activeMeasurementId,
+          editingViewId: state.editingViewId,
+          dragViewId: state.dragViewId,
+          activeCanvasViewTab: state.activeCanvasViewTab,
+          views: state.views.map((view) => ({
+            id: view.id,
+            name: view.name,
+            visible: !!view.visible,
+            pending: !!view.pending,
+            bounds: view.bounds
+              ? {
+                  minX: view.bounds.minX,
+                  minY: view.bounds.minY,
+                  maxX: view.bounds.maxX,
+                  maxY: view.bounds.maxY,
+                }
+              : null,
+          })),
+        });
+        if (!shouldRerenderList("views", signature)) return;
         ui.viewList.innerHTML = "";
         state.views.forEach((view) => {
           const card = document.createElement("div");
@@ -6440,9 +6475,7 @@
 
           const main = document.createElement("div");
           main.className = "layer-main";
-          main.addEventListener("click", () => {
-            toggleViewActivation(view.id);
-          });
+          main.dataset.viewMain = view.id;
 
           let nameField;
           if (state.editingViewId === view.id) {
@@ -6585,6 +6618,27 @@
       }
 
       function renderMeasurements() {
+        const signature = JSON.stringify({
+          activeMeasurementId: state.activeMeasurementId,
+          activeLayerId: state.activeLayerId,
+          activeSceneId: state.activeSceneId,
+          activeViewId: state.activeViewId,
+          editingMeasurementId: state.editingMeasurementId,
+          dragMeasurementId: state.dragMeasurementId,
+          measurements: state.measurements.map((measurement) => ({
+            id: measurement.id,
+            name: measurement.name,
+            visible: !!measurement.visible,
+            width: measurement.width,
+            opacity: measurement.opacity,
+            pointCount: measurement.points.length,
+            lengthCount: measurement.lengths.length,
+            areaCount: measurement.areas.length,
+            totalLength: measurement.lengths.reduce((sum, entry) => sum + entry.meters, 0),
+            totalArea: measurement.areas.reduce((sum, entry) => sum + entry.squareMeters, 0),
+          })),
+        });
+        if (!shouldRerenderList("measurements", signature)) return;
         ui.measurementList.innerHTML = "";
         state.measurements.forEach((measurement) => {
           const card = document.createElement("div");
@@ -6609,9 +6663,7 @@
 
           const main = document.createElement("div");
           main.className = "layer-main";
-          main.addEventListener("click", () => {
-            toggleMeasurementActivation(measurement.id);
-          });
+          main.dataset.measurementMain = measurement.id;
 
           let nameField;
           if (state.editingMeasurementId === measurement.id) {
@@ -6803,6 +6855,20 @@
       }
 
       function renderLayers() {
+        const signature = JSON.stringify({
+          activeLayerId: state.activeLayerId,
+          activeSceneId: state.activeSceneId,
+          editingLayerId: state.editingLayerId,
+          dragLayerId: state.dragLayerId,
+          layers: state.layers.map((layer) => ({
+            id: layer.id,
+            name: layer.name,
+            visible: !!layer.visible,
+            opacity: layer.opacity,
+            cellCount: layer.cellCount,
+          })),
+        });
+        if (!shouldRerenderList("layers", signature)) return;
         ui.layerList.innerHTML = "";
         state.layers.forEach((layer) => {
           const card = document.createElement("div");
@@ -6827,9 +6893,7 @@
 
           const main = document.createElement("div");
           main.className = "layer-main";
-          main.addEventListener("click", () => {
-            toggleLayerActivation(layer.id);
-          });
+          main.dataset.layerMain = layer.id;
 
           let nameField;
           if (state.editingLayerId === layer.id) {
@@ -6988,6 +7052,20 @@
       }
 
       function renderScenes() {
+        const signature = JSON.stringify({
+          activeSceneId: state.activeSceneId,
+          activeLayerId: state.activeLayerId,
+          editingSceneId: state.editingSceneId,
+          dragSceneId: state.dragSceneId,
+          scenes: state.scenes.map((scene) => ({
+            id: scene.id,
+            name: scene.name,
+            visible: !!scene.visible,
+            opacity: scene.opacity,
+            locked: !!scene.locked,
+          })),
+        });
+        if (!shouldRerenderList("scenes", signature)) return;
         ui.sceneList.innerHTML = "";
         const isEmpty = state.scenes.length === 0;
         ui.sceneList.parentElement.classList.toggle("compact-empty", isEmpty);
@@ -7015,9 +7093,7 @@
 
           const main = document.createElement("div");
           main.className = "layer-main";
-          main.addEventListener("click", () => {
-            toggleSceneActivation(scene.id);
-          });
+          main.dataset.sceneMain = scene.id;
 
           let nameField;
           if (state.editingSceneId === scene.id) {
@@ -11337,6 +11413,26 @@
       ui.addMeasurementButton.addEventListener("click", addMeasurement);
       ui.addViewButton.addEventListener("click", addView);
       ui.addLayerButton.addEventListener("click", addLayer);
+      ui.viewList.addEventListener("click", (event) => {
+        const main = event.target.closest("[data-view-main]");
+        if (!main || !ui.viewList.contains(main)) return;
+        toggleViewActivation(main.dataset.viewMain);
+      });
+      ui.measurementList.addEventListener("click", (event) => {
+        const main = event.target.closest("[data-measurement-main]");
+        if (!main || !ui.measurementList.contains(main)) return;
+        toggleMeasurementActivation(main.dataset.measurementMain);
+      });
+      ui.layerList.addEventListener("click", (event) => {
+        const main = event.target.closest("[data-layer-main]");
+        if (!main || !ui.layerList.contains(main)) return;
+        toggleLayerActivation(main.dataset.layerMain);
+      });
+      ui.sceneList.addEventListener("click", (event) => {
+        const main = event.target.closest("[data-scene-main]");
+        if (!main || !ui.sceneList.contains(main)) return;
+        toggleSceneActivation(main.dataset.sceneMain);
+      });
       ui.undoButton.addEventListener("click", () => {
         flushPendingRangeHistorySteps();
         if (!undoHistory()) return;
