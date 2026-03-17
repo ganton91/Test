@@ -3851,19 +3851,90 @@
         return Array.from(segmentMap.values());
       }
 
+      function mergeOrthogonalSegments(segments) {
+        if (!Array.isArray(segments) || !segments.length) return [];
+        const horizontal = new Map();
+        const vertical = new Map();
+        segments.forEach((segment) => {
+          if (segment.y1 === segment.y2) {
+            const y = segment.y1;
+            const xMin = Math.min(segment.x1, segment.x2);
+            const xMax = Math.max(segment.x1, segment.x2);
+            const list = horizontal.get(y);
+            if (list) list.push([xMin, xMax]);
+            else horizontal.set(y, [[xMin, xMax]]);
+            return;
+          }
+          if (segment.x1 === segment.x2) {
+            const x = segment.x1;
+            const yMin = Math.min(segment.y1, segment.y2);
+            const yMax = Math.max(segment.y1, segment.y2);
+            const list = vertical.get(x);
+            if (list) list.push([yMin, yMax]);
+            else vertical.set(x, [[yMin, yMax]]);
+          }
+        });
+        const merged = [];
+        horizontal.forEach((ranges, y) => {
+          ranges.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+          let current = null;
+          ranges.forEach((range) => {
+            if (!current) {
+              current = [range[0], range[1]];
+              return;
+            }
+            if (range[0] <= current[1]) {
+              current[1] = Math.max(current[1], range[1]);
+              return;
+            }
+            merged.push({ x1: current[0], y1: y, x2: current[1], y2: y });
+            current = [range[0], range[1]];
+          });
+          if (current) {
+            merged.push({ x1: current[0], y1: y, x2: current[1], y2: y });
+          }
+        });
+        vertical.forEach((ranges, x) => {
+          ranges.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+          let current = null;
+          ranges.forEach((range) => {
+            if (!current) {
+              current = [range[0], range[1]];
+              return;
+            }
+            if (range[0] <= current[1]) {
+              current[1] = Math.max(current[1], range[1]);
+              return;
+            }
+            merged.push({ x1: x, y1: current[0], x2: x, y2: current[1] });
+            current = [range[0], range[1]];
+          });
+          if (current) {
+            merged.push({ x1: x, y1: current[0], x2: x, y2: current[1] });
+          }
+        });
+        return merged;
+      }
+
       function buildViewPaneDxfContent(slotIndex) {
         const view = activeCanvasView();
         if (!view) return { error: "no-view" };
         const direction = state.viewPaneDirections[slotIndex];
         const build = buildDirectionalOcclusionGrid(view, direction);
         if (build.error) return { error: build.error };
-        const { grid, contentMaxZ, contentMinProjectedColumn, contentColumns } = build;
-        const layerIds = Array.from(
-          new Set(
-            grid.flatMap((row) => row.filter(Boolean).map((cell) => cell.layerId))
-          )
-        );
-        if (!layerIds.length) return { error: "no-entities" };
+        const { grid, contentMaxZ, contentMinProjectedColumn, contentColumns, directionConfig } = build;
+        const sectionCutEnabled = !!state.viewSectionCutEffect.enabled;
+
+        const visibleGrid = grid.map((row, rowIndex) => {
+          const cellZ = contentMaxZ - 1 - rowIndex;
+          return row.map((cell) => {
+            if (!cell) return null;
+            if (!sectionCutEnabled && cellZ < 0) return null;
+            return cell;
+          });
+        });
+        const hasVisibleCells = visibleGrid.some((row) => row.some(Boolean));
+        if (!hasVisibleCells) return { error: "no-entities" };
 
         const toMetersPoints = (loop) => {
           const simplified = simplifyOrthogonalLoop(loop);
@@ -3879,27 +3950,23 @@
         });
 
         let entities = "";
-        layerIds.forEach((layerId) => {
-          const sourceLayer = state.layers.find((layer) => layer.id === layerId);
-          const layerName = sanitizeDxfLayerName("VIEW_" + (sourceLayer ? sourceLayer.name : layerId), "VIEW_LAYER");
-          const loops = buildViewContoursFromGrid(grid, (cell) => !!(cell && cell.layerId === layerId));
-          loops.forEach((loop) => {
-            entities += encodeDxfPolyline(layerName, toMetersPoints(loop));
-          });
+        const visibleLoops = buildViewContoursFromGrid(visibleGrid, (cell) => !!cell);
+        visibleLoops.forEach((loop) => {
+          entities += encodeDxfPolyline("VIEW_VISIBLE", toMetersPoints(loop));
         });
 
-        if (state.viewSectionCutEffect.enabled) {
-          const cutLoops = buildViewContoursFromGrid(grid, (cell) => !!(cell && cell.isCut));
+        if (sectionCutEnabled) {
+          const cutLoops = buildViewContoursFromGrid(visibleGrid, (cell) => !!(cell && cell.isCut));
           cutLoops.forEach((loop) => {
             entities += encodeDxfPolyline("VIEW_SECTION_CUT", toMetersPoints(loop));
           });
         }
 
         if (state.viewOutlineEffect.enabled) {
-          const globalOutlineSegments = collectDxfBoundarySegments(
-            grid,
+          const globalOutlineSegments = mergeOrthogonalSegments(collectDxfBoundarySegments(
+            visibleGrid,
             (cell, neighbor) => !!cell && (!neighbor || neighbor.depth !== cell.depth || neighbor.isCut !== cell.isCut)
-          );
+          ));
           globalOutlineSegments.forEach((segment) => {
             entities += encodeDxfLine(
               "VIEW_OUTLINE_GLOBAL",
@@ -3909,16 +3976,19 @@
           });
         }
 
-        const layerOutlineSegments = collectDxfBoundarySegments(grid, (cell, neighbor) => {
+        const layerOutlineSegments = mergeOrthogonalSegments(collectDxfBoundarySegments(visibleGrid, (cell, neighbor) => {
           if (!cell || !cell.forceOutline) return false;
           if (!neighbor) return true;
           const surfaceChanged = neighbor.depth !== cell.depth || neighbor.isCut !== cell.isCut;
-          if (surfaceChanged) return true;
+          if (surfaceChanged) {
+            if (directionConfig.frontBoundary === "min") return neighbor.depth > cell.depth;
+            return neighbor.depth < cell.depth;
+          }
           if (neighbor.layerId === cell.layerId) return false;
           if (cell.forceOutline && !neighbor.forceOutline) return true;
           if (!cell.forceOutline && neighbor.forceOutline) return false;
           return cell.orderIndex <= neighbor.orderIndex;
-        });
+        }));
         layerOutlineSegments.forEach((segment) => {
           entities += encodeDxfLine(
             "VIEW_OUTLINE_LAYER",
@@ -3927,11 +3997,11 @@
           );
         });
 
-        if (state.viewSectionCutOutlineEffect.enabled) {
-          const cutOutlineSegments = collectDxfBoundarySegments(
-            grid,
+        if (sectionCutEnabled && state.viewSectionCutOutlineEffect.enabled) {
+          const cutOutlineSegments = mergeOrthogonalSegments(collectDxfBoundarySegments(
+            visibleGrid,
             (cell, neighbor) => !!(cell && cell.isCut) && !(neighbor && neighbor.isCut)
-          );
+          ));
           cutOutlineSegments.forEach((segment) => {
             entities += encodeDxfLine(
               "VIEW_SECTION_CUT_OUTLINE",
@@ -3942,11 +4012,13 @@
         }
 
         if (state.viewEnvironment.horizonEnabled) {
-          entities += encodeDxfLine(
-            "VIEW_HORIZON",
-            { x: contentMinProjectedColumn / CELLS_PER_METER, y: 0 },
-            { x: (contentMinProjectedColumn + contentColumns) / CELLS_PER_METER, y: 0 }
-          );
+          const horizonStart = { x: contentMinProjectedColumn / CELLS_PER_METER, y: 0 };
+          const horizonEnd = { x: (contentMinProjectedColumn + contentColumns) / CELLS_PER_METER, y: 0 };
+          if (sectionCutEnabled) {
+            entities = encodeDxfLine("VIEW_HORIZON", horizonStart, horizonEnd) + entities;
+          } else {
+            entities += encodeDxfLine("VIEW_HORIZON", horizonStart, horizonEnd);
+          }
         }
 
         if (!entities) return { error: "no-entities" };
