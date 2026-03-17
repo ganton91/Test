@@ -165,6 +165,18 @@
         border-color: var(--line-strong);
       }
 
+      .ghost-button:disabled {
+        opacity: 0.42;
+        cursor: default;
+        background: color-mix(in srgb, var(--surface) 84%, var(--bg));
+        border-color: var(--line);
+      }
+
+      .ghost-button:disabled:hover {
+        background: color-mix(in srgb, var(--surface) 84%, var(--bg));
+        border-color: var(--line);
+      }
+
       .workspace {
         position: relative;
         overflow: hidden;
@@ -2139,6 +2151,7 @@
       const MIN_ZOOM = 0.12;
       const MAX_ZOOM = 3.6;
       const DEFAULT_COLOR = "#111827";
+      const MAX_HISTORY_STATES = 50;
 
       const ui = {
         body: document.body,
@@ -2423,9 +2436,10 @@
         history: {
           undoStack: [],
           redoStack: [],
-          limit: 100,
+          limit: MAX_HISTORY_STATES,
           isRestoring: false,
         },
+        renameSession: null,
       };
 
       state.activeLayerId = state.layers[0].id;
@@ -2631,18 +2645,10 @@
 
       function pushHistoryContextBaseline(previousContextSignature, label = "") {
         if (state.history.isRestoring) return false;
+        flushPendingRangeHistorySteps();
         const nextContextSignature = snapshotActiveContextSignature(state);
         if (previousContextSignature === nextContextSignature) return false;
         return pushHistorySnapshot(label);
-      }
-
-      function captureVisibilityState() {
-        return {
-          scenes: new Map(state.scenes.map((scene) => [scene.id, !!scene.visible])),
-          measurements: new Map(state.measurements.map((measurement) => [measurement.id, !!measurement.visible])),
-          views: new Map(state.views.map((view) => [view.id, !!view.visible])),
-          layers: new Map(state.layers.map((layer) => [layer.id, !!layer.visible])),
-        };
       }
 
       function historySignature(snapshot) {
@@ -2651,21 +2657,84 @@
           scenes: snapshot.scenes.map((scene) => ({
             ...scene,
             image: undefined,
-            visible: undefined,
           })),
-          measurements: snapshot.measurements.map((measurement) => ({
-            ...measurement,
-            visible: undefined,
-          })),
-          views: snapshot.views.map((view) => ({
-            ...view,
-            visible: undefined,
-          })),
-          layers: snapshot.layers.map((layer) => ({
-            ...layer,
-            visible: undefined,
-          })),
+          measurements: snapshot.measurements.map((measurement) => ({ ...measurement })),
+          views: snapshot.views.map((view) => ({ ...view })),
+          layers: snapshot.layers.map((layer) => ({ ...layer })),
         });
+      }
+
+      function isHistoryExcludedAction(actionKey) {
+        const key = String(actionKey || "").toLowerCase();
+        return (
+          key.startsWith("settings:") ||
+          key.startsWith("color-palette:") ||
+          key.startsWith("brush-settings:") ||
+          key.startsWith("shape-settings:") ||
+          key.startsWith("outline-settings:") ||
+          key.startsWith("import:") ||
+          key.startsWith("export:")
+        );
+      }
+
+      function commitHistoryAction(actionKey, label = "") {
+        flushPendingRangeHistorySteps();
+        if (isHistoryExcludedAction(actionKey)) return false;
+        return commitHistory(label || String(actionKey || ""));
+      }
+
+      const pendingRangeHistoryBindings = new Set();
+
+      function flushPendingRangeHistorySteps() {
+        for (const binding of Array.from(pendingRangeHistoryBindings)) {
+          if (!binding?.input || !binding.input.isConnected) {
+            pendingRangeHistoryBindings.delete(binding);
+            continue;
+          }
+          binding.commitIfChanged();
+        }
+      }
+
+      function bindRangeHistoryStep(input, options) {
+        if (!input || typeof options?.getValue !== "function") return;
+        const equal = typeof options.equal === "function" ? options.equal : (a, b) => a === b;
+        let lastObservedValue = options.getValue();
+        let startValue = null;
+
+        const resetInteraction = () => {
+          lastObservedValue = options.getValue();
+          startValue = null;
+        };
+
+        const markInputChange = () => {
+          const currentValue = options.getValue();
+          if (startValue === null && !equal(currentValue, lastObservedValue)) {
+            startValue = lastObservedValue;
+          }
+          lastObservedValue = currentValue;
+        };
+
+        const commitIfChanged = () => {
+          const currentValue = options.getValue();
+          if (startValue === null || equal(currentValue, startValue)) {
+            lastObservedValue = currentValue;
+            startValue = null;
+            return false;
+          }
+          const committed = commitHistory(options.label || String(options.actionKey || ""));
+          lastObservedValue = currentValue;
+          startValue = null;
+          return committed;
+        };
+
+        const binding = { input, commitIfChanged };
+        pendingRangeHistoryBindings.add(binding);
+
+        input.addEventListener("pointerdown", resetInteraction);
+        input.addEventListener("focus", resetInteraction);
+        input.addEventListener("input", markInputChange);
+        input.addEventListener("change", commitIfChanged);
+        input.addEventListener("blur", commitIfChanged);
       }
 
       function pushHistorySnapshot(label = "") {
@@ -2686,10 +2755,15 @@
         return pushHistorySnapshot(label);
       }
 
+      function resetHistoryBaseline(label = "") {
+        state.history.undoStack = [];
+        state.history.redoStack = [];
+        state.history.isRestoring = false;
+        pushHistorySnapshot(label);
+      }
+
       function restoreDocumentState(snapshot) {
         state.history.isRestoring = true;
-        const visibilityState = captureVisibilityState();
-        const previousContextSignature = snapshotActiveContextSignature(state);
         closeModal(ui.settingsMenu);
         closeModal(ui.sceneScaleModal);
         if (state.viewEditDraft) {
@@ -2704,37 +2778,17 @@
         state.measurementSelectClickMemory = null;
         state.shapeDraft = null;
         state.polygonClickMemory = null;
+        state.renameSession = null;
         state.eyedropperSession = null;
         state.color.eyedropper = false;
         state.outline.eyedropper = false;
         state.nextSceneNumber = snapshot.nextSceneNumber;
         state.nextMeasurementNumber = snapshot.nextMeasurementNumber;
         state.nextViewNumber = snapshot.nextViewNumber;
-        state.scenes = snapshot.scenes.map((scene) => ({
-          ...scene,
-          visible: visibilityState.scenes.has(scene.id) ? visibilityState.scenes.get(scene.id) : scene.visible,
-        }));
-        state.measurements = snapshot.measurements.map((measurementSnapshot) => {
-          const measurement = restoreMeasurementFromSnapshot(measurementSnapshot);
-          if (visibilityState.measurements.has(measurement.id)) {
-            measurement.visible = visibilityState.measurements.get(measurement.id);
-          }
-          return measurement;
-        });
-        state.views = snapshot.views.map((viewSnapshot) => {
-          const view = restoreViewFromSnapshot(viewSnapshot);
-          if (visibilityState.views.has(view.id)) {
-            view.visible = visibilityState.views.get(view.id);
-          }
-          return view;
-        });
-        state.layers = snapshot.layers.map((layerSnapshot) => {
-          const layer = restoreLayerFromSnapshot(layerSnapshot);
-          if (visibilityState.layers.has(layer.id)) {
-            layer.visible = visibilityState.layers.get(layer.id);
-          }
-          return layer;
-        });
+        state.scenes = snapshot.scenes.map((scene) => ({ ...scene }));
+        state.measurements = snapshot.measurements.map((measurementSnapshot) => restoreMeasurementFromSnapshot(measurementSnapshot));
+        state.views = snapshot.views.map((viewSnapshot) => restoreViewFromSnapshot(viewSnapshot));
+        state.layers = snapshot.layers.map((layerSnapshot) => restoreLayerFromSnapshot(layerSnapshot));
         state.activeSceneId = state.scenes.some((scene) => scene.id === snapshot.activeSceneId) ? snapshot.activeSceneId : null;
         state.activeMeasurementId = state.measurements.some((measurement) => measurement.id === snapshot.activeMeasurementId)
           ? snapshot.activeMeasurementId
@@ -2744,10 +2798,7 @@
           : null;
         state.activeViewId = state.views.some((view) => view.id === snapshot.activeViewId) ? snapshot.activeViewId : null;
         state.activeLayerId = state.layers.some((layer) => layer.id === snapshot.activeLayerId) ? snapshot.activeLayerId : null;
-        const nextContextSignature = snapshotActiveContextSignature(snapshot);
-        if (previousContextSignature !== nextContextSignature) {
-          state.activeTool = snapshot.activeTool;
-        }
+        state.activeTool = snapshot.activeTool;
         state.history.isRestoring = false;
         render({ ui: true, static: true, scenes: true, content: true, overlay: true, rulers: true });
       }
@@ -2920,6 +2971,7 @@
           state.measurementSelectClickMemory = null;
           state.shapeDraft = null;
           state.polygonClickMemory = null;
+          state.renameSession = null;
           state.eyedropperSession = null;
           state.color.eyedropper = false;
           state.outline.eyedropper = false;
@@ -3073,10 +3125,7 @@
             ? project.activeTool
             : "select";
 
-          state.history.undoStack = [];
-          state.history.redoStack = [];
-          state.history.isRestoring = false;
-          pushHistorySnapshot("Imported Project");
+          resetHistoryBaseline("");
           render({ ui: true, static: true, scenes: true, content: true, overlay: true, rulers: true });
         } catch (error) {
           state.history.isRestoring = false;
@@ -4167,6 +4216,7 @@
         state.editingSceneId = null;
         state.editingMeasurementId = null;
         state.editingViewId = null;
+        state.renameSession = null;
         state.color.eyedropper = false;
         state.measurementSelectClickMemory = null;
         state.activeTool = "select";
@@ -4340,6 +4390,7 @@
       }
 
       function toggleLayerActivation(layerId) {
+        const previousContextSignature = snapshotActiveContextSignature(state);
         cancelEyedropperForUiAction();
         if (state.activeLayerId === layerId && !state.activeSceneId && !state.activeMeasurementId && !state.activeViewId) {
           state.editingLayerId = null;
@@ -4347,6 +4398,7 @@
           state.editingMeasurementId = null;
           state.editingViewId = null;
           clearActiveTarget();
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus("Selection tool active.");
           render({ ui: true, overlay: true });
           return;
@@ -4357,6 +4409,7 @@
           state.editingSceneId = null;
           state.editingMeasurementId = null;
           state.editingViewId = null;
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus(nextTool === "shape" ? "Shape tool active." : "Brush tool active.");
           render({ ui: true, overlay: true });
         }
@@ -4967,17 +5020,64 @@
       }
 
       function beginRenameLayer(layerId) {
+        const layer = state.layers.find((entry) => entry.id === layerId);
+        state.renameSession = layer
+          ? {
+              kind: "layer",
+              id: layer.id,
+              initialName: layer.name,
+            }
+          : null;
         state.editingLayerId = layerId;
         state.editingSceneId = null;
         render({ ui: true });
       }
 
+      function renameEntityBySession(session) {
+        if (!session || !session.id) return null;
+        if (session.kind === "layer") {
+          return state.layers.find((entry) => entry.id === session.id) || null;
+        }
+        if (session.kind === "scene") {
+          return state.scenes.find((entry) => entry.id === session.id) || null;
+        }
+        if (session.kind === "measurement") {
+          return state.measurements.find((entry) => entry.id === session.id) || null;
+        }
+        if (session.kind === "view") {
+          return state.views.find((entry) => entry.id === session.id) || null;
+        }
+        return null;
+      }
+
+      function commitRenameSessionIfChanged() {
+        const session = state.renameSession;
+        if (!session) return false;
+        const entity = renameEntityBySession(session);
+        if (!entity || entity.name === session.initialName) {
+          state.renameSession = null;
+          return false;
+        }
+        const actionKey = session.kind + "s:rename";
+        const labelByKind = {
+          layer: "Rename Layer",
+          scene: "Rename Scene",
+          measurement: "Rename Measurement",
+          view: "Rename View",
+        };
+        const changed = commitHistoryAction(actionKey, labelByKind[session.kind] || "Rename");
+        state.renameSession = null;
+        return changed;
+      }
+
       function endRenameLayer() {
         state.editingLayerId = null;
+        commitRenameSessionIfChanged();
         render({ ui: true });
       }
 
       function toggleSceneActivation(sceneId) {
+        const previousContextSignature = snapshotActiveContextSignature(state);
         cancelEyedropperForUiAction();
         if (state.activeSceneId === sceneId && !state.activeLayerId && !state.activeMeasurementId && !state.activeViewId) {
           state.editingSceneId = null;
@@ -4985,6 +5085,7 @@
           state.editingMeasurementId = null;
           state.editingViewId = null;
           clearActiveTarget();
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus("Selection tool active.");
           render({ ui: true, overlay: true });
           return;
@@ -4994,12 +5095,14 @@
           state.editingLayerId = null;
           state.editingMeasurementId = null;
           state.editingViewId = null;
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus("Scene selected.");
           render({ ui: true, overlay: true });
         }
       }
 
       function toggleMeasurementActivation(measurementId) {
+        const previousContextSignature = snapshotActiveContextSignature(state);
         cancelEyedropperForUiAction();
         if (state.activeMeasurementId === measurementId && !state.activeLayerId && !state.activeSceneId && !state.activeViewId) {
           state.editingMeasurementId = null;
@@ -5007,6 +5110,7 @@
           state.editingSceneId = null;
           state.editingViewId = null;
           clearActiveTarget();
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus("Selection tool active.");
           render({ ui: true, overlay: true });
           return;
@@ -5021,6 +5125,7 @@
           state.editingLayerId = null;
           state.editingSceneId = null;
           state.editingViewId = null;
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus(
             nextMode === "points"
               ? "Points mode active."
@@ -5033,6 +5138,14 @@
       }
 
       function beginRenameScene(sceneId) {
+        const scene = state.scenes.find((entry) => entry.id === sceneId);
+        state.renameSession = scene
+          ? {
+              kind: "scene",
+              id: scene.id,
+              initialName: scene.name,
+            }
+          : null;
         state.editingSceneId = sceneId;
         state.editingLayerId = null;
         state.editingMeasurementId = null;
@@ -5041,10 +5154,19 @@
 
       function endRenameScene() {
         state.editingSceneId = null;
+        commitRenameSessionIfChanged();
         render({ ui: true });
       }
 
       function beginRenameMeasurement(measurementId) {
+        const measurement = state.measurements.find((entry) => entry.id === measurementId);
+        state.renameSession = measurement
+          ? {
+              kind: "measurement",
+              id: measurement.id,
+              initialName: measurement.name,
+            }
+          : null;
         state.editingMeasurementId = measurementId;
         state.editingLayerId = null;
         state.editingSceneId = null;
@@ -5054,10 +5176,19 @@
 
       function endRenameMeasurement() {
         state.editingMeasurementId = null;
+        commitRenameSessionIfChanged();
         render({ ui: true });
       }
 
       function beginRenameView(viewId) {
+        const view = state.views.find((entry) => entry.id === viewId);
+        state.renameSession = view
+          ? {
+              kind: "view",
+              id: view.id,
+              initialName: view.name,
+            }
+          : null;
         state.editingViewId = viewId;
         state.editingLayerId = null;
         state.editingSceneId = null;
@@ -5067,6 +5198,7 @@
 
       function endRenameView() {
         state.editingViewId = null;
+        commitRenameSessionIfChanged();
         render({ ui: true });
       }
 
@@ -5139,6 +5271,7 @@
         state.editingSceneId = null;
         state.editingMeasurementId = null;
         state.editingViewId = null;
+        commitRenameSessionIfChanged();
         render({ ui: true });
         return true;
       }
@@ -5394,6 +5527,7 @@
       }
 
       function toggleViewActivation(viewId) {
+        const previousContextSignature = snapshotActiveContextSignature(state);
         cancelEyedropperForUiAction();
         const view = state.views.find((entry) => entry.id === viewId);
         if (view && view.pending && state.activeViewId === viewId) {
@@ -5408,6 +5542,7 @@
           state.editingSceneId = null;
           state.editingMeasurementId = null;
           clearActiveTarget();
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus("Selection tool active.");
           render({ ui: true, overlay: true });
           return;
@@ -5417,6 +5552,7 @@
           state.editingLayerId = null;
           state.editingSceneId = null;
           state.editingMeasurementId = null;
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus("View active.");
           render({ ui: true, overlay: true });
         }
@@ -6358,6 +6494,7 @@
           visibilityInline.addEventListener("click", (event) => {
             event.stopPropagation();
             view.visible = !view.visible;
+            commitHistoryAction("views:visibility", view.visible ? "Show View" : "Hide View");
             render({ ui: true, overlay: true });
           });
           inlineControls.appendChild(visibilityInline);
@@ -6383,6 +6520,7 @@
               closeViewEditModal();
             }
             if (state.activeViewId === view.id) clearActiveTarget();
+            commitHistoryAction("views:delete", "Delete View");
             render({ ui: true, overlay: true });
           });
           inlineControls.appendChild(removeInline);
@@ -6422,9 +6560,12 @@
             if (!state.dragViewId || state.dragViewId === view.id) return;
             const from = state.views.findIndex((entry) => entry.id === state.dragViewId);
             const to = state.views.findIndex((entry) => entry.id === view.id);
+            if (from === -1 || to === -1) return;
             const [moved] = state.views.splice(from, 1);
+            if (!moved) return;
             state.views.splice(to, 0, moved);
             state.dragViewId = null;
+            commitHistoryAction("views:reorder", "Reorder Views");
             render({ ui: true, overlay: true });
           });
 
@@ -6522,6 +6663,7 @@
           visibilityInline.addEventListener("click", (event) => {
             event.stopPropagation();
             measurement.visible = !measurement.visible;
+            commitHistoryAction("measurements:visibility", measurement.visible ? "Show Measurement" : "Hide Measurement");
             render({ ui: true, overlay: true });
           });
           inlineControls.appendChild(visibilityInline);
@@ -6536,6 +6678,7 @@
             if (index === -1) return;
             state.measurements.splice(index, 1);
             if (state.activeMeasurementId === measurement.id) clearActiveTarget();
+            commitHistoryAction("measurements:delete", "Delete Measurement");
             render({ ui: true, overlay: true });
           });
           inlineControls.appendChild(removeInline);
@@ -6581,6 +6724,11 @@
             measurement.width = Math.max(1, Math.min(12, Number(event.target.value)));
             render({ overlay: true });
           });
+          bindRangeHistoryStep(widthSlider, {
+            actionKey: "measurements:width",
+            label: "Measurement Width",
+            getValue: () => measurement.width,
+          });
           widthField.appendChild(widthLabel);
           widthField.appendChild(widthSlider);
 
@@ -6605,6 +6753,12 @@
             measurement.opacity = Math.max(0, Math.min(1, Number(event.target.value) / 100));
             render({ overlay: true });
           });
+          bindRangeHistoryStep(opacitySlider, {
+            actionKey: "measurements:opacity",
+            label: "Measurement Opacity",
+            getValue: () => measurement.opacity,
+            equal: (a, b) => Math.abs(a - b) < 1e-9,
+          });
           opacityField.appendChild(opacityLabel);
           opacityField.appendChild(opacitySlider);
 
@@ -6617,9 +6771,12 @@
             if (!state.dragMeasurementId || state.dragMeasurementId === measurement.id) return;
             const from = state.measurements.findIndex((entry) => entry.id === state.dragMeasurementId);
             const to = state.measurements.findIndex((entry) => entry.id === measurement.id);
+            if (from === -1 || to === -1) return;
             const [moved] = state.measurements.splice(from, 1);
+            if (!moved) return;
             state.measurements.splice(to, 0, moved);
             state.dragMeasurementId = null;
+            commitHistoryAction("measurements:reorder", "Reorder Measurements");
             render({ ui: true, overlay: true });
           });
 
@@ -6726,6 +6883,7 @@
           visibilityInline.addEventListener("click", (event) => {
             event.stopPropagation();
             layer.visible = !layer.visible;
+            commitHistoryAction("layers:visibility", layer.visible ? "Show Layer" : "Hide Layer");
             render({ ui: true, content: true, overlay: true });
           });
           inlineControls.appendChild(visibilityInline);
@@ -6737,10 +6895,12 @@
           removeInline.addEventListener("click", (event) => {
             event.stopPropagation();
             const index = state.layers.findIndex((entry) => entry.id === layer.id);
+            if (index === -1) return;
             state.layers.splice(index, 1);
             if (state.activeLayerId === layer.id) {
               clearActiveTarget();
             }
+            commitHistoryAction("layers:delete", "Delete Layer");
             render({ ui: true, content: true, overlay: true });
           });
           inlineControls.appendChild(removeInline);
@@ -6779,6 +6939,12 @@
             layer.opacity = Math.max(0, Math.min(1, Number(event.target.value) / 100));
             render({ content: true });
           });
+          bindRangeHistoryStep(opacitySlider, {
+            actionKey: "layers:opacity",
+            label: "Layer Opacity",
+            getValue: () => layer.opacity,
+            equal: (a, b) => Math.abs(a - b) < 1e-9,
+          });
 
           opacityField.appendChild(opacityLabel);
           opacityField.appendChild(opacitySlider);
@@ -6792,9 +6958,12 @@
             if (!state.dragLayerId || state.dragLayerId === layer.id) return;
             const from = state.layers.findIndex((entry) => entry.id === state.dragLayerId);
             const to = state.layers.findIndex((entry) => entry.id === layer.id);
+            if (from === -1 || to === -1) return;
             const [moved] = state.layers.splice(from, 1);
+            if (!moved) return;
             state.layers.splice(to, 0, moved);
             state.dragLayerId = null;
+            commitHistoryAction("layers:reorder", "Reorder Layers");
             render({ ui: true, content: true, overlay: true });
           });
 
@@ -6902,6 +7071,7 @@
           visibilityInline.addEventListener("click", (event) => {
             event.stopPropagation();
             scene.visible = !scene.visible;
+            commitHistoryAction("scenes:visibility", scene.visible ? "Show Scene" : "Hide Scene");
             render({ ui: true, scenes: true });
           });
           inlineControls.appendChild(visibilityInline);
@@ -6914,11 +7084,12 @@
             event.stopPropagation();
             const index = state.scenes.findIndex((entry) => entry.id === scene.id);
             if (index === -1) return;
-            URL.revokeObjectURL(scene.previewUrl);
+            if (scene.previewUrl) URL.revokeObjectURL(scene.previewUrl);
             state.scenes.splice(index, 1);
             if (state.activeSceneId === scene.id) {
               clearActiveTarget();
             }
+            commitHistoryAction("scenes:delete", "Delete Scene");
             render({ ui: true, scenes: true });
           });
           inlineControls.appendChild(removeInline);
@@ -6948,6 +7119,12 @@
           opacitySlider.addEventListener("input", (event) => {
             scene.opacity = Math.max(0, Math.min(1, Number(event.target.value) / 100));
             render({ scenes: true });
+          });
+          bindRangeHistoryStep(opacitySlider, {
+            actionKey: "scenes:opacity",
+            label: "Scene Opacity",
+            getValue: () => scene.opacity,
+            equal: (a, b) => Math.abs(a - b) < 1e-9,
           });
 
           opacityField.appendChild(opacityLabel);
@@ -6991,9 +7168,12 @@
             if (!state.dragSceneId || state.dragSceneId === scene.id) return;
             const from = state.scenes.findIndex((entry) => entry.id === state.dragSceneId);
             const to = state.scenes.findIndex((entry) => entry.id === scene.id);
+            if (from === -1 || to === -1) return;
             const [moved] = state.scenes.splice(from, 1);
+            if (!moved) return;
             state.scenes.splice(to, 0, moved);
             state.dragSceneId = null;
+            commitHistoryAction("scenes:reorder", "Reorder Scenes");
             render({ ui: true, scenes: true });
           });
 
@@ -9775,10 +9955,12 @@
       }
 
       function beginSelection(clientX, clientY) {
+        const previousContextSignature = snapshotActiveContextSignature(state);
         const pointer = worldFromClient(clientX, clientY);
         const view = viewHitAt(clientX, clientY, pointer.worldX, pointer.worldY);
         if (view) {
           setActiveViewById(view.id);
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus("View active.");
           render({ ui: true, overlay: true });
           return;
@@ -9814,12 +9996,14 @@
             state.activeMeasurementItem = null;
             setStatus("Measurement selected.");
           }
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           render({ ui: true, overlay: true });
           return;
         }
         const layer = topPaintedLayerAt(pointer.worldX, pointer.worldY);
         if (layer) {
           setActiveLayerById(layer.id, { tool: "select" });
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus("Layer selected.");
           render({ ui: true, overlay: true });
           return;
@@ -9827,11 +10011,13 @@
         const scene = topSceneAt(pointer.worldX, pointer.worldY);
         if (scene) {
           setActiveSceneById(scene.id);
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus(scene.locked ? "Locked scene selected." : "Scene selected.");
           render({ ui: true, overlay: true });
           return;
         }
         clearActiveTarget();
+        pushHistoryContextBaseline(previousContextSignature, "Selection Change");
         setStatus("No painted cell here. Selection stays idle.");
         render({ ui: true, overlay: true });
       }
@@ -11134,10 +11320,12 @@
       ui.addViewButton.addEventListener("click", addView);
       ui.addLayerButton.addEventListener("click", addLayer);
       ui.undoButton.addEventListener("click", () => {
+        flushPendingRangeHistorySteps();
         if (!undoHistory()) return;
         setStatus("Undo.");
       });
       ui.redoButton.addEventListener("click", () => {
+        flushPendingRangeHistorySteps();
         if (!redoHistory()) return;
         setStatus("Redo.");
       });
@@ -11561,7 +11749,10 @@
           if (state.pointer.inside && state.activeTool === "brush") render({ overlay: true });
         }
         const target = event.target;
-        const isEditableTarget = target instanceof HTMLInputElement
+        const isInputTarget = target instanceof HTMLInputElement;
+        const isRangeInput = isInputTarget && target.type === "range";
+        const isEditableTarget =
+          (isInputTarget && !isRangeInput)
           || target instanceof HTMLTextAreaElement
           || target instanceof HTMLSelectElement
           || target?.isContentEditable;
@@ -11577,6 +11768,7 @@
           event.key.toLowerCase() === "z";
         if (!isEditableTarget && isUndoShortcut) {
           event.preventDefault();
+          flushPendingRangeHistorySteps();
           if (undoHistory()) {
             setStatus("Undo.");
           }
@@ -11584,6 +11776,7 @@
         }
         if (!isEditableTarget && isRedoShortcut) {
           event.preventDefault();
+          flushPendingRangeHistorySteps();
           if (redoHistory()) {
             setStatus("Redo.");
           }
@@ -11666,7 +11859,7 @@
       });
       window.addEventListener("resize", resizeCanvases);
 
-      pushHistorySnapshot("Initial State");
+      resetHistoryBaseline("Initial State");
       resizeCanvases();
       centerViewportOrigin();
       render();
