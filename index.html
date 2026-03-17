@@ -4049,6 +4049,7 @@
       }
 
       function toggleLayerActivation(layerId) {
+        cancelEyedropperForUiAction();
         if (state.activeLayerId === layerId && !state.activeSceneId && !state.activeMeasurementId && !state.activeViewId) {
           state.editingLayerId = null;
           state.editingSceneId = null;
@@ -4686,6 +4687,7 @@
       }
 
       function toggleSceneActivation(sceneId) {
+        cancelEyedropperForUiAction();
         if (state.activeSceneId === sceneId && !state.activeLayerId && !state.activeMeasurementId && !state.activeViewId) {
           state.editingSceneId = null;
           state.editingLayerId = null;
@@ -4707,6 +4709,7 @@
       }
 
       function toggleMeasurementActivation(measurementId) {
+        cancelEyedropperForUiAction();
         if (state.activeMeasurementId === measurementId && !state.activeLayerId && !state.activeSceneId && !state.activeViewId) {
           state.editingMeasurementId = null;
           state.editingLayerId = null;
@@ -5076,6 +5079,7 @@
       }
 
       function toggleViewActivation(viewId) {
+        cancelEyedropperForUiAction();
         const view = state.views.find((entry) => entry.id === viewId);
         if (view && view.pending && state.activeViewId === viewId) {
           cancelPendingView();
@@ -9161,9 +9165,11 @@
         cancelSceneCalibration();
         state.interaction = null;
         state.measurementSelectClickMemory = null;
+        const previousTool =
+          state.activeTool === "eyedropper" ? state.eyedropperSession?.previousTool || "select" : state.activeTool;
         state.eyedropperSession = {
           target,
-          previousTool: state.activeTool,
+          previousTool,
         };
         state.activeTool = "eyedropper";
         state.color.eyedropper = target === "color";
@@ -9195,6 +9201,12 @@
         setOutlineSwatchColor(state.outline.activeSwatchIndex, color);
         stopEyedropperSession("Outline color sampled from canvas.");
         render({ ui: true, overlay: true });
+      }
+
+      function cancelEyedropperForUiAction(statusMessage = "Eyedropper off.") {
+        if (!(state.color.eyedropper || state.outline.eyedropper || state.activeTool === "eyedropper")) return false;
+        stopEyedropperSession(statusMessage);
+        return true;
       }
 
       function addMeasurementPoint(clientX, clientY) {
@@ -11104,6 +11116,17 @@
           if (event.target.closest("#selectionPicker")) return;
           dismissSelectionPicker();
           render({ ui: true });
+        },
+        true
+      );
+
+      document.addEventListener(
+        "click",
+        (event) => {
+          const button = event.target.closest("button");
+          if (!button) return;
+          if (button === ui.colorEyedropperButton || button === ui.outlineEyedropperButton) return;
+          cancelEyedropperForUiAction();
         },
         true
       );
