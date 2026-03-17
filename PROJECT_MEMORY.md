@@ -421,6 +421,9 @@ The current goal is to keep building `Milimetre` as a strong, minimal infinite c
 - When `Section Cut` is enabled in `Views`, `Ground` and `Horizon Line` render behind the view drawing instead of over it:
   - this preserves underground / below-grade geometry visibility in section-style views
   - when `Section Cut` is off, ground and horizon keep their normal foreground behavior
+- `Per Layer Outline` in `Views` now keeps its `outside` stroke when the neighboring visible cell is actually behind it in depth:
+  - neighbor-based suppression should only block `outside` for true foreground occluders
+  - this is intended to preserve roof/window/edge strokes in projections where deeper masses sit behind the outlined layer
 
 ## Renderer Note
 

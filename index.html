@@ -3645,7 +3645,13 @@
                 if (globalPass && !state.viewOutlineEffect.enabled) return { draw: false, outside: false };
                 if (!neighbor) return { draw: true, outside: true };
                 const surfaceChanged = neighbor.depth !== cell.depth || neighbor.isCut !== cell.isCut;
-                if (surfaceChanged) return { draw: true, outside: false };
+                if (surfaceChanged) {
+                  if (!layerPass) return { draw: true, outside: false };
+                  const neighborIsBehind = directionConfig.frontBoundary === "min"
+                    ? neighbor.depth > cell.depth
+                    : neighbor.depth < cell.depth;
+                  return { draw: true, outside: neighborIsBehind };
+                }
                 if (!layerPass) return { draw: false, outside: false };
                 if (neighbor.layerId === cell.layerId) return { draw: false, outside: false };
                 if (cell.forceOutline && !neighbor.forceOutline) return { draw: true, outside: true };
