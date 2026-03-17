@@ -5194,6 +5194,7 @@
       }
 
       function createSettingsDraft() {
+        const sectionCutEnabled = !!state.viewSectionCutEffect.enabled;
         return {
           theme: state.theme,
           gridPosition: state.gridPosition,
@@ -5210,11 +5211,11 @@
             color: state.viewOutlineEffect.color,
           },
           viewSectionCutEffect: {
-            enabled: !!state.viewSectionCutEffect.enabled,
+            enabled: sectionCutEnabled,
             color: state.viewSectionCutEffect.color,
           },
           viewSectionCutOutlineEffect: {
-            enabled: !!state.viewSectionCutOutlineEffect.enabled,
+            enabled: sectionCutEnabled && !!state.viewSectionCutOutlineEffect.enabled,
             thickness: state.viewSectionCutOutlineEffect.thickness,
             color: state.viewSectionCutOutlineEffect.color,
           },
@@ -5253,7 +5254,8 @@
         state.viewOutlineEffect.color = draft.viewOutlineEffect.color;
         state.viewSectionCutEffect.enabled = !!draft.viewSectionCutEffect.enabled;
         state.viewSectionCutEffect.color = draft.viewSectionCutEffect.color;
-        state.viewSectionCutOutlineEffect.enabled = !!draft.viewSectionCutOutlineEffect.enabled;
+        state.viewSectionCutOutlineEffect.enabled =
+          !!draft.viewSectionCutEffect.enabled && !!draft.viewSectionCutOutlineEffect.enabled;
         state.viewSectionCutOutlineEffect.thickness = draft.viewSectionCutOutlineEffect.thickness;
         state.viewSectionCutOutlineEffect.color = draft.viewSectionCutOutlineEffect.color;
         state.viewEnvironment.skyEnabled = !!draft.viewEnvironment.skyEnabled;
@@ -5866,6 +5868,7 @@
             "active",
             button.dataset.viewSectionCutOutline === (settings.viewSectionCutOutlineEffect.enabled ? "on" : "off")
           );
+          button.disabled = !settings.viewSectionCutEffect.enabled;
         });
         ui.viewOutlineButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewOutline === (settings.viewOutlineEffect.enabled ? "on" : "off"));
@@ -5886,6 +5889,8 @@
         ui.viewSectionCutColor.value = settings.viewSectionCutEffect.color;
         ui.viewSectionCutOutlineColor.value = settings.viewSectionCutOutlineEffect.color;
         ui.viewSectionCutOutlineWidth.value = String(settings.viewSectionCutOutlineEffect.thickness);
+        ui.viewSectionCutOutlineColor.disabled = !settings.viewSectionCutEffect.enabled;
+        ui.viewSectionCutOutlineWidth.disabled = !settings.viewSectionCutEffect.enabled;
         ui.viewOutlineColor.value = settings.viewOutlineEffect.color;
         ui.viewOutlineWidth.value = String(settings.viewOutlineEffect.thickness);
         ui.viewSkyColor.value = settings.viewEnvironment.skyColor;
@@ -11277,6 +11282,9 @@
         button.addEventListener("click", () => {
           if (!state.settingsDraft) return;
           state.settingsDraft.viewSectionCutEffect.enabled = button.dataset.viewSectionCut === "on";
+          if (!state.settingsDraft.viewSectionCutEffect.enabled) {
+            state.settingsDraft.viewSectionCutOutlineEffect.enabled = false;
+          }
           setStatus(state.settingsDraft.viewSectionCutEffect.enabled ? "Section cut enabled." : "Section cut disabled.");
           updateThemeButtons();
         });
