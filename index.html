@@ -1403,12 +1403,37 @@
         margin-top: 14px;
       }
 
+      .settings-actions {
+        margin-top: 18px;
+        padding-top: 14px;
+        border-top: 1px solid var(--line);
+      }
+
       .view-edit-modal {
         width: min(1020px, calc(100vw - 40px));
+        max-height: min(80vh, 900px);
+        display: flex;
+        flex-direction: column;
+      }
+
+      .view-edit-modal.hidden {
+        display: none;
       }
 
       .view-edit-section-title {
         margin-top: 2px;
+      }
+
+      .view-edit-modal .tool-fields {
+        min-height: 0;
+        overflow-y: auto;
+        padding-right: 4px;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+
+      .view-edit-modal .tool-fields::-webkit-scrollbar {
+        display: none;
       }
 
       .view-edit-column-headings,
@@ -1735,7 +1760,7 @@
               </div>
             </div>
           </div>
-          <div class="calibration-actions">
+          <div class="calibration-actions settings-actions">
             <button class="ghost-button" id="settingsCloseButton">Close</button>
             <button class="ghost-button" id="settingsApplyButton">Apply</button>
           </div>
