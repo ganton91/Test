@@ -2148,6 +2148,7 @@
       const CELLS_PER_METER = 100 / CENTIMETERS_PER_CELL;
       const CELLS_PER_HALF_METER = 50 / CENTIMETERS_PER_CELL;
       const VIEW_ELEVATION_STEP_METERS = 0.05;
+      const DEBUG_VIEW_CELL_GRID = true;
       const TILE_SIZE = 32;
       const MIN_ZOOM = 0.12;
       const MAX_ZOOM = 3.6;
@@ -3675,11 +3676,11 @@
           renderColumns = reducedColumns;
         }
 
-        const cellPixelSize = Math.max(1, Math.floor(Math.min(availableWidth / renderColumns, availableHeight / renderRows)));
+        const cellPixelSize = Math.max(1, Math.min(availableWidth / renderColumns, availableHeight / renderRows));
         const drawWidth = renderColumns * cellPixelSize;
         const drawHeight = renderRows * cellPixelSize;
-        const offsetX = Math.floor((surfaceWidth - drawWidth) / 2);
-        const offsetY = Math.floor((surfaceHeight - drawHeight) / 2);
+        const offsetX = (surfaceWidth - drawWidth) / 2;
+        const offsetY = (surfaceHeight - drawHeight) / 2;
         const zeroLineY = offsetY + ((contentMaxZ - 0) / rowScaleY) * cellPixelSize + 0.5;
 
         context.clearRect(0, 0, surfaceWidth, surfaceHeight);
@@ -3960,6 +3961,25 @@
             context.lineTo(surfaceWidth, zeroLineY);
             context.stroke();
           }
+        }
+
+        if (DEBUG_VIEW_CELL_GRID) {
+          context.save();
+          context.strokeStyle = "rgba(236, 72, 153, 0.45)";
+          context.lineWidth = 1;
+          context.beginPath();
+          for (let sourceColumn = 0; sourceColumn <= contentColumns; sourceColumn += 1) {
+            const x = offsetX + (sourceColumn / columnScaleX) * cellPixelSize + 0.5;
+            context.moveTo(x, offsetY);
+            context.lineTo(x, offsetY + drawHeight);
+          }
+          for (let sourceRow = 0; sourceRow <= totalRows; sourceRow += 1) {
+            const y = offsetY + (sourceRow / rowScaleY) * cellPixelSize + 0.5;
+            context.moveTo(offsetX, y);
+            context.lineTo(offsetX + drawWidth, y);
+          }
+          context.stroke();
+          context.restore();
         }
       }
 
