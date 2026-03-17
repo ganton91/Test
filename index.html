@@ -1773,7 +1773,7 @@
             </div>
           </div>
           <div class="calibration-actions">
-            <button class="ghost-button" id="viewEditCancelButton">Cancel</button>
+            <button class="ghost-button" id="viewEditCancelButton">Close</button>
             <button class="ghost-button" id="viewEditApplyButton">Apply</button>
           </div>
         </div>
@@ -3661,10 +3661,9 @@
           ...draft.items.map((item) => item.layerId),
           ...currentLayerOrder.filter((layerId) => !draft.items.some((item) => item.layerId === layerId)),
         ];
-        closeViewEditModal();
         commitHistory("Edit View Layers");
-        setStatus("View layers updated.");
-        render({ ui: true, overlay: true });
+        setStatus("View layers applied.");
+        render({ ui: true, content: true, overlay: true });
         return true;
       }
 
@@ -10722,7 +10721,7 @@
       ui.sceneScaleApplyButton.addEventListener("click", applySceneCalibration);
       ui.viewEditCancelButton.addEventListener("click", () => {
         closeViewEditModal();
-        setStatus("View layer edit cancelled.");
+        setStatus("View layer editor closed.");
         render({ ui: true });
       });
       ui.viewEditApplyButton.addEventListener("click", applyViewEditDraft);
