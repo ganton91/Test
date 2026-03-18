@@ -4289,6 +4289,13 @@
               const bottomNeighbor = rowIndex < renderRows - 1 ? renderGrid[rowIndex + 1][columnIndex] : null;
               const leftNeighbor = columnIndex > 0 ? renderGrid[rowIndex][columnIndex - 1] : null;
               const rightNeighbor = columnIndex < renderColumns - 1 ? renderGrid[rowIndex][columnIndex + 1] : null;
+              const topLeftNeighbor = rowIndex > 0 && columnIndex > 0 ? renderGrid[rowIndex - 1][columnIndex - 1] : null;
+              const topRightNeighbor =
+                rowIndex > 0 && columnIndex < renderColumns - 1 ? renderGrid[rowIndex - 1][columnIndex + 1] : null;
+              const bottomLeftNeighbor =
+                rowIndex < renderRows - 1 && columnIndex > 0 ? renderGrid[rowIndex + 1][columnIndex - 1] : null;
+              const bottomRightNeighbor =
+                rowIndex < renderRows - 1 && columnIndex < renderColumns - 1 ? renderGrid[rowIndex + 1][columnIndex + 1] : null;
               const boundaryInfo = (neighbor) => {
                 if (!neighbor) return { draw: true, outside: true };
                 const surfaceChanged = neighbor.depth !== cell.depth || neighbor.isCut !== cell.isCut;
@@ -4311,6 +4318,10 @@
               const bottomBoundary = boundaryInfo(bottomNeighbor);
               const leftBoundary = boundaryInfo(leftNeighbor);
               const rightBoundary = boundaryInfo(rightNeighbor);
+              const topLeftBoundary = boundaryInfo(topLeftNeighbor);
+              const topRightBoundary = boundaryInfo(topRightNeighbor);
+              const bottomLeftBoundary = boundaryInfo(bottomLeftNeighbor);
+              const bottomRightBoundary = boundaryInfo(bottomRightNeighbor);
 
               if (topBoundary.draw) {
                 fillOutlineRect(outlineColor, x, y, cellPixelSize, strokeThickness);
@@ -4365,6 +4376,28 @@
               }
               if (bottomBoundary.outside && rightBoundary.outside) {
                 fillOutlineRect(outlineColor, x + cellPixelSize, y + cellPixelSize, strokeThickness, strokeThickness);
+              }
+
+              // Diagonal seam guard:
+              // when two orthogonal neighbors are treated as same surface (no draw),
+              // but diagonal is a boundary, fill the corner block to avoid tiny corner holes.
+              if (!topBoundary.draw && !leftBoundary.draw && topLeftBoundary.draw) {
+                fillOutlineRect(outlineColor, x, y, strokeThickness, strokeThickness);
+              }
+              if (!topBoundary.draw && !rightBoundary.draw && topRightBoundary.draw) {
+                fillOutlineRect(outlineColor, x + cellPixelSize - strokeThickness, y, strokeThickness, strokeThickness);
+              }
+              if (!bottomBoundary.draw && !leftBoundary.draw && bottomLeftBoundary.draw) {
+                fillOutlineRect(outlineColor, x, y + cellPixelSize - strokeThickness, strokeThickness, strokeThickness);
+              }
+              if (!bottomBoundary.draw && !rightBoundary.draw && bottomRightBoundary.draw) {
+                fillOutlineRect(
+                  outlineColor,
+                  x + cellPixelSize - strokeThickness,
+                  y + cellPixelSize - strokeThickness,
+                  strokeThickness,
+                  strokeThickness
+                );
               }
             }
           }
