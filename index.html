@@ -1463,6 +1463,12 @@
         animation: modalButtonPress 150ms ease;
       }
 
+      .toolbar-actions .ghost-button:active:not(:disabled) {
+        background: var(--accent-soft);
+        border-color: var(--line-strong);
+        animation: modalButtonPress 150ms ease;
+      }
+
       @keyframes modalButtonPress {
         0% {
           transform: translateY(0) scale(1);
