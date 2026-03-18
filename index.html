@@ -1546,6 +1546,20 @@
         opacity: 0.55;
       }
 
+      .view-edit-drag-preview {
+        position: fixed;
+        pointer-events: none;
+        z-index: 80;
+        opacity: 0.96;
+        transform: none;
+        box-shadow: var(--shadow);
+      }
+
+      .view-edit-modal.drag-reordering,
+      .view-edit-modal.drag-reordering * {
+        cursor: grabbing !important;
+      }
+
       .view-edit-layer-name {
         min-width: 0;
         font-size: 12px;
@@ -2434,6 +2448,7 @@
         dragViewId: null,
         viewSectionCollapsed: true,
         viewEditDraft: null,
+        viewEditPointerDrag: null,
         settingsDraft: null,
         colorPanelCollapsed: false,
         brushPanelCollapsed: false,
@@ -5046,6 +5061,7 @@
 
       function closeViewEditModal() {
         if (!state.viewEditDraft && !isModalOpen(ui.viewEditModal)) return false;
+        clearViewEditPointerDrag(false);
         state.viewEditDraft = null;
         closeModal(ui.viewEditModal);
         return true;
@@ -6952,6 +6968,83 @@
         requestAnimationFrame(() => preview.remove());
       }
 
+      function viewEditDropIndexFromClientY(clientY, layerId) {
+        const draft = state.viewEditDraft;
+        if (!draft || !Array.isArray(draft.items) || !draft.items.length) return -1;
+        const fromIndex = draft.items.findIndex((entry) => entry.layerId === layerId);
+        if (fromIndex === -1) return -1;
+        const rows = Array.from(ui.viewEditLayerList.querySelectorAll(".view-edit-layer-row"));
+        if (!rows.length) return fromIndex;
+        let rawIndex = rows.length;
+        for (let index = 0; index < rows.length; index += 1) {
+          const rect = rows[index].getBoundingClientRect();
+          if (clientY < rect.top + rect.height * 0.5) {
+            rawIndex = index;
+            break;
+          }
+        }
+        let toIndex = rawIndex;
+        if (toIndex > fromIndex) toIndex -= 1;
+        return Math.max(0, Math.min(draft.items.length - 1, toIndex));
+      }
+
+      function clearViewEditPointerDrag(commit = true) {
+        const drag = state.viewEditPointerDrag;
+        if (!drag) return;
+        const draft = state.viewEditDraft;
+        if (commit && draft && Array.isArray(draft.items)) {
+          const fromIndex = draft.items.findIndex((entry) => entry.layerId === drag.layerId);
+          const toIndex = Number.isInteger(drag.dropIndex) ? drag.dropIndex : fromIndex;
+          if (fromIndex !== -1 && toIndex !== -1 && fromIndex !== toIndex) {
+            const [moved] = draft.items.splice(fromIndex, 1);
+            if (moved) draft.items.splice(toIndex, 0, moved);
+            render({ ui: true });
+          }
+        }
+        if (drag.preview && drag.preview.parentNode) {
+          drag.preview.remove();
+        }
+        if (drag.sourceRow) {
+          drag.sourceRow.classList.remove("dragging");
+        }
+        ui.viewEditModal.classList.remove("drag-reordering");
+        state.viewEditPointerDrag = null;
+      }
+
+      function beginViewEditPointerDrag(event, row, layerId) {
+        if (!state.viewEditDraft || !row || !layerId) return;
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        clearViewEditPointerDrag(false);
+
+        const rect = row.getBoundingClientRect();
+        const preview = row.cloneNode(true);
+        preview.classList.add("view-edit-drag-preview");
+        preview.style.top = "-9999px";
+        preview.style.left = "-9999px";
+        preview.style.width = rect.width + "px";
+        document.body.appendChild(preview);
+
+        const offsetX = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+        const offsetY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+        preview.style.left = event.clientX - offsetX + "px";
+        preview.style.top = event.clientY - offsetY + "px";
+
+        row.classList.add("dragging");
+        ui.viewEditModal.classList.add("drag-reordering");
+
+        state.viewEditPointerDrag = {
+          pointerId: event.pointerId,
+          layerId,
+          sourceRow: row,
+          preview,
+          offsetX,
+          offsetY,
+          dropIndex: viewEditDropIndexFromClientY(event.clientY, layerId),
+        };
+      }
+
       function isModalOpen(modal) {
         return !modal.classList.contains("hidden");
       }
@@ -7308,21 +7401,14 @@
         draft.items.forEach((item) => {
           const row = document.createElement("div");
           row.className = "view-edit-layer-row";
-          if (draft.dragLayerId === item.layerId) row.classList.add("dragging");
+          if (state.viewEditPointerDrag && state.viewEditPointerDrag.layerId === item.layerId) row.classList.add("dragging");
 
           const grip = document.createElement("div");
           grip.className = "drag-handle";
           grip.textContent = "⋮⋮";
-          grip.draggable = true;
-          grip.addEventListener("dragstart", (event) => {
-            draft.dragLayerId = item.layerId;
-            event.dataTransfer.effectAllowed = "move";
-            setCardDragPreview(event, row, "layer-properties");
-            render({ ui: true });
-          });
-          grip.addEventListener("dragend", () => {
-            draft.dragLayerId = null;
-            render({ ui: true });
+          grip.draggable = false;
+          grip.addEventListener("pointerdown", (event) => {
+            beginViewEditPointerDrag(event, row, item.layerId);
           });
           row.appendChild(grip);
 
@@ -7485,23 +7571,6 @@
 
           updateEndingField();
           row.appendChild(endingField);
-
-          row.addEventListener("dragover", (event) => {
-            if (!draft.dragLayerId || draft.dragLayerId === item.layerId) return;
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "move";
-          });
-          row.addEventListener("drop", (event) => {
-            event.preventDefault();
-            if (!draft.dragLayerId || draft.dragLayerId === item.layerId) return;
-            const from = draft.items.findIndex((entry) => entry.layerId === draft.dragLayerId);
-            const to = draft.items.findIndex((entry) => entry.layerId === item.layerId);
-            if (from === -1 || to === -1) return;
-            const [moved] = draft.items.splice(from, 1);
-            draft.items.splice(to, 0, moved);
-            draft.dragLayerId = null;
-            render({ ui: true });
-          });
 
           ui.viewEditLayerList.appendChild(row);
         });
@@ -12818,6 +12887,45 @@
         setStatus("View depth step " + state.settingsDraft.viewDepthEffect.strength.toFixed(2) + "% per cell.");
         updateThemeButtons();
       });
+
+      document.addEventListener(
+        "pointermove",
+        (event) => {
+          const drag = state.viewEditPointerDrag;
+          if (!drag) return;
+          if (event.pointerId !== drag.pointerId) return;
+          event.preventDefault();
+          if (drag.preview) {
+            drag.preview.style.left = event.clientX - drag.offsetX + "px";
+            drag.preview.style.top = event.clientY - drag.offsetY + "px";
+          }
+          drag.dropIndex = viewEditDropIndexFromClientY(event.clientY, drag.layerId);
+        },
+        true
+      );
+
+      document.addEventListener(
+        "pointerup",
+        (event) => {
+          const drag = state.viewEditPointerDrag;
+          if (!drag) return;
+          if (event.pointerId !== drag.pointerId) return;
+          event.preventDefault();
+          clearViewEditPointerDrag(true);
+        },
+        true
+      );
+
+      document.addEventListener(
+        "pointercancel",
+        (event) => {
+          const drag = state.viewEditPointerDrag;
+          if (!drag) return;
+          if (event.pointerId !== drag.pointerId) return;
+          clearViewEditPointerDrag(false);
+        },
+        true
+      );
 
       document.addEventListener(
         "pointerdown",
