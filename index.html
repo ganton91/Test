@@ -3972,6 +3972,38 @@
 
         if (!hasRenderable || !grid.some((row) => row.some(Boolean))) return { error: "no-renderable" };
 
+        let contentMinColumn = Infinity;
+        let contentMaxColumn = -Infinity;
+        let contentMinRow = Infinity;
+        let contentMaxRow = -Infinity;
+        for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
+          for (let columnIndex = 0; columnIndex < totalColumns; columnIndex += 1) {
+            if (!grid[rowIndex][columnIndex]) continue;
+            if (columnIndex < contentMinColumn) contentMinColumn = columnIndex;
+            if (columnIndex > contentMaxColumn) contentMaxColumn = columnIndex;
+            if (rowIndex < contentMinRow) contentMinRow = rowIndex;
+            if (rowIndex > contentMaxRow) contentMaxRow = rowIndex;
+          }
+        }
+
+        if (
+          !Number.isFinite(contentMinColumn) ||
+          !Number.isFinite(contentMaxColumn) ||
+          !Number.isFinite(contentMinRow) ||
+          !Number.isFinite(contentMaxRow)
+        ) {
+          return { error: "no-renderable" };
+        }
+
+        const croppedGrid = [];
+        for (let rowIndex = contentMinRow; rowIndex <= contentMaxRow; rowIndex += 1) {
+          croppedGrid.push(grid[rowIndex].slice(contentMinColumn, contentMaxColumn + 1));
+        }
+        const croppedColumns = contentMaxColumn - contentMinColumn + 1;
+        const croppedRows = contentMaxRow - contentMinRow + 1;
+        const contentMinProjectedColumn = bounds.minX + contentMinColumn;
+        const contentMaxProjectedRow = bounds.maxY + 1 - contentMinRow;
+
         return {
           directionConfig: {
             primaryAxis: "x",
@@ -3979,12 +4011,12 @@
             frontBoundary: "max",
             mirrorColumns: false,
           },
-          contentMinProjectedColumn: bounds.minX,
-          contentMaxProjectedRow: bounds.maxY + 1,
+          contentMinProjectedColumn,
+          contentMaxProjectedRow,
           contentMaxZ: planeCells,
-          contentColumns: totalColumns,
-          totalRows,
-          grid,
+          contentColumns: croppedColumns,
+          totalRows: croppedRows,
+          grid: croppedGrid,
         };
       }
 
