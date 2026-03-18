@@ -562,6 +562,11 @@
         border-color: var(--line-strong);
       }
 
+      .scene-card .layer-actions .scene-lock-button {
+        min-width: 76px;
+        justify-content: center;
+      }
+
       .view-card .layer-actions .layer-icon {
         width: auto;
         min-width: 0;
@@ -8375,7 +8380,7 @@
           actions.appendChild(calibrate);
 
           const lock = document.createElement("button");
-          lock.className = "layer-icon" + (scene.locked ? " active" : "");
+          lock.className = "layer-icon scene-lock-button" + (scene.locked ? " active" : "");
           lock.textContent = scene.locked ? "Locked" : "Unlocked";
           lock.title = scene.locked ? "Unlock scene" : "Lock scene";
           lock.addEventListener("click", (event) => {
