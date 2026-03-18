@@ -3232,7 +3232,7 @@
         mainButton.addEventListener("click", () => {
           state.activeCanvasViewTab = "main";
           clearActiveTarget();
-          render({ ui: true });
+          render({ ui: true, static: true, scenes: true, content: true, overlay: true, rulers: true });
         });
         ui.viewSwitcher.appendChild(mainButton);
 
