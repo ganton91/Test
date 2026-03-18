@@ -4200,7 +4200,7 @@
         const offsetX = snapPixel((surfaceWidth - drawWidth) / 2);
         const offsetY = snapPixel((surfaceHeight - drawHeight) / 2);
         const zeroLineY = offsetY + (contentMaxZ / uniformSourceScale) * cellPixelSize + 0.5;
-        const undergroundStartRow = Math.max(0, Math.min(renderRows - 1, Math.floor(contentMaxZ / Math.max(1e-9, uniformSourceScale))));
+        const undergroundStartRow = Math.max(0, Math.min(renderRows - 1, Math.ceil(contentMaxZ / Math.max(1e-9, uniformSourceScale))));
         const backingScaleX = canvas.width / Math.max(1, surfaceWidth);
         const cellMeters = uniformSourceScale / CELLS_PER_METER;
         const metersPerCssPixel = cellMeters / Math.max(1e-9, cellPixelSize);
@@ -4233,7 +4233,69 @@
             }
           }
 
-          // Inside projected drawing area: paint ground row-by-row, excluding isCut cells.
+          // Build enclosed underground void mask:
+          // regions fully bounded by isCut cells (left/right/up/down) are also excluded from ground.
+          const enclosedVoidMask = Array.from({ length: renderRows }, () => Array(renderColumns).fill(false));
+          const visitedVoid = Array.from({ length: renderRows }, () => Array(renderColumns).fill(false));
+          const neighbors = [
+            [-1, 0],
+            [1, 0],
+            [0, -1],
+            [0, 1],
+          ];
+          for (let startRow = undergroundStartRow; startRow < renderRows; startRow += 1) {
+            for (let startColumn = 0; startColumn < renderColumns; startColumn += 1) {
+              if (visitedVoid[startRow][startColumn]) continue;
+              const startCell = renderGrid[startRow] ? renderGrid[startRow][startColumn] : null;
+              if (startCell && startCell.isCut) {
+                visitedVoid[startRow][startColumn] = true;
+                continue;
+              }
+
+              const queue = [[startRow, startColumn]];
+              const component = [];
+              let cursor = 0;
+              let leaks = false;
+              visitedVoid[startRow][startColumn] = true;
+
+              while (cursor < queue.length) {
+                const [rowIndex, columnIndex] = queue[cursor];
+                cursor += 1;
+                component.push([rowIndex, columnIndex]);
+
+                for (const [dy, dx] of neighbors) {
+                  const nextRow = rowIndex + dy;
+                  const nextColumn = columnIndex + dx;
+                  if (
+                    nextRow < undergroundStartRow ||
+                    nextRow >= renderRows ||
+                    nextColumn < 0 ||
+                    nextColumn >= renderColumns
+                  ) {
+                    leaks = true;
+                    continue;
+                  }
+                  if (visitedVoid[nextRow][nextColumn]) continue;
+                  const nextCell = renderGrid[nextRow] ? renderGrid[nextRow][nextColumn] : null;
+                  if (nextCell && nextCell.isCut) {
+                    visitedVoid[nextRow][nextColumn] = true;
+                    continue;
+                  }
+                  visitedVoid[nextRow][nextColumn] = true;
+                  queue.push([nextRow, nextColumn]);
+                }
+              }
+
+              if (!leaks) {
+                for (const [rowIndex, columnIndex] of component) {
+                  enclosedVoidMask[rowIndex][columnIndex] = true;
+                }
+              }
+            }
+          }
+
+          // Inside projected drawing area: paint ground row-by-row,
+          // excluding direct isCut cells and enclosed underground voids.
           for (let rowIndex = 0; rowIndex < renderRows; rowIndex += 1) {
             const rowTop = offsetY + rowIndex * cellPixelSize;
             const rowBottom = rowTop + cellPixelSize;
@@ -4251,7 +4313,11 @@
                 rowIndex >= undergroundStartRow &&
                 columnIndex < renderColumns &&
                 !!(row[columnIndex] && row[columnIndex].isCut);
-              const shouldPaint = !isCutCell;
+              const isEnclosedVoidCell =
+                rowIndex >= undergroundStartRow &&
+                columnIndex < renderColumns &&
+                enclosedVoidMask[rowIndex][columnIndex];
+              const shouldPaint = columnIndex < renderColumns ? !(isCutCell || isEnclosedVoidCell) : false;
               if (shouldPaint && runStart === -1) {
                 runStart = columnIndex;
                 continue;
