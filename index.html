@@ -4484,7 +4484,8 @@
           context.restore();
         }
 
-        if (state.viewSectionCutOutlineEffect.enabled) {
+        const drawSectionCutOutlinePass = () => {
+          if (!state.viewSectionCutOutlineEffect.enabled) return;
           context.save();
           const strokeThickness = Math.max(1, Number(state.viewSectionCutOutlineEffect.thickness) || 1);
           const outlineColor = state.viewSectionCutOutlineEffect.color || defaultViewSectionCutOutlineColor();
@@ -4577,7 +4578,7 @@
             }
           }
           context.restore();
-        }
+        };
 
         if (!drawEnvironmentBehindContent) {
           if (zeroLineY < surfaceHeight) {
@@ -4593,6 +4594,8 @@
             context.stroke();
           }
         }
+
+        drawSectionCutOutlinePass();
 
         if (DEBUG_VIEW_CELL_GRID) {
           context.save();
