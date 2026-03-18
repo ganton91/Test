@@ -4154,7 +4154,7 @@
         const availableWidth = Math.max(1, surfaceWidth - padding * 2);
         const availableHeight = Math.max(1, surfaceHeight - padding * 2);
         const uniformSourceScale = Math.max(1, contentColumns / availableWidth, totalRows / availableHeight);
-        const drawEnvironmentBehindContent = !!state.viewSectionCutEffect.enabled;
+        const drawEnvironmentBehindContent = false;
 
         const sourceGrid = build.grid;
         let renderGrid = sourceGrid;
@@ -4200,6 +4200,7 @@
         const offsetX = snapPixel((surfaceWidth - drawWidth) / 2);
         const offsetY = snapPixel((surfaceHeight - drawHeight) / 2);
         const zeroLineY = offsetY + (contentMaxZ / uniformSourceScale) * cellPixelSize + 0.5;
+        const undergroundStartRow = Math.max(0, Math.min(renderRows - 1, Math.floor(contentMaxZ / Math.max(1e-9, uniformSourceScale))));
         const backingScaleX = canvas.width / Math.max(1, surfaceWidth);
         const cellMeters = uniformSourceScale / CELLS_PER_METER;
         const metersPerCssPixel = cellMeters / Math.max(1e-9, cellPixelSize);
@@ -4213,10 +4214,64 @@
         context.fillStyle = activeViewSkyColor();
         context.fillRect(0, 0, surfaceWidth, surfaceHeight);
 
+        const drawGroundWithCutExclusions = () => {
+          const groundTop = Math.max(0, zeroLineY);
+          if (groundTop >= surfaceHeight) return;
+          context.fillStyle = activeViewGroundColor();
+
+          // Outside the projected drawing area, ground always paints normally.
+          if (offsetX > 0) context.fillRect(0, groundTop, offsetX, surfaceHeight - groundTop);
+          const rightStart = offsetX + drawWidth;
+          if (rightStart < surfaceWidth) context.fillRect(rightStart, groundTop, surfaceWidth - rightStart, surfaceHeight - groundTop);
+
+          // Below the drawing area, inside projected width, ground paints normally.
+          const drawBottom = offsetY + drawHeight;
+          if (drawBottom < surfaceHeight) {
+            const y = Math.max(groundTop, drawBottom);
+            if (y < surfaceHeight) {
+              context.fillRect(offsetX, y, drawWidth, surfaceHeight - y);
+            }
+          }
+
+          // Inside projected drawing area: paint ground row-by-row, excluding isCut cells.
+          for (let rowIndex = 0; rowIndex < renderRows; rowIndex += 1) {
+            const rowTop = offsetY + rowIndex * cellPixelSize;
+            const rowBottom = rowTop + cellPixelSize;
+            if (rowBottom <= groundTop) continue;
+            if (rowTop >= surfaceHeight) break;
+
+            const paintY = Math.max(rowTop, groundTop);
+            const paintHeight = Math.min(rowBottom, surfaceHeight) - paintY;
+            if (paintHeight <= 0) continue;
+
+            const row = renderGrid[rowIndex] || [];
+            let runStart = -1;
+            for (let columnIndex = 0; columnIndex <= renderColumns; columnIndex += 1) {
+              const isCutCell =
+                rowIndex >= undergroundStartRow &&
+                columnIndex < renderColumns &&
+                !!(row[columnIndex] && row[columnIndex].isCut);
+              const shouldPaint = !isCutCell;
+              if (shouldPaint && runStart === -1) {
+                runStart = columnIndex;
+                continue;
+              }
+              if (!shouldPaint && runStart !== -1) {
+                context.fillRect(
+                  offsetX + runStart * cellPixelSize,
+                  paintY,
+                  (columnIndex - runStart) * cellPixelSize,
+                  paintHeight
+                );
+                runStart = -1;
+              }
+            }
+          }
+        };
+
         if (drawEnvironmentBehindContent) {
           if (zeroLineY < surfaceHeight) {
-            context.fillStyle = activeViewGroundColor();
-            context.fillRect(0, Math.max(0, zeroLineY), surfaceWidth, surfaceHeight - Math.max(0, zeroLineY));
+            drawGroundWithCutExclusions();
           }
 
           if (state.viewEnvironment.horizonEnabled) {
@@ -4526,8 +4581,7 @@
 
         if (!drawEnvironmentBehindContent) {
           if (zeroLineY < surfaceHeight) {
-            context.fillStyle = activeViewGroundColor();
-            context.fillRect(0, Math.max(0, zeroLineY), surfaceWidth, surfaceHeight - Math.max(0, zeroLineY));
+            drawGroundWithCutExclusions();
           }
 
           if (state.viewEnvironment.horizonEnabled) {
