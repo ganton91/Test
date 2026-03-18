@@ -434,6 +434,20 @@
         user-select: none;
       }
 
+      .left-panel-drag-preview {
+        position: fixed;
+        pointer-events: none;
+        z-index: 80;
+        opacity: 0.96;
+        transform: none;
+        box-shadow: var(--shadow);
+      }
+
+      .layers-panel.drag-reordering,
+      .layers-panel.drag-reordering * {
+        cursor: grabbing !important;
+      }
+
       .layer-main {
         min-width: 0;
         display: flex;
@@ -2446,6 +2460,7 @@
         activeViewId: null,
         editingViewId: null,
         dragViewId: null,
+        leftPanelPointerDrag: null,
         viewSectionCollapsed: true,
         viewEditDraft: null,
         viewEditPointerDrag: null,
@@ -6946,28 +6961,6 @@
         }, 260);
       }
 
-      const LEFT_PANEL_DRAG_PREVIEW_OFFSET = { x: 19, y: 21 };
-      const LAYER_PROPERTIES_DRAG_PREVIEW_OFFSET = { x: 20, y: 45 };
-
-      function setCardDragPreview(event, card, context = "left-panel") {
-        if (!event.dataTransfer || !card) return;
-        const preview = card.cloneNode(true);
-        preview.style.position = "fixed";
-        preview.style.top = "-9999px";
-        preview.style.left = "-9999px";
-        preview.style.width = card.getBoundingClientRect().width + "px";
-        preview.style.pointerEvents = "none";
-        preview.style.opacity = "0.96";
-        preview.style.transform = "rotate(1.5deg)";
-        preview.style.boxShadow = getCssVar("--shadow");
-        preview.classList.remove("dragging");
-        document.body.appendChild(preview);
-        const offset =
-          context === "layer-properties" ? LAYER_PROPERTIES_DRAG_PREVIEW_OFFSET : LEFT_PANEL_DRAG_PREVIEW_OFFSET;
-        event.dataTransfer.setDragImage(preview, offset.x, offset.y);
-        requestAnimationFrame(() => preview.remove());
-      }
-
       function viewEditDropIndexFromClientY(clientY, layerId) {
         const draft = state.viewEditDraft;
         if (!draft || !Array.isArray(draft.items) || !draft.items.length) return -1;
@@ -7042,6 +7035,136 @@
           offsetX,
           offsetY,
           dropIndex: viewEditDropIndexFromClientY(event.clientY, layerId),
+        };
+      }
+
+      function leftPanelItemsByKind(kind) {
+        switch (kind) {
+          case "scene":
+            return state.scenes;
+          case "layer":
+            return state.layers;
+          case "measurement":
+            return state.measurements;
+          case "view":
+            return state.views;
+          default:
+            return null;
+        }
+      }
+
+      function leftPanelListByKind(kind) {
+        switch (kind) {
+          case "scene":
+            return ui.sceneList;
+          case "layer":
+            return ui.layerList;
+          case "measurement":
+            return ui.measurementList;
+          case "view":
+            return ui.viewList;
+          default:
+            return null;
+        }
+      }
+
+      function setLeftPanelDragId(kind, id) {
+        state.dragSceneId = kind === "scene" ? id : null;
+        state.dragLayerId = kind === "layer" ? id : null;
+        state.dragMeasurementId = kind === "measurement" ? id : null;
+        state.dragViewId = kind === "view" ? id : null;
+      }
+
+      function leftPanelDropIndexFromClientY(kind, clientY, sourceId) {
+        const items = leftPanelItemsByKind(kind);
+        const list = leftPanelListByKind(kind);
+        if (!items || !list || !items.length) return -1;
+        const fromIndex = items.findIndex((entry) => entry.id === sourceId);
+        if (fromIndex === -1) return -1;
+        const cards = Array.from(list.querySelectorAll(".layer-card"));
+        if (!cards.length) return fromIndex;
+        let rawIndex = cards.length;
+        for (let index = 0; index < cards.length; index += 1) {
+          const rect = cards[index].getBoundingClientRect();
+          if (clientY < rect.top + rect.height * 0.5) {
+            rawIndex = index;
+            break;
+          }
+        }
+        let toIndex = rawIndex;
+        if (toIndex > fromIndex) toIndex -= 1;
+        return Math.max(0, Math.min(items.length - 1, toIndex));
+      }
+
+      function clearLeftPanelPointerDrag(commit = true) {
+        const drag = state.leftPanelPointerDrag;
+        if (!drag) return;
+        const items = leftPanelItemsByKind(drag.kind);
+        if (drag.preview && drag.preview.parentNode) drag.preview.remove();
+        if (drag.sourceCard) drag.sourceCard.classList.remove("dragging");
+        ui.layersPanel.classList.remove("drag-reordering");
+        setLeftPanelDragId("", null);
+        state.leftPanelPointerDrag = null;
+
+        if (commit && items) {
+          const fromIndex = items.findIndex((entry) => entry.id === drag.id);
+          const toIndex = Number.isInteger(drag.dropIndex) ? drag.dropIndex : fromIndex;
+          if (fromIndex !== -1 && toIndex !== -1 && fromIndex !== toIndex) {
+            const [moved] = items.splice(fromIndex, 1);
+            if (moved) items.splice(toIndex, 0, moved);
+            if (drag.kind === "scene") {
+              commitHistoryAction("scenes:reorder", "Reorder Scenes");
+              render({ ui: true, scenes: true });
+            } else if (drag.kind === "layer") {
+              commitHistoryAction("layers:reorder", "Reorder Layers");
+              render({ ui: true, content: true, overlay: true });
+            } else if (drag.kind === "measurement") {
+              commitHistoryAction("measurements:reorder", "Reorder Measurements");
+              render({ ui: true, overlay: true });
+            } else if (drag.kind === "view") {
+              commitHistoryAction("views:reorder", "Reorder Views");
+              render({ ui: true, overlay: true });
+            }
+          } else {
+            render({ ui: true });
+          }
+        } else {
+          render({ ui: true });
+        }
+      }
+
+      function beginLeftPanelPointerDrag(event, card, kind, id) {
+        if (!card || !kind || !id) return;
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        clearLeftPanelPointerDrag(false);
+
+        const rect = card.getBoundingClientRect();
+        const preview = card.cloneNode(true);
+        preview.classList.add("left-panel-drag-preview");
+        preview.style.top = "-9999px";
+        preview.style.left = "-9999px";
+        preview.style.width = rect.width + "px";
+        document.body.appendChild(preview);
+
+        const offsetX = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+        const offsetY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+        preview.style.left = event.clientX - offsetX + "px";
+        preview.style.top = event.clientY - offsetY + "px";
+
+        card.classList.add("dragging");
+        ui.layersPanel.classList.add("drag-reordering");
+        setLeftPanelDragId(kind, id);
+        state.leftPanelPointerDrag = {
+          pointerId: event.pointerId,
+          kind,
+          id,
+          sourceCard: card,
+          preview,
+          offsetX,
+          offsetY,
+          dropIndex: leftPanelDropIndexFromClientY(kind, event.clientY, id),
         };
       }
 
@@ -7606,16 +7729,9 @@
           const grip = document.createElement("div");
           grip.className = "drag-handle";
           grip.textContent = "⋮⋮";
-          grip.draggable = true;
-          grip.addEventListener("dragstart", (event) => {
-            state.dragViewId = view.id;
-            event.dataTransfer.effectAllowed = "move";
-            setCardDragPreview(event, card, "left-panel");
-            render({ ui: true });
-          });
-          grip.addEventListener("dragend", () => {
-            state.dragViewId = null;
-            render({ ui: true });
+          grip.draggable = false;
+          grip.addEventListener("pointerdown", (event) => {
+            beginLeftPanelPointerDrag(event, card, "view", view.id);
           });
 
           const main = document.createElement("div");
@@ -7741,25 +7857,6 @@
           card.appendChild(grip);
           card.appendChild(main);
 
-          card.addEventListener("dragover", (event) => {
-            if (!state.dragViewId || state.dragViewId === view.id) return;
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "move";
-          });
-          card.addEventListener("drop", (event) => {
-            event.preventDefault();
-            if (!state.dragViewId || state.dragViewId === view.id) return;
-            const from = state.views.findIndex((entry) => entry.id === state.dragViewId);
-            const to = state.views.findIndex((entry) => entry.id === view.id);
-            if (from === -1 || to === -1) return;
-            const [moved] = state.views.splice(from, 1);
-            if (!moved) return;
-            state.views.splice(to, 0, moved);
-            state.dragViewId = null;
-            commitHistoryAction("views:reorder", "Reorder Views");
-            render({ ui: true, overlay: true });
-          });
-
           ui.viewList.appendChild(card);
         });
       }
@@ -7775,16 +7872,9 @@
           const grip = document.createElement("div");
           grip.className = "drag-handle";
           grip.textContent = "⋮⋮";
-          grip.draggable = true;
-          grip.addEventListener("dragstart", (event) => {
-            state.dragMeasurementId = measurement.id;
-            event.dataTransfer.effectAllowed = "move";
-            setCardDragPreview(event, card, "left-panel");
-            render({ ui: true });
-          });
-          grip.addEventListener("dragend", () => {
-            state.dragMeasurementId = null;
-            render({ ui: true });
+          grip.draggable = false;
+          grip.addEventListener("pointerdown", (event) => {
+            beginLeftPanelPointerDrag(event, card, "measurement", measurement.id);
           });
 
           const main = document.createElement("div");
@@ -7953,24 +8043,6 @@
           opacityField.appendChild(opacityLabel);
           opacityField.appendChild(opacitySlider);
 
-          card.addEventListener("dragover", (event) => {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "move";
-          });
-          card.addEventListener("drop", (event) => {
-            event.preventDefault();
-            if (!state.dragMeasurementId || state.dragMeasurementId === measurement.id) return;
-            const from = state.measurements.findIndex((entry) => entry.id === state.dragMeasurementId);
-            const to = state.measurements.findIndex((entry) => entry.id === measurement.id);
-            if (from === -1 || to === -1) return;
-            const [moved] = state.measurements.splice(from, 1);
-            if (!moved) return;
-            state.measurements.splice(to, 0, moved);
-            state.dragMeasurementId = null;
-            commitHistoryAction("measurements:reorder", "Reorder Measurements");
-            render({ ui: true, overlay: true });
-          });
-
           card.appendChild(grip);
           main.appendChild(meta);
           main.appendChild(lengthMeta);
@@ -7993,16 +8065,9 @@
           const grip = document.createElement("div");
           grip.className = "drag-handle";
           grip.textContent = "⋮⋮";
-          grip.draggable = true;
-          grip.addEventListener("dragstart", (event) => {
-            state.dragLayerId = layer.id;
-            event.dataTransfer.effectAllowed = "move";
-            setCardDragPreview(event, card, "left-panel");
-            render({ ui: true });
-          });
-          grip.addEventListener("dragend", () => {
-            state.dragLayerId = null;
-            render({ ui: true });
+          grip.draggable = false;
+          grip.addEventListener("pointerdown", (event) => {
+            beginLeftPanelPointerDrag(event, card, "layer", layer.id);
           });
 
           const main = document.createElement("div");
@@ -8140,24 +8205,6 @@
           opacityField.appendChild(opacityLabel);
           opacityField.appendChild(opacitySlider);
 
-          card.addEventListener("dragover", (event) => {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "move";
-          });
-          card.addEventListener("drop", (event) => {
-            event.preventDefault();
-            if (!state.dragLayerId || state.dragLayerId === layer.id) return;
-            const from = state.layers.findIndex((entry) => entry.id === state.dragLayerId);
-            const to = state.layers.findIndex((entry) => entry.id === layer.id);
-            if (from === -1 || to === -1) return;
-            const [moved] = state.layers.splice(from, 1);
-            if (!moved) return;
-            state.layers.splice(to, 0, moved);
-            state.dragLayerId = null;
-            commitHistoryAction("layers:reorder", "Reorder Layers");
-            render({ ui: true, content: true, overlay: true });
-          });
-
           card.appendChild(grip);
           main.appendChild(meta);
           main.appendChild(areaMeta);
@@ -8181,16 +8228,9 @@
           const grip = document.createElement("div");
           grip.className = "drag-handle";
           grip.textContent = "⋮⋮";
-          grip.draggable = true;
-          grip.addEventListener("dragstart", (event) => {
-            state.dragSceneId = scene.id;
-            event.dataTransfer.effectAllowed = "move";
-            setCardDragPreview(event, card, "left-panel");
-            render({ ui: true });
-          });
-          grip.addEventListener("dragend", () => {
-            state.dragSceneId = null;
-            render({ ui: true });
+          grip.draggable = false;
+          grip.addEventListener("pointerdown", (event) => {
+            beginLeftPanelPointerDrag(event, card, "scene", scene.id);
           });
 
           const main = document.createElement("div");
@@ -8349,24 +8389,6 @@
             render({ ui: true, scenes: true, overlay: true });
           });
           actions.appendChild(lock);
-
-          card.addEventListener("dragover", (event) => {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "move";
-          });
-          card.addEventListener("drop", (event) => {
-            event.preventDefault();
-            if (!state.dragSceneId || state.dragSceneId === scene.id) return;
-            const from = state.scenes.findIndex((entry) => entry.id === state.dragSceneId);
-            const to = state.scenes.findIndex((entry) => entry.id === scene.id);
-            if (from === -1 || to === -1) return;
-            const [moved] = state.scenes.splice(from, 1);
-            if (!moved) return;
-            state.scenes.splice(to, 0, moved);
-            state.dragSceneId = null;
-            commitHistoryAction("scenes:reorder", "Reorder Scenes");
-            render({ ui: true, scenes: true });
-          });
 
           main.appendChild(actions);
           main.appendChild(opacityField);
@@ -12891,6 +12913,15 @@
       document.addEventListener(
         "pointermove",
         (event) => {
+          const leftDrag = state.leftPanelPointerDrag;
+          if (leftDrag && event.pointerId === leftDrag.pointerId) {
+            event.preventDefault();
+            if (leftDrag.preview) {
+              leftDrag.preview.style.left = event.clientX - leftDrag.offsetX + "px";
+              leftDrag.preview.style.top = event.clientY - leftDrag.offsetY + "px";
+            }
+            leftDrag.dropIndex = leftPanelDropIndexFromClientY(leftDrag.kind, event.clientY, leftDrag.id);
+          }
           const drag = state.viewEditPointerDrag;
           if (!drag) return;
           if (event.pointerId !== drag.pointerId) return;
@@ -12907,6 +12938,11 @@
       document.addEventListener(
         "pointerup",
         (event) => {
+          const leftDrag = state.leftPanelPointerDrag;
+          if (leftDrag && event.pointerId === leftDrag.pointerId) {
+            event.preventDefault();
+            clearLeftPanelPointerDrag(true);
+          }
           const drag = state.viewEditPointerDrag;
           if (!drag) return;
           if (event.pointerId !== drag.pointerId) return;
@@ -12919,6 +12955,10 @@
       document.addEventListener(
         "pointercancel",
         (event) => {
+          const leftDrag = state.leftPanelPointerDrag;
+          if (leftDrag && event.pointerId === leftDrag.pointerId) {
+            clearLeftPanelPointerDrag(false);
+          }
           const drag = state.viewEditPointerDrag;
           if (!drag) return;
           if (event.pointerId !== drag.pointerId) return;
