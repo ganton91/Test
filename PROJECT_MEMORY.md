@@ -287,6 +287,7 @@ The following must remain true unless the user explicitly approves a renderer re
   - DXF now exports from the final visible pane composition (`VIEW_VISIBLE`) instead of per-source-layer decomposition
   - when `Section Cut` is off, DXF masks below-ground geometry (z < 0) to match what is visibly shown in the pane
   - boundary line export (global/layer/cut outlines) merges contiguous orthogonal 5 cm segments into longer lines for cleaner CAD output
+  - exported `VIEW_HORIZON` extends by `2m` on each side beyond the visible content span
 
 - Important current limitation:
   - geometry is still derived from the 5 cm base grid model, so fully continuous (non-quantized) vector edges are not yet part of the system

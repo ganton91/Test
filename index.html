@@ -4012,8 +4012,9 @@
         }
 
         if (state.viewEnvironment.horizonEnabled) {
-          const horizonStart = { x: contentMinProjectedColumn / CELLS_PER_METER, y: 0 };
-          const horizonEnd = { x: (contentMinProjectedColumn + contentColumns) / CELLS_PER_METER, y: 0 };
+          const horizonMarginMeters = 2;
+          const horizonStart = { x: contentMinProjectedColumn / CELLS_PER_METER - horizonMarginMeters, y: 0 };
+          const horizonEnd = { x: (contentMinProjectedColumn + contentColumns) / CELLS_PER_METER + horizonMarginMeters, y: 0 };
           if (sectionCutEnabled) {
             entities = encodeDxfLine("VIEW_HORIZON", horizonStart, horizonEnd) + entities;
           } else {
