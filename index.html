@@ -1866,7 +1866,7 @@
               </div>
               <div class="field settings-inline-range">
                 <label for="viewSectionCutOutlineWidth">Width</label>
-                <input id="viewSectionCutOutlineWidth" type="range" min="1" max="6" step="0.5" value="2" />
+                <input id="viewSectionCutOutlineWidth" type="range" min="1" max="12" step="1" value="2" />
               </div>
             </div>
             <div class="menu-section stacked-setting">
@@ -1878,7 +1878,7 @@
               </div>
               <div class="field settings-inline-range">
                 <label for="viewOutlineWidth">Width</label>
-                <input id="viewOutlineWidth" type="range" min="1" max="6" step="0.5" value="2" />
+                <input id="viewOutlineWidth" type="range" min="1" max="12" step="1" value="2" />
               </div>
             </div>
             <div class="menu-section stacked-setting">
@@ -3139,7 +3139,7 @@
             )
           );
           state.viewOutlineEffect.enabled = project.viewOutlineEffect?.enabled !== false;
-          state.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(project.viewOutlineEffect?.thickness) || 2));
+          state.viewOutlineEffect.thickness = Math.max(1, Math.min(12, Number(project.viewOutlineEffect?.thickness) || 2));
           state.viewOutlineEffect.color = typeof project.viewOutlineEffect?.color === "string" ? project.viewOutlineEffect.color : defaultViewOutlineColor();
           state.viewSectionCutEffect.enabled = project.viewSectionCutEffect?.enabled !== false;
           state.viewSectionCutEffect.color =
@@ -3147,7 +3147,7 @@
           state.viewSectionCutOutlineEffect.enabled = project.viewSectionCutOutlineEffect?.enabled !== false;
           state.viewSectionCutOutlineEffect.thickness = Math.max(
             1,
-            Math.min(6, Number(project.viewSectionCutOutlineEffect?.thickness) || 2)
+            Math.min(12, Number(project.viewSectionCutOutlineEffect?.thickness) || 2)
           );
           state.viewSectionCutOutlineEffect.color =
             typeof project.viewSectionCutOutlineEffect?.color === "string"
@@ -3432,7 +3432,7 @@
               : state.viewOutlineEffect.color,
           outlineWidth:
             Number.isFinite(existingConfig && existingConfig.outlineWidth)
-              ? Math.max(1, Math.min(6, existingConfig.outlineWidth))
+              ? Math.max(1, Math.min(12, Math.round(existingConfig.outlineWidth)))
               : 1,
           excludeFromSectionCut: !!(existingConfig && existingConfig.excludeFromSectionCut),
         };
@@ -3822,7 +3822,7 @@
                 opacity: entry.opacity,
                 forceOutline: !!entry.outline,
                 outlineColor: entry.outlineColor || state.viewOutlineEffect.color,
-                outlineWidth: Math.max(1, Math.min(6, Number(entry.outlineWidth) || 1)),
+                outlineWidth: Math.max(1, Math.min(12, Math.round(Number(entry.outlineWidth) || 1))),
                 orderIndex: entry.orderIndex,
               };
               if (
@@ -4441,7 +4441,7 @@
 
         const drawHorizonWithBlockMask = () => {
           if (!state.viewEnvironment.horizonEnabled) return;
-          const horizonLineWidth = Math.max(1, Number(state.viewEnvironment.horizonWidth) || 1);
+          const horizonLineWidth = Math.max(1, Number(state.viewEnvironment.horizonWidth) || 1) * 2;
           const horizonY = snapStrokeCenter(zeroLineY, horizonLineWidth);
           context.strokeStyle = activeViewHorizonColor();
           context.lineWidth = horizonLineWidth;
@@ -4533,7 +4533,7 @@
           context.save();
           const fillOutlineRect = (color, rectX, rectY, rectWidth, rectHeight) => {
             context.fillStyle = color;
-            context.fillRect(rectX, rectY, rectWidth, rectHeight);
+            fillRectDeviceSnapped(context, rectX, rectY, rectWidth, rectHeight);
           };
           for (let rowIndex = 0; rowIndex < renderRows; rowIndex += 1) {
             for (let columnIndex = 0; columnIndex < renderColumns; columnIndex += 1) {
@@ -4543,8 +4543,8 @@
               const x = offsetX + columnIndex * cellPixelSize;
               const y = offsetY + rowIndex * cellPixelSize;
               const strokeThickness = globalPass
-                ? Math.max(1, Number(state.viewOutlineEffect.thickness) || 1)
-                : Math.max(1, Math.min(6, Number(cell.outlineWidth) || 1));
+                ? quantizeStrokeThickness(Math.max(1, Number(state.viewOutlineEffect.thickness) || 1))
+                : quantizeStrokeThickness(Math.max(1, Math.min(12, Math.round(Number(cell.outlineWidth) || 1))));
               const outlineColor = globalPass
                 ? state.viewOutlineEffect.color
                 : cell.outlineColor || state.viewOutlineEffect.color;
@@ -4695,11 +4695,11 @@
         const drawSectionCutOutlinePass = () => {
           if (!state.viewSectionCutOutlineEffect.enabled) return;
           context.save();
-          const strokeThickness = Math.max(1, Number(state.viewSectionCutOutlineEffect.thickness) || 1);
+          const strokeThickness = quantizeStrokeThickness(Math.max(1, Number(state.viewSectionCutOutlineEffect.thickness) || 1));
           const outlineColor = state.viewSectionCutOutlineEffect.color || defaultViewSectionCutOutlineColor();
           const fillOutlineRect = (rectX, rectY, rectWidth, rectHeight) => {
             context.fillStyle = outlineColor;
-            context.fillRect(rectX, rectY, rectWidth, rectHeight);
+            fillRectDeviceSnapped(context, rectX, rectY, rectWidth, rectHeight);
           };
           for (let rowIndex = 0; rowIndex < renderRows; rowIndex += 1) {
             for (let columnIndex = 0; columnIndex < renderColumns; columnIndex += 1) {
@@ -5178,7 +5178,7 @@
             opacity: Math.max(0, Math.min(1, Number.isFinite(item.opacity) ? item.opacity : 1)),
             outline: !!item.outline,
             outlineColor: typeof item.outlineColor === "string" ? item.outlineColor : state.viewOutlineEffect.color,
-            outlineWidth: Math.max(1, Math.min(6, Number.isFinite(item.outlineWidth) ? item.outlineWidth : 1)),
+            outlineWidth: Math.max(1, Math.min(12, Math.round(Number.isFinite(item.outlineWidth) ? item.outlineWidth : 1))),
             excludeFromSectionCut: !!item.excludeFromSectionCut,
           };
         });
@@ -7695,19 +7695,19 @@
           const outlineWidthInput = document.createElement("input");
           outlineWidthInput.type = "range";
           outlineWidthInput.min = "1";
-          outlineWidthInput.max = "6";
-          outlineWidthInput.step = "0.5";
-          outlineWidthInput.value = String(Math.max(1, Math.min(6, Number(item.outlineWidth) || 1)));
+          outlineWidthInput.max = "12";
+          outlineWidthInput.step = "1";
+          outlineWidthInput.value = String(Math.max(1, Math.min(12, Math.round(Number(item.outlineWidth) || 1))));
           outlineWidthInput.setAttribute("aria-label", item.name + " outline width");
           outlineWidthInput.addEventListener("click", (event) => event.stopPropagation());
           outlineWidthInput.addEventListener("pointerdown", (event) => event.stopPropagation());
           const outlineWidthValue = document.createElement("div");
           outlineWidthValue.className = "view-edit-outline-width-value";
           const updateOutlineWidthValue = () => {
-            outlineWidthValue.textContent = String((Math.round((Number(item.outlineWidth) || 1) * 10) / 10).toFixed(1)).replace(/\.0$/, "");
+            outlineWidthValue.textContent = String(Math.max(1, Math.min(12, Math.round(Number(item.outlineWidth) || 1))));
           };
           outlineWidthInput.addEventListener("input", () => {
-            item.outlineWidth = Math.max(1, Math.min(6, Number(outlineWidthInput.value) || 1));
+            item.outlineWidth = Math.max(1, Math.min(12, Math.round(Number(outlineWidthInput.value) || 1)));
             updateOutlineWidthValue();
           });
           outlineWidthField.appendChild(outlineWidthInput);
@@ -8510,6 +8510,22 @@
         const baseDevice = Math.round(value * ratio);
         const alignedDevice = lineWidthDevice % 2 === 0 ? baseDevice : baseDevice + 0.5;
         return alignedDevice / ratio;
+      }
+
+      function quantizeStrokeThickness(value) {
+        const ratio = window.devicePixelRatio || 1;
+        return Math.max(1, Math.round(Math.max(0.1, value) * ratio)) / ratio;
+      }
+
+      function fillRectDeviceSnapped(context, x, y, width, height) {
+        if (width <= 0 || height <= 0) return;
+        const ratio = window.devicePixelRatio || 1;
+        const left = Math.floor(x * ratio);
+        const top = Math.floor(y * ratio);
+        const right = Math.ceil((x + width) * ratio);
+        const bottom = Math.ceil((y + height) * ratio);
+        if (right <= left || bottom <= top) return;
+        context.fillRect(left / ratio, top / ratio, (right - left) / ratio, (bottom - top) / ratio);
       }
 
       function resizeCanvases() {
@@ -12851,7 +12867,7 @@
         if (!state.settingsDraft) return;
         state.settingsDraft.viewSectionCutOutlineEffect.thickness = Math.max(
           1,
-          Math.min(6, Number(ui.viewSectionCutOutlineWidth.value) || 1)
+          Math.min(12, Number(ui.viewSectionCutOutlineWidth.value) || 1)
         );
         updateThemeButtons();
       });
@@ -12860,7 +12876,7 @@
         if (!state.settingsDraft) return;
         state.settingsDraft.viewSectionCutOutlineEffect.thickness = Math.max(
           1,
-          Math.min(6, Number(ui.viewSectionCutOutlineWidth.value) || 1)
+          Math.min(12, Number(ui.viewSectionCutOutlineWidth.value) || 1)
         );
         setStatus("Section cut outline width set to " + state.settingsDraft.viewSectionCutOutlineEffect.thickness + ".");
         updateThemeButtons();
@@ -12884,13 +12900,13 @@
 
       ui.viewOutlineWidth.addEventListener("input", () => {
         if (!state.settingsDraft) return;
-        state.settingsDraft.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(ui.viewOutlineWidth.value) || 1));
+        state.settingsDraft.viewOutlineEffect.thickness = Math.max(1, Math.min(12, Number(ui.viewOutlineWidth.value) || 1));
         updateThemeButtons();
       });
 
       ui.viewOutlineWidth.addEventListener("change", () => {
         if (!state.settingsDraft) return;
-        state.settingsDraft.viewOutlineEffect.thickness = Math.max(1, Math.min(6, Number(ui.viewOutlineWidth.value) || 1));
+        state.settingsDraft.viewOutlineEffect.thickness = Math.max(1, Math.min(12, Number(ui.viewOutlineWidth.value) || 1));
         setStatus("View outline width set to " + state.settingsDraft.viewOutlineEffect.thickness + ".");
         updateThemeButtons();
       });
