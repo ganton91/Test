@@ -492,3 +492,27 @@ The current goal is to keep building `Milimetre` as a strong, minimal infinite c
     - `return Math.round(value * ratio) / ratio`
   - the shared-boundary tile drawing model stays the same
   - only the snap precision changed, so future seam regressions on other browsers / browser zoom modes can be compared first against this exact `snapPixel()` change
+
+## TODO
+
+- Add `Export Styles` as a separate action from full project export:
+  - export only style/settings payload, not geometry/content (`scenes/layers/measurements/views` data body)
+  - include global visual settings and view visual settings
+  - include style rules that can be applied to any project
+- Add `Import Styles` as a merge operation (not full project replace):
+  - apply imported style/settings into current project
+  - keep current project geometry/content intact
+  - refresh UI/render after apply
+- Add layer-default mapping rules in styles import:
+  - support generic rules that apply across different projects with different layer ids
+  - example: `all layers -> outline width = 1`
+  - rules should target layer properties by behavior, not by exact source layer identity
+- Add one-time pre-import style memory snapshot:
+  - before the first `Import Styles` in current session, capture current local style/settings as backup
+  - do not create multiple style backups per import
+  - this snapshot is independent from Undo/Redo history
+- Add a `Revert To Pre-Import Styles` action:
+  - available after first styles import
+  - restores only the one-time backup snapshot from before first import
+  - does not touch project geometry/content
+  - one-click rollback to the user's original local settings
