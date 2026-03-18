@@ -3916,6 +3916,39 @@
         return merged;
       }
 
+      function buildHorizonGapIntervals(visibleGrid, contentMaxZ) {
+        if (!Array.isArray(visibleGrid) || !visibleGrid.length) return [];
+        const columnCount = visibleGrid[0] ? visibleGrid[0].length : 0;
+        if (!columnCount) return [];
+        const rowsToCheck = [contentMaxZ - 1, contentMaxZ].filter((rowIndex) => rowIndex >= 0 && rowIndex < visibleGrid.length);
+        if (!rowsToCheck.length) return [];
+        const intervals = [];
+        for (let column = 0; column < columnCount; column += 1) {
+          let blocked = false;
+          for (const rowIndex of rowsToCheck) {
+            if (visibleGrid[rowIndex] && visibleGrid[rowIndex][column]) {
+              blocked = true;
+              break;
+            }
+          }
+          if (blocked) intervals.push([column, column + 1]);
+        }
+        if (!intervals.length) return [];
+        const merged = [];
+        let current = intervals[0].slice();
+        for (let i = 1; i < intervals.length; i += 1) {
+          const next = intervals[i];
+          if (next[0] <= current[1]) {
+            current[1] = Math.max(current[1], next[1]);
+            continue;
+          }
+          merged.push(current);
+          current = next.slice();
+        }
+        merged.push(current);
+        return merged;
+      }
+
       function buildViewPaneDxfContent(slotIndex) {
         const view = activeCanvasView();
         if (!view) return { error: "no-view" };
@@ -3997,28 +4030,28 @@
           );
         });
 
-        if (sectionCutEnabled && state.viewSectionCutOutlineEffect.enabled) {
-          const cutOutlineSegments = mergeOrthogonalSegments(collectDxfBoundarySegments(
-            visibleGrid,
-            (cell, neighbor) => !!(cell && cell.isCut) && !(neighbor && neighbor.isCut)
-          ));
-          cutOutlineSegments.forEach((segment) => {
-            entities += encodeDxfLine(
-              "VIEW_SECTION_CUT_OUTLINE",
-              toMetersPoint({ x: segment.x1, y: segment.y1 }),
-              toMetersPoint({ x: segment.x2, y: segment.y2 })
-            );
-          });
-        }
-
         if (state.viewEnvironment.horizonEnabled) {
           const horizonMarginMeters = 2;
-          const horizonStart = { x: contentMinProjectedColumn / CELLS_PER_METER - horizonMarginMeters, y: 0 };
-          const horizonEnd = { x: (contentMinProjectedColumn + contentColumns) / CELLS_PER_METER + horizonMarginMeters, y: 0 };
-          if (sectionCutEnabled) {
-            entities = encodeDxfLine("VIEW_HORIZON", horizonStart, horizonEnd) + entities;
+          const horizonStartMeters = contentMinProjectedColumn / CELLS_PER_METER - horizonMarginMeters;
+          const horizonEndMeters = (contentMinProjectedColumn + contentColumns) / CELLS_PER_METER + horizonMarginMeters;
+          const blockedIntervals = sectionCutEnabled ? buildHorizonGapIntervals(visibleGrid, contentMaxZ) : [];
+          if (!blockedIntervals.length) {
+            const baseLine = encodeDxfLine("VIEW_HORIZON", { x: horizonStartMeters, y: 0 }, { x: horizonEndMeters, y: 0 });
+            entities = sectionCutEnabled ? baseLine + entities : entities + baseLine;
           } else {
-            entities += encodeDxfLine("VIEW_HORIZON", horizonStart, horizonEnd);
+            let cursor = horizonStartMeters;
+            const toMetersX = (column) => (contentMinProjectedColumn + column) / CELLS_PER_METER;
+            blockedIntervals.forEach(([startColumn, endColumn]) => {
+              const blockedStart = toMetersX(startColumn);
+              const blockedEnd = toMetersX(endColumn);
+              if (blockedStart > cursor) {
+                entities += encodeDxfLine("VIEW_HORIZON", { x: cursor, y: 0 }, { x: blockedStart, y: 0 });
+              }
+              if (blockedEnd > cursor) cursor = blockedEnd;
+            });
+            if (cursor < horizonEndMeters) {
+              entities += encodeDxfLine("VIEW_HORIZON", { x: cursor, y: 0 }, { x: horizonEndMeters, y: 0 });
+            }
           }
         }
 
