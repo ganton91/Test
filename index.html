@@ -3907,15 +3907,17 @@
         const totalRows = bounds.maxY - bounds.minY + 1;
         if (!totalColumns || !totalRows) return { error: "invalid-bounds" };
 
+        const planeElevation = snapViewElevationMeters(Number(view.planElevation));
+        const planeCells = Math.round(planeElevation * CELLS_PER_METER);
         const grid = Array.from({ length: totalRows }, () => Array(totalColumns).fill(null));
         let hasRenderable = false;
-        let highestTopCells = -Infinity;
 
         const configuredEntries = configuredLayers.map(({ layer, config }, orderIndex) => ({
           layer,
           orderIndex,
           baseCells: Math.round(snapViewElevationMeters(Number(config.baseElevation)) * CELLS_PER_METER),
           heightCells: Math.max(0, Math.round(snapViewElevationMeters(Number(config.height), { allowNegative: false }) * CELLS_PER_METER)),
+          excludeFromSectionCut: !!config.excludeFromSectionCut,
           forceOutline: !!config.outline,
           outlineColor: config.outlineColor || state.viewOutlineEffect.color,
           outlineWidth: Math.max(1, Math.min(12, Math.round(Number(config.outlineWidth) || 1))),
@@ -3926,7 +3928,11 @@
         for (const entry of configuredEntries) {
           if (entry.heightCells <= 0) continue;
           const topCells = entry.baseCells + entry.heightCells;
-          if (topCells > highestTopCells) highestTopCells = topCells;
+          // Plan view behaves like a horizontal section:
+          // only mass at/under the plan height participates.
+          if (entry.baseCells > planeCells) continue;
+          const visibleDepthCells = Math.min(topCells, planeCells);
+          const isCutAtPlane = !entry.excludeFromSectionCut && planeCells >= entry.baseCells && planeCells < topCells;
           for (const tile of Object.values(entry.layer.tiles || {})) {
             const tileMinX = tile.tileX * TILE_SIZE;
             const tileMinY = tile.tileY * TILE_SIZE;
@@ -3944,8 +3950,8 @@
               const candidate = {
                 layerId: entry.layer.id,
                 color: entry.overrideColor || color,
-                depth: topCells,
-                isCut: false,
+                depth: visibleDepthCells,
+                isCut: isCutAtPlane,
                 opacity: entry.opacity,
                 forceOutline: entry.forceOutline,
                 outlineColor: entry.outlineColor,
@@ -3965,7 +3971,6 @@
         }
 
         if (!hasRenderable || !grid.some((row) => row.some(Boolean))) return { error: "no-renderable" };
-        const autoPlanPlaneCells = Number.isFinite(highestTopCells) ? highestTopCells + 1 : 0;
 
         return {
           directionConfig: {
@@ -3976,7 +3981,7 @@
           },
           contentMinProjectedColumn: bounds.minX,
           contentMaxProjectedRow: bounds.maxY + 1,
-          contentMaxZ: autoPlanPlaneCells,
+          contentMaxZ: planeCells,
           contentColumns: totalColumns,
           totalRows,
           grid,
@@ -4472,7 +4477,7 @@
           canvas.classList.add("hidden");
           emptyState.classList.remove("hidden");
           emptyState.textContent = isPlanDirection
-            ? "Adjust View Height in View Properties to build this plan"
+            ? "Set a plan height in View Properties that intersects painted layers"
             : "Set layer heights in Edit Layers to build this view";
           return;
         }
