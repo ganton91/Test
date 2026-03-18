@@ -1890,7 +1890,7 @@
               </div>
               <div class="field settings-inline-range">
                 <label for="viewHorizonWidth">Width</label>
-                <input id="viewHorizonWidth" type="range" min="2" max="12" step="1" value="6" />
+                <input id="viewHorizonWidth" type="range" min="1" max="12" step="1" value="6" />
               </div>
             </div>
             <div class="menu-section">
@@ -3158,7 +3158,7 @@
           state.viewEnvironment.horizonEnabled = project.viewEnvironment?.horizonEnabled !== false;
           state.viewEnvironment.horizonColor =
             typeof project.viewEnvironment?.horizonColor === "string" ? project.viewEnvironment.horizonColor : defaultViewOutlineColor();
-          state.viewEnvironment.horizonWidth = Math.max(2, Math.min(12, Number(project.viewEnvironment?.horizonWidth) || 6));
+          state.viewEnvironment.horizonWidth = Math.max(1, Math.min(12, Number(project.viewEnvironment?.horizonWidth) || 6));
           state.viewEnvironment.groundEnabled = project.viewEnvironment?.groundEnabled !== false;
           state.viewEnvironment.groundColor = typeof project.viewEnvironment?.groundColor === "string" ? project.viewEnvironment.groundColor : "#d4d0c8";
           state.sceneSectionCollapsed = !!project.sceneSectionCollapsed;
@@ -4290,7 +4290,7 @@
         const drawHeight = renderRows * cellPixelSize;
         const offsetX = snapPixel((surfaceWidth - drawWidth) / 2);
         const offsetY = snapPixel((surfaceHeight - drawHeight) / 2);
-        const zeroLineY = offsetY + (contentMaxZ / uniformSourceScale) * cellPixelSize + 0.5;
+        const zeroLineY = snapPixel(offsetY + (contentMaxZ / uniformSourceScale) * cellPixelSize);
         const undergroundStartRow = Math.max(0, Math.min(renderRows - 1, Math.ceil(contentMaxZ / Math.max(1e-9, uniformSourceScale))));
         const backingScaleX = canvas.width / Math.max(1, surfaceWidth);
         const cellMeters = uniformSourceScale / CELLS_PER_METER;
@@ -4441,8 +4441,12 @@
 
         const drawHorizonWithBlockMask = () => {
           if (!state.viewEnvironment.horizonEnabled) return;
+          const horizonLineWidth = Math.max(1, Number(state.viewEnvironment.horizonWidth) || 1);
+          const horizonY = snapStrokeCenter(zeroLineY, horizonLineWidth);
           context.strokeStyle = activeViewHorizonColor();
-          context.lineWidth = Math.max(2, Number(state.viewEnvironment.horizonWidth) || 2);
+          context.lineWidth = horizonLineWidth;
+          context.lineCap = "butt";
+          context.lineJoin = "miter";
           const blockIntervals = [];
           if (undergroundStartRow >= 0 && undergroundStartRow < renderRows) {
             let runStart = -1;
@@ -4464,9 +4468,11 @@
           let cursorX = 0;
           const drawSegment = (fromX, toX) => {
             if (toX - fromX <= 0.01) return;
+            const startX = snapPixel(fromX);
+            const endX = snapPixel(toX);
             context.beginPath();
-            context.moveTo(fromX, zeroLineY);
-            context.lineTo(toX, zeroLineY);
+            context.moveTo(startX, horizonY);
+            context.lineTo(endX, horizonY);
             context.stroke();
           };
           for (const [startColumn, endColumn] of blockIntervals) {
@@ -8496,6 +8502,14 @@
         if (mode === "floor") return Math.floor(scaled) / ratio;
         if (mode === "ceil") return Math.ceil(scaled) / ratio;
         return Math.round(scaled) / ratio;
+      }
+
+      function snapStrokeCenter(value, lineWidth) {
+        const ratio = window.devicePixelRatio || 1;
+        const lineWidthDevice = Math.max(1, Math.round(Math.max(0.1, lineWidth) * ratio));
+        const baseDevice = Math.round(value * ratio);
+        const alignedDevice = lineWidthDevice % 2 === 0 ? baseDevice : baseDevice + 0.5;
+        return alignedDevice / ratio;
       }
 
       function resizeCanvases() {
@@ -12915,13 +12929,13 @@
 
       ui.viewHorizonWidth.addEventListener("input", () => {
         if (!state.settingsDraft) return;
-        state.settingsDraft.viewEnvironment.horizonWidth = Math.max(2, Math.min(12, Number(ui.viewHorizonWidth.value) || 2));
+        state.settingsDraft.viewEnvironment.horizonWidth = Math.max(1, Math.min(12, Number(ui.viewHorizonWidth.value) || 1));
         updateThemeButtons();
       });
 
       ui.viewHorizonWidth.addEventListener("change", () => {
         if (!state.settingsDraft) return;
-        state.settingsDraft.viewEnvironment.horizonWidth = Math.max(2, Math.min(12, Number(ui.viewHorizonWidth.value) || 2));
+        state.settingsDraft.viewEnvironment.horizonWidth = Math.max(1, Math.min(12, Number(ui.viewHorizonWidth.value) || 1));
         setStatus("Horizon line width set to " + state.settingsDraft.viewEnvironment.horizonWidth + ".");
         updateThemeButtons();
       });
