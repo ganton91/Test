@@ -1909,6 +1909,14 @@
                 <input id="viewGroundColor" type="color" value="#d4d0c8" />
               </div>
             </div>
+            <div class="menu-section">
+              <div class="menu-title">Plan Ground</div>
+              <div class="menu-actions">
+                <button class="mode-button active" data-view-plan-ground="on">On</button>
+                <button class="mode-button" data-view-plan-ground="off">Off</button>
+                <input id="viewPlanGroundColor" type="color" value="#d4d0c8" />
+              </div>
+            </div>
           </div>
           <div class="calibration-actions settings-actions">
             <button class="ghost-button modal-action-button" id="settingsCloseButton">Close</button>
@@ -1971,6 +1979,20 @@
             <button class="ghost-button" id="viewPdfApplyButton">Export</button>
           </div>
         </div>
+        <div class="menu-panel modal-panel calibration-modal hidden" id="viewPropertiesModal">
+          <div class="menu-title">View Properties</div>
+          <div class="tool-heading" id="viewPropertiesTitle">View</div>
+          <div class="tool-fields">
+            <div class="field">
+              <label for="viewPropertiesHeight">View Height (meters)</label>
+              <input id="viewPropertiesHeight" type="number" step="0.05" value="0" />
+            </div>
+          </div>
+          <div class="calibration-actions">
+            <button class="ghost-button" id="viewPropertiesCancelButton">Close</button>
+            <button class="ghost-button" id="viewPropertiesApplyButton">Apply</button>
+          </div>
+        </div>
         <div class="modal-backdrop hidden" id="modalBackdrop"></div>
 
         <div class="canvas-shell">
@@ -2009,6 +2031,7 @@
                       <button class="view-pane-selector-button" type="button" data-view-slot="0" data-view-direction="bottomToTop">B-T</button>
                       <button class="view-pane-selector-button" type="button" data-view-slot="0" data-view-direction="leftToRight">L-R</button>
                       <button class="view-pane-selector-button" type="button" data-view-slot="0" data-view-direction="rightToLeft">R-L</button>
+                      <button class="view-pane-selector-button" type="button" data-view-slot="0" data-view-direction="plan">PL</button>
                     </div>
                   </div>
                 </div>
@@ -2029,6 +2052,7 @@
                       <button class="view-pane-selector-button active" type="button" data-view-slot="1" data-view-direction="bottomToTop">B-T</button>
                       <button class="view-pane-selector-button" type="button" data-view-slot="1" data-view-direction="leftToRight">L-R</button>
                       <button class="view-pane-selector-button" type="button" data-view-slot="1" data-view-direction="rightToLeft">R-L</button>
+                      <button class="view-pane-selector-button" type="button" data-view-slot="1" data-view-direction="plan">PL</button>
                     </div>
                   </div>
                 </div>
@@ -2049,6 +2073,7 @@
                       <button class="view-pane-selector-button" type="button" data-view-slot="2" data-view-direction="bottomToTop">B-T</button>
                       <button class="view-pane-selector-button active" type="button" data-view-slot="2" data-view-direction="leftToRight">L-R</button>
                       <button class="view-pane-selector-button" type="button" data-view-slot="2" data-view-direction="rightToLeft">R-L</button>
+                      <button class="view-pane-selector-button" type="button" data-view-slot="2" data-view-direction="plan">PL</button>
                     </div>
                   </div>
                 </div>
@@ -2069,6 +2094,7 @@
                       <button class="view-pane-selector-button" type="button" data-view-slot="3" data-view-direction="bottomToTop">B-T</button>
                       <button class="view-pane-selector-button" type="button" data-view-slot="3" data-view-direction="leftToRight">L-R</button>
                       <button class="view-pane-selector-button active" type="button" data-view-slot="3" data-view-direction="rightToLeft">R-L</button>
+                      <button class="view-pane-selector-button" type="button" data-view-slot="3" data-view-direction="plan">PL</button>
                     </div>
                   </div>
                 </div>
@@ -2331,6 +2357,11 @@
         viewPdfScaleValue: document.getElementById("viewPdfScaleValue"),
         viewPdfCancelButton: document.getElementById("viewPdfCancelButton"),
         viewPdfApplyButton: document.getElementById("viewPdfApplyButton"),
+        viewPropertiesModal: document.getElementById("viewPropertiesModal"),
+        viewPropertiesTitle: document.getElementById("viewPropertiesTitle"),
+        viewPropertiesHeight: document.getElementById("viewPropertiesHeight"),
+        viewPropertiesCancelButton: document.getElementById("viewPropertiesCancelButton"),
+        viewPropertiesApplyButton: document.getElementById("viewPropertiesApplyButton"),
         modalBackdrop: document.getElementById("modalBackdrop"),
         undoButton: document.getElementById("undoButton"),
         redoButton: document.getElementById("redoButton"),
@@ -2348,6 +2379,7 @@
         viewSkyButtons: Array.from(document.querySelectorAll("[data-view-sky]")),
         viewHorizonButtons: Array.from(document.querySelectorAll("[data-view-horizon]")),
         viewGroundButtons: Array.from(document.querySelectorAll("[data-view-ground]")),
+        viewPlanGroundButtons: Array.from(document.querySelectorAll("[data-view-plan-ground]")),
         viewDepthStrengthDecrease: document.getElementById("viewDepthStrengthDecrease"),
         viewDepthStrengthIncrease: document.getElementById("viewDepthStrengthIncrease"),
         viewDepthStrengthValue: document.getElementById("viewDepthStrengthValue"),
@@ -2360,6 +2392,7 @@
         viewHorizonColor: document.getElementById("viewHorizonColor"),
         viewHorizonWidth: document.getElementById("viewHorizonWidth"),
         viewGroundColor: document.getElementById("viewGroundColor"),
+        viewPlanGroundColor: document.getElementById("viewPlanGroundColor"),
         selectionToolButton: document.getElementById("selectionToolButton"),
         brushToolButton: document.getElementById("brushToolButton"),
         shapeToolButton: document.getElementById("shapeToolButton"),
@@ -2494,6 +2527,7 @@
         viewSectionCollapsed: true,
         viewEditDraft: null,
         viewEditPointerDrag: null,
+        viewPropertiesDraft: null,
         settingsDraft: null,
         colorPanelCollapsed: false,
         brushPanelCollapsed: false,
@@ -2538,6 +2572,8 @@
           horizonWidth: 6,
           groundEnabled: true,
           groundColor: "#d4d0c8",
+          planGroundEnabled: true,
+          planGroundColor: "#d4d0c8",
         },
         layers: [createLayer("Layer 1")],
         activeLayerId: null,
@@ -2604,6 +2640,7 @@
           opacity: 1,
           pending: true,
           bounds: null,
+          planElevation: 0,
           layerConfigs: {},
           layerOrder: [],
         };
@@ -2698,6 +2735,7 @@
           opacity: view.opacity,
           pending: !!view.pending,
           bounds: view.bounds ? { ...view.bounds } : null,
+          planElevation: snapViewElevationMeters(view.planElevation),
           layerConfigs: Object.fromEntries(
             Object.entries(view.layerConfigs || {}).map(([layerId, config]) => [layerId, { ...config }])
           ),
@@ -2712,6 +2750,7 @@
         view.opacity = snapshot.opacity;
         view.pending = !!snapshot.pending;
         view.bounds = snapshot.bounds ? { ...snapshot.bounds } : null;
+        view.planElevation = snapViewElevationMeters(Number(snapshot.planElevation));
         view.layerConfigs = Object.fromEntries(
           Object.entries(snapshot.layerConfigs || {}).map(([layerId, config]) => [layerId, { ...config }])
         );
@@ -2890,6 +2929,7 @@
         state.history.isRestoring = true;
         closeModal(ui.settingsMenu);
         closeModal(ui.sceneScaleModal);
+        closeModal(ui.viewPropertiesModal);
         if (state.viewEditDraft) {
           closeViewEditModal();
         }
@@ -3024,6 +3064,8 @@
             horizonWidth: state.viewEnvironment.horizonWidth,
             groundEnabled: !!state.viewEnvironment.groundEnabled,
             groundColor: state.viewEnvironment.groundColor,
+            planGroundEnabled: !!state.viewEnvironment.planGroundEnabled,
+            planGroundColor: state.viewEnvironment.planGroundColor,
           },
           sceneSectionCollapsed: state.sceneSectionCollapsed,
           layerSectionCollapsed: state.layerSectionCollapsed,
@@ -3083,6 +3125,7 @@
         try {
           closeModal(ui.settingsMenu);
           closeModal(ui.sceneScaleModal);
+          closeModal(ui.viewPropertiesModal);
           if (state.viewEditDraft) {
             closeViewEditModal();
           }
@@ -3161,6 +3204,9 @@
           state.viewEnvironment.horizonWidth = Math.max(1, Math.min(12, Number(project.viewEnvironment?.horizonWidth) || 6));
           state.viewEnvironment.groundEnabled = project.viewEnvironment?.groundEnabled !== false;
           state.viewEnvironment.groundColor = typeof project.viewEnvironment?.groundColor === "string" ? project.viewEnvironment.groundColor : "#d4d0c8";
+          state.viewEnvironment.planGroundEnabled = project.viewEnvironment?.planGroundEnabled !== false;
+          state.viewEnvironment.planGroundColor =
+            typeof project.viewEnvironment?.planGroundColor === "string" ? project.viewEnvironment.planGroundColor : "#d4d0c8";
           state.sceneSectionCollapsed = !!project.sceneSectionCollapsed;
           state.layerSectionCollapsed = !!project.layerSectionCollapsed;
           state.measurementSectionCollapsed = !!project.measurementSectionCollapsed;
@@ -3172,7 +3218,7 @@
           state.viewLayoutPreset = [1, 2, 4].includes(project.viewLayoutPreset) ? project.viewLayoutPreset : 4;
           state.viewPaneDirections = Array.isArray(project.viewPaneDirections) && project.viewPaneDirections.length === 4
             ? project.viewPaneDirections.map((direction, index) =>
-                ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"].includes(direction)
+                ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft", "plan"].includes(direction)
                   ? direction
                   : ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"][index]
               )
@@ -3440,6 +3486,8 @@
 
       function viewDirectionLabel(direction) {
         switch (direction) {
+          case "plan":
+            return "Plan";
           case "bottomToTop":
             return "Bottom to Top";
           case "leftToRight":
@@ -3846,6 +3894,95 @@
         };
       }
 
+      function buildPlanOcclusionGrid(view) {
+        if (!view) return { error: "no-view" };
+        const bounds = viewCellBounds(view.bounds);
+        if (!bounds || bounds.maxX < bounds.minX || bounds.maxY < bounds.minY) {
+          return { error: "invalid-bounds" };
+        }
+        const configuredLayers = orderedConfiguredLayersForView(view);
+        if (!configuredLayers.length) return { error: "no-layers" };
+
+        const totalColumns = bounds.maxX - bounds.minX + 1;
+        const totalRows = bounds.maxY - bounds.minY + 1;
+        if (!totalColumns || !totalRows) return { error: "invalid-bounds" };
+
+        const grid = Array.from({ length: totalRows }, () => Array(totalColumns).fill(null));
+        let hasRenderable = false;
+        let highestTopCells = -Infinity;
+
+        const configuredEntries = configuredLayers.map(({ layer, config }, orderIndex) => ({
+          layer,
+          orderIndex,
+          baseCells: Math.round(snapViewElevationMeters(Number(config.baseElevation)) * CELLS_PER_METER),
+          heightCells: Math.max(0, Math.round(snapViewElevationMeters(Number(config.height), { allowNegative: false }) * CELLS_PER_METER)),
+          forceOutline: !!config.outline,
+          outlineColor: config.outlineColor || state.viewOutlineEffect.color,
+          outlineWidth: Math.max(1, Math.min(12, Math.round(Number(config.outlineWidth) || 1))),
+          opacity: Math.max(0, Math.min(1, state.viewColorOverride ? config.opacity : layer.opacity)),
+          overrideColor: state.viewColorOverride ? config.color || layerRepresentativeColor(layer) : null,
+        }));
+
+        for (const entry of configuredEntries) {
+          if (entry.heightCells <= 0) continue;
+          const topCells = entry.baseCells + entry.heightCells;
+          if (topCells > highestTopCells) highestTopCells = topCells;
+          for (const tile of Object.values(entry.layer.tiles || {})) {
+            const tileMinX = tile.tileX * TILE_SIZE;
+            const tileMinY = tile.tileY * TILE_SIZE;
+            const tileMaxX = tileMinX + TILE_SIZE - 1;
+            const tileMaxY = tileMinY + TILE_SIZE - 1;
+            if (tileMaxX < bounds.minX || tileMinX > bounds.maxX || tileMaxY < bounds.minY || tileMinY > bounds.maxY) continue;
+            for (const [key, color] of tile.pixels.entries()) {
+              const [localX, localY] = key.split(":").map(Number);
+              const cellX = tileMinX + localX;
+              const cellY = tileMinY + localY;
+              if (cellX < bounds.minX || cellX > bounds.maxX || cellY < bounds.minY || cellY > bounds.maxY) continue;
+              hasRenderable = true;
+              const rowIndex = cellY - bounds.minY;
+              const columnIndex = cellX - bounds.minX;
+              const candidate = {
+                layerId: entry.layer.id,
+                color: entry.overrideColor || color,
+                depth: topCells,
+                isCut: false,
+                opacity: entry.opacity,
+                forceOutline: entry.forceOutline,
+                outlineColor: entry.outlineColor,
+                outlineWidth: entry.outlineWidth,
+                orderIndex: entry.orderIndex,
+              };
+              const existing = grid[rowIndex][columnIndex];
+              const isCloser =
+                !existing ||
+                candidate.depth > existing.depth ||
+                (candidate.depth === existing.depth && candidate.orderIndex < existing.orderIndex);
+              if (isCloser) {
+                grid[rowIndex][columnIndex] = candidate;
+              }
+            }
+          }
+        }
+
+        if (!hasRenderable || !grid.some((row) => row.some(Boolean))) return { error: "no-renderable" };
+        const autoPlanPlaneCells = Number.isFinite(highestTopCells) ? highestTopCells + 1 : 0;
+
+        return {
+          directionConfig: {
+            primaryAxis: "x",
+            depthAxis: "z",
+            frontBoundary: "max",
+            mirrorColumns: false,
+          },
+          contentMinProjectedColumn: bounds.minX,
+          contentMaxProjectedRow: bounds.maxY + 1,
+          contentMaxZ: autoPlanPlaneCells,
+          contentColumns: totalColumns,
+          totalRows,
+          grid,
+        };
+      }
+
       function dxfNumber(value) {
         if (!Number.isFinite(value)) return "0";
         const normalized = Math.abs(value) < 1e-10 ? 0 : value;
@@ -4163,21 +4300,26 @@
         const view = activeCanvasView();
         if (!view) return { error: "no-view" };
         const direction = state.viewPaneDirections[slotIndex];
-        const build = buildDirectionalOcclusionGrid(view, direction);
+        const isPlanDirection = direction === "plan";
+        const build = isPlanDirection ? buildPlanOcclusionGrid(view) : buildDirectionalOcclusionGrid(view, direction);
         if (build.error) return { error: build.error };
-        const { grid, contentMaxZ, contentMinProjectedColumn, contentColumns, directionConfig } = build;
+        const { grid, contentMaxZ, contentMinProjectedColumn, contentColumns, directionConfig, contentMaxProjectedRow } = build;
         const sectionCutEnabled = !!state.viewSectionCutEffect.enabled;
 
-        let visibleGrid = grid.map((row, rowIndex) => {
-          const cellZ = contentMaxZ - 1 - rowIndex;
-          return row.map((cell) => {
-            if (!cell) return null;
-            if (!sectionCutEnabled && cellZ < 0) return null;
-            return cell;
+        let visibleGrid;
+        if (isPlanDirection) {
+          visibleGrid = grid.map((row) => row.slice());
+        } else {
+          visibleGrid = grid.map((row, rowIndex) => {
+            const cellZ = contentMaxZ - 1 - rowIndex;
+            return row.map((cell) => {
+              if (!cell) return null;
+              if (!sectionCutEnabled && cellZ < 0) return null;
+              return cell;
+            });
           });
-        });
-
-        visibleGrid = applyGroundMaskToVisibleGrid(visibleGrid, contentMaxZ);
+          visibleGrid = applyGroundMaskToVisibleGrid(visibleGrid, contentMaxZ);
+        }
 
         const hasVisibleCells = visibleGrid.some((row) => row.some(Boolean));
         if (!hasVisibleCells) return { error: "no-entities" };
@@ -4187,12 +4329,12 @@
           if (!simplified.length) return [];
           return simplified.map((point) => ({
             x: (contentMinProjectedColumn + point.x) / CELLS_PER_METER,
-            y: (contentMaxZ - point.y) / CELLS_PER_METER,
+            y: (isPlanDirection ? (contentMaxProjectedRow - point.y) : (contentMaxZ - point.y)) / CELLS_PER_METER,
           }));
         };
         const toMetersPoint = (point) => ({
           x: (contentMinProjectedColumn + point.x) / CELLS_PER_METER,
-          y: (contentMaxZ - point.y) / CELLS_PER_METER,
+          y: (isPlanDirection ? (contentMaxProjectedRow - point.y) : (contentMaxZ - point.y)) / CELLS_PER_METER,
         });
 
         let entities = "";
@@ -4243,7 +4385,7 @@
           );
         });
 
-        if (state.viewEnvironment.horizonEnabled) {
+        if (!isPlanDirection && state.viewEnvironment.horizonEnabled) {
           const horizonMarginMeters = 2;
           const horizonStartMeters = contentMinProjectedColumn / CELLS_PER_METER - horizonMarginMeters;
           const horizonEndMeters = (contentMinProjectedColumn + contentColumns) / CELLS_PER_METER + horizonMarginMeters;
@@ -4296,11 +4438,14 @@
 
       function renderDirectionalViewOutput(canvas, emptyState, direction, placeholder, slotIndex = null) {
         if (!canvas || !emptyState) return;
+        const isPlanDirection = direction === "plan";
         const setPaneMeta = (meta) => {
           if (!Number.isFinite(slotIndex)) return;
           state.viewPaneRenderMeta[slotIndex] = meta;
         };
-        const build = buildDirectionalOcclusionGrid(activeCanvasView(), direction);
+        const build = isPlanDirection
+          ? buildPlanOcclusionGrid(activeCanvasView())
+          : buildDirectionalOcclusionGrid(activeCanvasView(), direction);
         if (build.error === "no-view") {
           setPaneMeta(null);
           canvas.classList.add("hidden");
@@ -4326,7 +4471,9 @@
           setPaneMeta(null);
           canvas.classList.add("hidden");
           emptyState.classList.remove("hidden");
-          emptyState.textContent = "Set layer heights in Edit Layers to build this view";
+          emptyState.textContent = isPlanDirection
+            ? "Adjust View Height in View Properties to build this plan"
+            : "Set layer heights in Edit Layers to build this view";
           return;
         }
         const { directionConfig, contentColumns, totalRows, contentMaxZ } = build;
@@ -4398,7 +4545,7 @@
         });
 
         context.clearRect(0, 0, surfaceWidth, surfaceHeight);
-        context.fillStyle = activeViewSkyColor();
+        context.fillStyle = isPlanDirection ? activeViewPlanGroundColor() : activeViewSkyColor();
         context.fillRect(0, 0, surfaceWidth, surfaceHeight);
 
         const buildGroundHoleMask = () => {
@@ -4477,9 +4624,16 @@
           return holeMask;
         };
 
-        const groundHoleMask = buildGroundHoleMask();
+        const groundHoleMask = isPlanDirection
+          ? Array.from({ length: renderRows }, () => Array(renderColumns).fill(false))
+          : buildGroundHoleMask();
 
         const drawGroundWithCutExclusions = () => {
+          if (isPlanDirection) {
+            context.fillStyle = activeViewPlanGroundColor();
+            context.fillRect(0, 0, surfaceWidth, surfaceHeight);
+            return;
+          }
           const groundTop = Math.max(0, zeroLineY);
           if (groundTop >= surfaceHeight) return;
           context.fillStyle = activeViewGroundColor();
@@ -4536,7 +4690,7 @@
         };
 
         const drawHorizonWithBlockMask = () => {
-          if (!state.viewEnvironment.horizonEnabled) return;
+          if (isPlanDirection || !state.viewEnvironment.horizonEnabled) return;
           const horizonLineWidth = Math.max(1, Number(state.viewEnvironment.horizonWidth) || 1) * 2;
           const horizonY = snapStrokeCenter(zeroLineY, horizonLineWidth);
           context.strokeStyle = activeViewHorizonColor();
@@ -4885,11 +5039,11 @@
         };
 
         if (!drawEnvironmentBehindContent) {
-          if (zeroLineY < surfaceHeight) {
+          if (!isPlanDirection && zeroLineY < surfaceHeight) {
             drawGroundWithCutExclusions();
           }
 
-          drawHorizonWithBlockMask();
+          if (!isPlanDirection) drawHorizonWithBlockMask();
         }
 
         drawSectionCutOutlinePass();
@@ -5289,6 +5443,44 @@
         return true;
       }
 
+      function openViewPropertiesModal(viewId) {
+        const view = state.views.find((entry) => entry.id === viewId);
+        if (!view || view.pending || !view.bounds) {
+          setStatus("Finish the view box before editing view properties.");
+          render({ ui: true, overlay: true });
+          return false;
+        }
+        state.viewPropertiesDraft = {
+          viewId: view.id,
+          planElevation: snapViewElevationMeters(Number(view.planElevation)),
+        };
+        ui.viewPropertiesTitle.textContent = view.name || "View";
+        ui.viewPropertiesHeight.value = String(state.viewPropertiesDraft.planElevation);
+        openModal(ui.viewPropertiesModal);
+        setStatus("View properties ready.");
+        render({ ui: true });
+        return true;
+      }
+
+      function applyViewPropertiesDraft() {
+        const draft = state.viewPropertiesDraft;
+        if (!draft) return false;
+        const view = state.views.find((entry) => entry.id === draft.viewId);
+        if (!view) {
+          closeModal(ui.viewPropertiesModal);
+          render({ ui: true });
+          return false;
+        }
+        const parsed = Number(ui.viewPropertiesHeight.value);
+        const nextElevation = snapViewElevationMeters(Number.isFinite(parsed) ? parsed : draft.planElevation);
+        view.planElevation = nextElevation;
+        closeModal(ui.viewPropertiesModal);
+        commitHistoryAction("views:properties", "Edit View Properties");
+        setStatus("View properties applied.");
+        render({ ui: true, content: true, overlay: true });
+        return true;
+      }
+
       function getTileCoords(cellX, cellY) {
         return {
           tileX: Math.floor(cellX / TILE_SIZE),
@@ -5542,6 +5734,9 @@
           if (state.viewEditDraft && state.viewEditDraft.viewId === view.id) {
             closeViewEditModal();
           }
+          if (state.viewPropertiesDraft && state.viewPropertiesDraft.viewId === view.id) {
+            closeModal(ui.viewPropertiesModal);
+          }
           clearActiveTarget();
           commitHistory("Delete View");
           render({ ui: true, overlay: true });
@@ -5610,6 +5805,7 @@
         duplicate.opacity = source.opacity;
         duplicate.pending = !!source.pending;
         duplicate.bounds = source.bounds ? { ...source.bounds } : null;
+        duplicate.planElevation = snapViewElevationMeters(Number(source.planElevation));
         duplicate.layerConfigs = Object.fromEntries(
           Object.entries(source.layerConfigs || {}).map(([layerId, config]) => [layerId, { ...config }])
         );
@@ -6585,6 +6781,10 @@
         return state.viewEnvironment.groundEnabled ? state.viewEnvironment.groundColor : defaultViewGroundColor();
       }
 
+      function activeViewPlanGroundColor() {
+        return state.viewEnvironment.planGroundEnabled ? state.viewEnvironment.planGroundColor : defaultViewGroundColor();
+      }
+
       function createSettingsDraft() {
         const sectionCutEnabled = !!state.viewSectionCutEffect.enabled;
         return {
@@ -6619,6 +6819,8 @@
             horizonWidth: state.viewEnvironment.horizonWidth,
             groundEnabled: !!state.viewEnvironment.groundEnabled,
             groundColor: state.viewEnvironment.groundColor,
+            planGroundEnabled: !!state.viewEnvironment.planGroundEnabled,
+            planGroundColor: state.viewEnvironment.planGroundColor,
           },
         };
       }
@@ -6657,6 +6859,8 @@
         state.viewEnvironment.horizonWidth = draft.viewEnvironment.horizonWidth;
         state.viewEnvironment.groundEnabled = !!draft.viewEnvironment.groundEnabled;
         state.viewEnvironment.groundColor = draft.viewEnvironment.groundColor;
+        state.viewEnvironment.planGroundEnabled = !!draft.viewEnvironment.planGroundEnabled;
+        state.viewEnvironment.planGroundColor = draft.viewEnvironment.planGroundColor;
         return true;
       }
 
@@ -7367,6 +7571,9 @@
         if (modal === ui.viewPdfModal) {
           state.pendingViewPdfExportSlot = null;
         }
+        if (modal === ui.viewPropertiesModal) {
+          state.viewPropertiesDraft = null;
+        }
       }
 
       function openModal(modal) {
@@ -7374,6 +7581,7 @@
         ui.sceneScaleModal.classList.add("hidden");
         ui.viewEditModal.classList.add("hidden");
         ui.viewPdfModal.classList.add("hidden");
+        ui.viewPropertiesModal.classList.add("hidden");
         modal.classList.remove("hidden");
         ui.modalBackdrop.classList.remove("hidden");
         if (modal === ui.settingsMenu) {
@@ -7411,6 +7619,12 @@
         if (isModalOpen(ui.viewPdfModal)) {
           closeModal(ui.viewPdfModal);
           setStatus("PDF export cancelled.");
+          render({ ui: true });
+          return true;
+        }
+        if (isModalOpen(ui.viewPropertiesModal)) {
+          closeModal(ui.viewPropertiesModal);
+          setStatus("View properties closed.");
           render({ ui: true });
           return true;
         }
@@ -7525,6 +7739,12 @@
         ui.viewGroundButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewGround === (settings.viewEnvironment.groundEnabled ? "on" : "off"));
         });
+        ui.viewPlanGroundButtons.forEach((button) => {
+          button.classList.toggle(
+            "active",
+            button.dataset.viewPlanGround === (settings.viewEnvironment.planGroundEnabled ? "on" : "off")
+          );
+        });
         ui.viewDepthStrengthValue.value = settings.viewDepthEffect.strength.toFixed(2);
         ui.viewDepthStrengthDecrease.disabled = !settings.viewDepthEffect.enabled;
         ui.viewDepthStrengthIncrease.disabled = !settings.viewDepthEffect.enabled;
@@ -7540,6 +7760,7 @@
         ui.viewHorizonColor.value = settings.viewEnvironment.horizonColor;
         ui.viewHorizonWidth.value = String(settings.viewEnvironment.horizonWidth);
         ui.viewGroundColor.value = settings.viewEnvironment.groundColor;
+        ui.viewPlanGroundColor.value = settings.viewEnvironment.planGroundColor;
       }
 
       function renderToolState() {
@@ -8011,6 +8232,9 @@
             if (state.viewEditDraft && state.viewEditDraft.viewId === view.id) {
               closeViewEditModal();
             }
+            if (state.viewPropertiesDraft && state.viewPropertiesDraft.viewId === view.id) {
+              closeModal(ui.viewPropertiesModal);
+            }
             if (state.activeViewId === view.id) clearActiveTarget();
             commitHistoryAction("views:delete", "Delete View");
             render({ ui: true, overlay: true });
@@ -8037,6 +8261,16 @@
             openViewEditModal(view.id);
           });
           actions.appendChild(editButton);
+
+          const propertiesButton = document.createElement("button");
+          propertiesButton.className = "layer-icon";
+          propertiesButton.textContent = "View Properties";
+          propertiesButton.title = "Edit view properties";
+          propertiesButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            openViewPropertiesModal(view.id);
+          });
+          actions.appendChild(propertiesButton);
           main.appendChild(actions);
 
           card.appendChild(grip);
@@ -12835,6 +13069,17 @@
         render({ ui: true });
       });
       ui.viewEditApplyButton.addEventListener("click", applyViewEditDraft);
+      ui.viewPropertiesCancelButton.addEventListener("click", () => {
+        closeModal(ui.viewPropertiesModal);
+        setStatus("View properties closed.");
+        render({ ui: true });
+      });
+      ui.viewPropertiesApplyButton.addEventListener("click", applyViewPropertiesDraft);
+      ui.viewPropertiesHeight.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        applyViewPropertiesDraft();
+      });
       ui.sceneScaleMeters.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
@@ -13064,6 +13309,22 @@
           if (!state.settingsDraft) return;
           state.settingsDraft.viewEnvironment.groundEnabled = button.dataset.viewGround === "on";
           setStatus(state.settingsDraft.viewEnvironment.groundEnabled ? "Custom ground color enabled." : "Ground using theme default.");
+          updateThemeButtons();
+        });
+      });
+
+      ui.viewPlanGroundColor.addEventListener("input", () => {
+        if (!state.settingsDraft) return;
+        state.settingsDraft.viewEnvironment.planGroundColor = ui.viewPlanGroundColor.value || "#d4d0c8";
+        setStatus("Plan view ground color updated.");
+        updateThemeButtons();
+      });
+
+      ui.viewPlanGroundButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          if (!state.settingsDraft) return;
+          state.settingsDraft.viewEnvironment.planGroundEnabled = button.dataset.viewPlanGround === "on";
+          setStatus(state.settingsDraft.viewEnvironment.planGroundEnabled ? "Custom plan ground color enabled." : "Plan ground using theme default.");
           updateThemeButtons();
         });
       });
@@ -13304,7 +13565,8 @@
           isModalOpen(ui.settingsMenu) ||
           isModalOpen(ui.sceneScaleModal) ||
           isModalOpen(ui.viewEditModal) ||
-          isModalOpen(ui.viewPdfModal);
+          isModalOpen(ui.viewPdfModal) ||
+          isModalOpen(ui.viewPropertiesModal);
         if (event.key === "Delete" && state.activeTool === "select" && !hasOpenModal && !isEditableTarget) {
           if (deleteActiveTarget()) {
             event.preventDefault();
