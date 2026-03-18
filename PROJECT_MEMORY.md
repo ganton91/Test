@@ -457,9 +457,18 @@ The current goal is to keep building `Milimetre` as a strong, minimal infinite c
   - `Export PDF` opens a modal with custom scale denominator input (`1:x`)
   - PDF is raster and captures exactly what the pane currently shows (colors, depth effect, sky, ground, section appearance)
   - PDF page size is custom (derived from chosen scale) with a fixed safety margin around the rendered pane
-- When `Section Cut` is enabled in `Views`, `Ground` and `Horizon Line` render behind the view drawing instead of over it:
-  - this preserves underground / below-grade geometry visibility in section-style views
-  - when `Section Cut` is off, ground and horizon keep their normal foreground behavior
+- `Ground` underground visibility is now auto-recognized in `Views` via per-pane hole masks:
+  - ground remains in the normal foreground draw order
+  - ground is not painted on direct `isCut` cells
+  - ground is also not painted on enclosed underground regions found by flood-fill
+  - flood-fill boundary rule for ground is unified as:
+    - `isCut` cells
+    - plus the full `0-0` cap row (treated as boundary regardless of painted/non-painted state)
+  - mask computation is pane-local (`Top/Bottom/Left/Right` each side computes its own mask)
+- `Horizon Line` now uses its own block mask (same family of logic, but stricter boundary):
+  - horizon masking uses `isCut`-based boundary only (does **not** use the `0-0` cap row)
+  - horizon is rendered in split segments so blocked intervals are skipped cleanly
+  - segment rendering uses filled runs (not stroke caps) to avoid edge nibbling artifacts near section/wall boundaries
 - `Section Cut Outline` depends on `Section Cut`:
   - if `Section Cut` is turned off, `Section Cut Outline` should automatically turn off too
   - the UI should not allow section outline to stay enabled by itself
