@@ -4237,17 +4237,26 @@
           // regions fully bounded by isCut cells (left/right/up/down) are also excluded from ground.
           const enclosedVoidMask = Array.from({ length: renderRows }, () => Array(renderColumns).fill(false));
           const visitedVoid = Array.from({ length: renderRows }, () => Array(renderColumns).fill(false));
+          const zeroCapRow = undergroundStartRow - 1;
           const neighbors = [
             [-1, 0],
             [1, 0],
             [0, -1],
             [0, 1],
           ];
+          const isFloodBoundaryCell = (rowIndex, columnIndex) => {
+            if (rowIndex < 0 || rowIndex >= renderRows || columnIndex < 0 || columnIndex >= renderColumns) return false;
+            if (rowIndex === zeroCapRow) return true;
+            const cell = renderGrid[rowIndex] ? renderGrid[rowIndex][columnIndex] : null;
+            if (!cell) return false;
+            // Flood-fill boundary is a single rule-set: isCut OR any zero-cap cell.
+            if (cell.isCut) return true;
+            return false;
+          };
           for (let startRow = undergroundStartRow; startRow < renderRows; startRow += 1) {
             for (let startColumn = 0; startColumn < renderColumns; startColumn += 1) {
               if (visitedVoid[startRow][startColumn]) continue;
-              const startCell = renderGrid[startRow] ? renderGrid[startRow][startColumn] : null;
-              if (startCell && startCell.isCut) {
+              if (isFloodBoundaryCell(startRow, startColumn)) {
                 visitedVoid[startRow][startColumn] = true;
                 continue;
               }
@@ -4266,18 +4275,17 @@
                 for (const [dy, dx] of neighbors) {
                   const nextRow = rowIndex + dy;
                   const nextColumn = columnIndex + dx;
-                  if (
-                    nextRow < undergroundStartRow ||
-                    nextRow >= renderRows ||
-                    nextColumn < 0 ||
-                    nextColumn >= renderColumns
-                  ) {
+                  if (nextColumn < 0 || nextColumn >= renderColumns || nextRow >= renderRows) {
                     leaks = true;
                     continue;
                   }
+                  if (nextRow < undergroundStartRow) {
+                    // Top side can be sealed by zero-cap/isCut boundary cells.
+                    if (!isFloodBoundaryCell(nextRow, nextColumn)) leaks = true;
+                    continue;
+                  }
                   if (visitedVoid[nextRow][nextColumn]) continue;
-                  const nextCell = renderGrid[nextRow] ? renderGrid[nextRow][nextColumn] : null;
-                  if (nextCell && nextCell.isCut) {
+                  if (isFloodBoundaryCell(nextRow, nextColumn)) {
                     visitedVoid[nextRow][nextColumn] = true;
                     continue;
                   }
