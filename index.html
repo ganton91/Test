@@ -4066,6 +4066,99 @@
         return merged;
       }
 
+      function buildGroundHoleMaskFromGrid(sourceGrid, undergroundStartRow) {
+        const rowCount = Array.isArray(sourceGrid) ? sourceGrid.length : 0;
+        const columnCount = rowCount && Array.isArray(sourceGrid[0]) ? sourceGrid[0].length : 0;
+        const holeMask = Array.from({ length: rowCount }, () => Array(columnCount).fill(false));
+        if (!rowCount || !columnCount) return holeMask;
+        if (undergroundStartRow < 0 || undergroundStartRow >= rowCount) return holeMask;
+
+        const visitedVoid = Array.from({ length: rowCount }, () => Array(columnCount).fill(false));
+        const zeroCapRow = undergroundStartRow - 1;
+        const neighbors = [
+          [-1, 0],
+          [1, 0],
+          [0, -1],
+          [0, 1],
+        ];
+        const isFloodBoundaryCell = (rowIndex, columnIndex) => {
+          if (rowIndex < 0 || rowIndex >= rowCount || columnIndex < 0 || columnIndex >= columnCount) return false;
+          if (rowIndex === zeroCapRow) return true;
+          const cell = sourceGrid[rowIndex] ? sourceGrid[rowIndex][columnIndex] : null;
+          return !!(cell && cell.isCut);
+        };
+
+        for (let rowIndex = undergroundStartRow; rowIndex < rowCount; rowIndex += 1) {
+          const row = sourceGrid[rowIndex] || [];
+          for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
+            if (row[columnIndex] && row[columnIndex].isCut) holeMask[rowIndex][columnIndex] = true;
+          }
+        }
+
+        for (let startRow = undergroundStartRow; startRow < rowCount; startRow += 1) {
+          for (let startColumn = 0; startColumn < columnCount; startColumn += 1) {
+            if (visitedVoid[startRow][startColumn]) continue;
+            if (isFloodBoundaryCell(startRow, startColumn)) {
+              visitedVoid[startRow][startColumn] = true;
+              continue;
+            }
+
+            const queue = [[startRow, startColumn]];
+            const component = [];
+            let cursor = 0;
+            let leaks = false;
+            visitedVoid[startRow][startColumn] = true;
+
+            while (cursor < queue.length) {
+              const [rowIndex, columnIndex] = queue[cursor];
+              cursor += 1;
+              component.push([rowIndex, columnIndex]);
+
+              for (const [dy, dx] of neighbors) {
+                const nextRow = rowIndex + dy;
+                const nextColumn = columnIndex + dx;
+                if (nextColumn < 0 || nextColumn >= columnCount || nextRow >= rowCount) {
+                  leaks = true;
+                  continue;
+                }
+                if (nextRow < undergroundStartRow) {
+                  if (!isFloodBoundaryCell(nextRow, nextColumn)) leaks = true;
+                  continue;
+                }
+                if (visitedVoid[nextRow][nextColumn]) continue;
+                if (isFloodBoundaryCell(nextRow, nextColumn)) {
+                  visitedVoid[nextRow][nextColumn] = true;
+                  continue;
+                }
+                visitedVoid[nextRow][nextColumn] = true;
+                queue.push([nextRow, nextColumn]);
+              }
+            }
+
+            if (!leaks) {
+              for (const [rowIndex, columnIndex] of component) {
+                holeMask[rowIndex][columnIndex] = true;
+              }
+            }
+          }
+        }
+
+        return holeMask;
+      }
+
+      function applyGroundMaskToVisibleGrid(visibleGrid, contentMaxZ) {
+        if (!Array.isArray(visibleGrid) || !visibleGrid.length) return visibleGrid;
+        const undergroundStartRow = Math.max(0, Math.min(visibleGrid.length - 1, contentMaxZ));
+        const groundHoleMask = buildGroundHoleMaskFromGrid(visibleGrid, undergroundStartRow);
+        return visibleGrid.map((row, rowIndex) =>
+          row.map((cell, columnIndex) => {
+            if (!cell) return null;
+            if (rowIndex < undergroundStartRow) return cell;
+            return groundHoleMask[rowIndex][columnIndex] ? cell : null;
+          })
+        );
+      }
+
       function buildViewPaneDxfContent(slotIndex) {
         const view = activeCanvasView();
         if (!view) return { error: "no-view" };
@@ -4084,97 +4177,7 @@
           });
         });
 
-        const buildDxfGroundHoleMask = (sourceGrid, undergroundStartRow) => {
-          const rowCount = Array.isArray(sourceGrid) ? sourceGrid.length : 0;
-          const columnCount = rowCount && Array.isArray(sourceGrid[0]) ? sourceGrid[0].length : 0;
-          const holeMask = Array.from({ length: rowCount }, () => Array(columnCount).fill(false));
-          if (!rowCount || !columnCount) return holeMask;
-          if (undergroundStartRow < 0 || undergroundStartRow >= rowCount) return holeMask;
-
-          const visitedVoid = Array.from({ length: rowCount }, () => Array(columnCount).fill(false));
-          const zeroCapRow = undergroundStartRow - 1;
-          const neighbors = [
-            [-1, 0],
-            [1, 0],
-            [0, -1],
-            [0, 1],
-          ];
-          const isFloodBoundaryCell = (rowIndex, columnIndex) => {
-            if (rowIndex < 0 || rowIndex >= rowCount || columnIndex < 0 || columnIndex >= columnCount) return false;
-            if (rowIndex === zeroCapRow) return true;
-            const cell = sourceGrid[rowIndex] ? sourceGrid[rowIndex][columnIndex] : null;
-            return !!(cell && cell.isCut);
-          };
-
-          for (let rowIndex = undergroundStartRow; rowIndex < rowCount; rowIndex += 1) {
-            const row = sourceGrid[rowIndex] || [];
-            for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
-              if (row[columnIndex] && row[columnIndex].isCut) holeMask[rowIndex][columnIndex] = true;
-            }
-          }
-
-          for (let startRow = undergroundStartRow; startRow < rowCount; startRow += 1) {
-            for (let startColumn = 0; startColumn < columnCount; startColumn += 1) {
-              if (visitedVoid[startRow][startColumn]) continue;
-              if (isFloodBoundaryCell(startRow, startColumn)) {
-                visitedVoid[startRow][startColumn] = true;
-                continue;
-              }
-
-              const queue = [[startRow, startColumn]];
-              const component = [];
-              let cursor = 0;
-              let leaks = false;
-              visitedVoid[startRow][startColumn] = true;
-
-              while (cursor < queue.length) {
-                const [rowIndex, columnIndex] = queue[cursor];
-                cursor += 1;
-                component.push([rowIndex, columnIndex]);
-
-                for (const [dy, dx] of neighbors) {
-                  const nextRow = rowIndex + dy;
-                  const nextColumn = columnIndex + dx;
-                  if (nextColumn < 0 || nextColumn >= columnCount || nextRow >= rowCount) {
-                    leaks = true;
-                    continue;
-                  }
-                  if (nextRow < undergroundStartRow) {
-                    if (!isFloodBoundaryCell(nextRow, nextColumn)) leaks = true;
-                    continue;
-                  }
-                  if (visitedVoid[nextRow][nextColumn]) continue;
-                  if (isFloodBoundaryCell(nextRow, nextColumn)) {
-                    visitedVoid[nextRow][nextColumn] = true;
-                    continue;
-                  }
-                  visitedVoid[nextRow][nextColumn] = true;
-                  queue.push([nextRow, nextColumn]);
-                }
-              }
-
-              if (!leaks) {
-                for (const [rowIndex, columnIndex] of component) {
-                  holeMask[rowIndex][columnIndex] = true;
-                }
-              }
-            }
-          }
-
-          return holeMask;
-        };
-
-        if (visibleGrid.length) {
-          const undergroundStartRow = Math.max(0, Math.min(visibleGrid.length - 1, contentMaxZ));
-          const groundHoleMask = buildDxfGroundHoleMask(visibleGrid, undergroundStartRow);
-          visibleGrid = visibleGrid.map((row, rowIndex) =>
-            row.map((cell, columnIndex) => {
-              if (!cell) return null;
-              if (rowIndex < undergroundStartRow) return cell;
-              return groundHoleMask[rowIndex][columnIndex] ? cell : null;
-            })
-          );
-        }
+        visibleGrid = applyGroundMaskToVisibleGrid(visibleGrid, contentMaxZ);
 
         const hasVisibleCells = visibleGrid.some((row) => row.some(Boolean));
         if (!hasVisibleCells) return { error: "no-entities" };
