@@ -1868,6 +1868,20 @@
             <button class="ghost-button" id="viewEditApplyButton">Apply</button>
           </div>
         </div>
+        <div class="menu-panel modal-panel calibration-modal hidden" id="viewPdfModal">
+          <div class="menu-title">Export PDF</div>
+          <div class="tool-heading">Custom Scale</div>
+          <div class="tool-fields">
+            <div class="field">
+              <label for="viewPdfScaleValue">Scale denominator (1 : x)</label>
+              <input id="viewPdfScaleValue" type="number" min="1" step="1" value="50" />
+            </div>
+          </div>
+          <div class="calibration-actions">
+            <button class="ghost-button" id="viewPdfCancelButton">Cancel</button>
+            <button class="ghost-button" id="viewPdfApplyButton">Export</button>
+          </div>
+        </div>
         <div class="modal-backdrop hidden" id="modalBackdrop"></div>
 
         <div class="canvas-shell">
@@ -1899,6 +1913,7 @@
                   <div class="view-pane-title" id="viewPaneTitle0">Top to Bottom</div>
                   <div class="view-pane-header-actions">
                     <button class="view-pane-export-button" type="button" data-view-export-slot="0" data-view-export-format="png">PNG</button>
+                    <button class="view-pane-export-button" type="button" data-view-export-slot="0" data-view-export-format="pdf">PDF</button>
                     <button class="view-pane-export-button" type="button" data-view-export-slot="0" data-view-export-format="dxf">DXF</button>
                     <div class="view-pane-selector">
                       <button class="view-pane-selector-button active" type="button" data-view-slot="0" data-view-direction="topToBottom">T-B</button>
@@ -1918,6 +1933,7 @@
                   <div class="view-pane-title" id="viewPaneTitle1">Bottom to Top</div>
                   <div class="view-pane-header-actions">
                     <button class="view-pane-export-button" type="button" data-view-export-slot="1" data-view-export-format="png">PNG</button>
+                    <button class="view-pane-export-button" type="button" data-view-export-slot="1" data-view-export-format="pdf">PDF</button>
                     <button class="view-pane-export-button" type="button" data-view-export-slot="1" data-view-export-format="dxf">DXF</button>
                     <div class="view-pane-selector">
                       <button class="view-pane-selector-button" type="button" data-view-slot="1" data-view-direction="topToBottom">T-B</button>
@@ -1937,6 +1953,7 @@
                   <div class="view-pane-title" id="viewPaneTitle2">Left to Right</div>
                   <div class="view-pane-header-actions">
                     <button class="view-pane-export-button" type="button" data-view-export-slot="2" data-view-export-format="png">PNG</button>
+                    <button class="view-pane-export-button" type="button" data-view-export-slot="2" data-view-export-format="pdf">PDF</button>
                     <button class="view-pane-export-button" type="button" data-view-export-slot="2" data-view-export-format="dxf">DXF</button>
                     <div class="view-pane-selector">
                       <button class="view-pane-selector-button" type="button" data-view-slot="2" data-view-direction="topToBottom">T-B</button>
@@ -1956,6 +1973,7 @@
                   <div class="view-pane-title" id="viewPaneTitle3">Right to Left</div>
                   <div class="view-pane-header-actions">
                     <button class="view-pane-export-button" type="button" data-view-export-slot="3" data-view-export-format="png">PNG</button>
+                    <button class="view-pane-export-button" type="button" data-view-export-slot="3" data-view-export-format="pdf">PDF</button>
                     <button class="view-pane-export-button" type="button" data-view-export-slot="3" data-view-export-format="dxf">DXF</button>
                     <div class="view-pane-selector">
                       <button class="view-pane-selector-button" type="button" data-view-slot="3" data-view-direction="topToBottom">T-B</button>
@@ -2159,6 +2177,7 @@
       const MAX_ZOOM = 3.6;
       const DEFAULT_COLOR = "#111827";
       const MAX_HISTORY_STATES = 50;
+      const VIEW_PDF_MARGIN_MM = 10;
 
       const ui = {
         body: document.body,
@@ -2219,6 +2238,10 @@
         viewEditEmptyState: document.getElementById("viewEditEmptyState"),
         viewEditCancelButton: document.getElementById("viewEditCancelButton"),
         viewEditApplyButton: document.getElementById("viewEditApplyButton"),
+        viewPdfModal: document.getElementById("viewPdfModal"),
+        viewPdfScaleValue: document.getElementById("viewPdfScaleValue"),
+        viewPdfCancelButton: document.getElementById("viewPdfCancelButton"),
+        viewPdfApplyButton: document.getElementById("viewPdfApplyButton"),
         modalBackdrop: document.getElementById("modalBackdrop"),
         undoButton: document.getElementById("undoButton"),
         redoButton: document.getElementById("redoButton"),
@@ -2372,6 +2395,9 @@
         activeCanvasViewTab: "main",
         viewLayoutPreset: 4,
         viewPaneDirections: ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"],
+        viewPaneRenderMeta: [null, null, null, null],
+        pendingViewPdfExportSlot: null,
+        viewPdfScaleDenominator: 50,
         activeViewId: null,
         editingViewId: null,
         dragViewId: null,
@@ -4081,28 +4107,36 @@
         return { dxf, direction, view };
       }
 
-      function renderDirectionalViewOutput(canvas, emptyState, direction, placeholder) {
+      function renderDirectionalViewOutput(canvas, emptyState, direction, placeholder, slotIndex = null) {
         if (!canvas || !emptyState) return;
+        const setPaneMeta = (meta) => {
+          if (!Number.isFinite(slotIndex)) return;
+          state.viewPaneRenderMeta[slotIndex] = meta;
+        };
         const build = buildDirectionalOcclusionGrid(activeCanvasView(), direction);
         if (build.error === "no-view") {
+          setPaneMeta(null);
           canvas.classList.add("hidden");
           emptyState.classList.remove("hidden");
           emptyState.textContent = placeholder;
           return;
         }
         if (build.error === "invalid-bounds") {
+          setPaneMeta(null);
           canvas.classList.add("hidden");
           emptyState.classList.remove("hidden");
           emptyState.textContent = "Draw a valid view box in Main View";
           return;
         }
         if (build.error === "no-layers" || build.error === "no-painted") {
+          setPaneMeta(null);
           canvas.classList.add("hidden");
           emptyState.classList.remove("hidden");
           emptyState.textContent = "No painted layers intersect this view";
           return;
         }
         if (build.error === "no-renderable") {
+          setPaneMeta(null);
           canvas.classList.add("hidden");
           emptyState.classList.remove("hidden");
           emptyState.textContent = "Set layer heights in Edit Layers to build this view";
@@ -4166,6 +4200,14 @@
         const offsetX = snapPixel((surfaceWidth - drawWidth) / 2);
         const offsetY = snapPixel((surfaceHeight - drawHeight) / 2);
         const zeroLineY = offsetY + (contentMaxZ / uniformSourceScale) * cellPixelSize + 0.5;
+        const backingScaleX = canvas.width / Math.max(1, surfaceWidth);
+        const cellMeters = uniformSourceScale / CELLS_PER_METER;
+        const metersPerCssPixel = cellMeters / Math.max(1e-9, cellPixelSize);
+        setPaneMeta({
+          metersPerPixel: metersPerCssPixel / Math.max(1e-9, backingScaleX),
+          pixelWidth: canvas.width,
+          pixelHeight: canvas.height,
+        });
 
         context.clearRect(0, 0, surfaceWidth, surfaceHeight);
         context.fillStyle = activeViewSkyColor();
@@ -4515,7 +4557,8 @@
             pane.canvas,
             pane.empty,
             state.viewPaneDirections[index],
-            viewDirectionLabel(state.viewPaneDirections[index]) + " view placeholder"
+            viewDirectionLabel(state.viewPaneDirections[index]) + " view placeholder",
+            index
           );
         });
         renderViewWorkspaceControls();
@@ -4558,6 +4601,180 @@
           setStatus("PNG exported.");
           render({ ui: true });
         }, "image/png");
+      }
+
+      function decodeBase64(base64) {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes;
+      }
+
+      function concatUint8Arrays(chunks) {
+        const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+        const out = new Uint8Array(total);
+        let offset = 0;
+        chunks.forEach((chunk) => {
+          out.set(chunk, offset);
+          offset += chunk.length;
+        });
+        return out;
+      }
+
+      function buildSingleImagePdf({ jpegBytes, imageWidthPx, imageHeightPx, pageWidthMm, pageHeightMm, marginMm }) {
+        const encoder = new TextEncoder();
+        const chunks = [];
+        let length = 0;
+        const appendString = (text) => {
+          const bytes = encoder.encode(text);
+          chunks.push(bytes);
+          length += bytes.length;
+        };
+        const appendBytes = (bytes) => {
+          chunks.push(bytes);
+          length += bytes.length;
+        };
+        const mmToPt = (value) => (value * 72) / 25.4;
+        const pageWidthPt = mmToPt(pageWidthMm);
+        const pageHeightPt = mmToPt(pageHeightMm);
+        const marginPt = mmToPt(marginMm);
+        const imageWidthPt = Math.max(1, pageWidthPt - marginPt * 2);
+        const imageHeightPt = Math.max(1, pageHeightPt - marginPt * 2);
+        const contentStream = [
+          "q",
+          dxfNumber(imageWidthPt) + " 0 0 " + dxfNumber(imageHeightPt) + " " + dxfNumber(marginPt) + " " + dxfNumber(marginPt) + " cm",
+          "/Im0 Do",
+          "Q",
+          "",
+        ].join("\n");
+        const contentBytes = encoder.encode(contentStream);
+
+        const offsets = [0];
+        appendBytes(new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34, 0x0a, 0x25, 0xe2, 0xe3, 0xcf, 0xd3, 0x0a]));
+
+        offsets[1] = length;
+        appendString("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+
+        offsets[2] = length;
+        appendString("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+
+        offsets[3] = length;
+        appendString(
+          "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " +
+            dxfNumber(pageWidthPt) +
+            " " +
+            dxfNumber(pageHeightPt) +
+            "] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>\nendobj\n"
+        );
+
+        offsets[4] = length;
+        appendString(
+          "4 0 obj\n<< /Type /XObject /Subtype /Image /Width " +
+            String(imageWidthPx) +
+            " /Height " +
+            String(imageHeightPx) +
+            " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " +
+            String(jpegBytes.length) +
+            " >>\nstream\n"
+        );
+        appendBytes(jpegBytes);
+        appendString("\nendstream\nendobj\n");
+
+        offsets[5] = length;
+        appendString("5 0 obj\n<< /Length " + String(contentBytes.length) + " >>\nstream\n");
+        appendBytes(contentBytes);
+        appendString("endstream\nendobj\n");
+
+        const xrefOffset = length;
+        appendString("xref\n0 6\n0000000000 65535 f \n");
+        for (let index = 1; index <= 5; index += 1) {
+          appendString(String(offsets[index]).padStart(10, "0") + " 00000 n \n");
+        }
+        appendString("trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n" + String(xrefOffset) + "\n%%EOF");
+        return concatUint8Arrays(chunks);
+      }
+
+      function openViewPdfScaleModal(slotIndex) {
+        const paneCanvas = [ui.viewFrontCanvas, ui.viewBackCanvas, ui.viewLeftCanvas, ui.viewRightCanvas][slotIndex];
+        if (!paneCanvas || paneCanvas.classList.contains("hidden")) {
+          setStatus("Nothing to export in this view pane.");
+          render({ ui: true });
+          return;
+        }
+        state.pendingViewPdfExportSlot = slotIndex;
+        ui.viewPdfScaleValue.value = String(Math.max(1, Math.round(state.viewPdfScaleDenominator || 50)));
+        openModal(ui.viewPdfModal);
+        render({ ui: true });
+      }
+
+      function exportViewPanePdf(slotIndex, scaleDenominator) {
+        const paneCanvas = [ui.viewFrontCanvas, ui.viewBackCanvas, ui.viewLeftCanvas, ui.viewRightCanvas][slotIndex];
+        const view = activeCanvasView();
+        if (!view || !paneCanvas || paneCanvas.classList.contains("hidden")) {
+          setStatus("Nothing to export in this view pane.");
+          render({ ui: true });
+          return;
+        }
+        const meta = state.viewPaneRenderMeta[slotIndex];
+        if (!meta || !meta.metersPerPixel || !meta.pixelWidth || !meta.pixelHeight) {
+          setStatus("PDF export metadata is unavailable. Re-render the pane and try again.");
+          render({ ui: true });
+          return;
+        }
+        const scale = Math.max(1, Number(scaleDenominator) || 1);
+        const mmPerPixel = (meta.metersPerPixel * 1000) / scale;
+        const imageWidthMm = meta.pixelWidth * mmPerPixel;
+        const imageHeightMm = meta.pixelHeight * mmPerPixel;
+        const pageWidthMm = imageWidthMm + VIEW_PDF_MARGIN_MM * 2;
+        const pageHeightMm = imageHeightMm + VIEW_PDF_MARGIN_MM * 2;
+        const jpegDataUrl = paneCanvas.toDataURL("image/jpeg", 0.96);
+        const base64 = jpegDataUrl.split(",")[1] || "";
+        if (!base64) {
+          setStatus("PDF export failed.");
+          render({ ui: true });
+          return;
+        }
+        const jpegBytes = decodeBase64(base64);
+        const pdfBytes = buildSingleImagePdf({
+          jpegBytes,
+          imageWidthPx: meta.pixelWidth,
+          imageHeightPx: meta.pixelHeight,
+          pageWidthMm,
+          pageHeightMm,
+          marginMm: VIEW_PDF_MARGIN_MM,
+        });
+        const direction = state.viewPaneDirections[slotIndex];
+        const filename =
+          "millimetre-view-" +
+          slugifyFilenamePart(view.name, "view") +
+          "-" +
+          slugifyFilenamePart(viewDirectionLabel(direction), "direction") +
+          "-1to" +
+          String(scale) +
+          ".pdf";
+        const blob = new Blob([pdfBytes], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        state.viewPdfScaleDenominator = scale;
+        setStatus("PDF exported at 1:" + scale + ".");
+        render({ ui: true });
+      }
+
+      function applyViewPdfExport() {
+        if (!Number.isFinite(state.pendingViewPdfExportSlot)) return false;
+        const slotIndex = state.pendingViewPdfExportSlot;
+        const scale = Math.max(1, Number(ui.viewPdfScaleValue.value) || 1);
+        closeModal(ui.viewPdfModal);
+        exportViewPanePdf(slotIndex, scale);
+        return true;
       }
 
       function exportViewPaneDxf(slotIndex) {
@@ -6521,12 +6738,16 @@
           discardSettingsDraft();
           ui.settingsButton.classList.remove("active");
         }
+        if (modal === ui.viewPdfModal) {
+          state.pendingViewPdfExportSlot = null;
+        }
       }
 
       function openModal(modal) {
         ui.settingsMenu.classList.add("hidden");
         ui.sceneScaleModal.classList.add("hidden");
         ui.viewEditModal.classList.add("hidden");
+        ui.viewPdfModal.classList.add("hidden");
         modal.classList.remove("hidden");
         ui.modalBackdrop.classList.remove("hidden");
         if (modal === ui.settingsMenu) {
@@ -6558,6 +6779,12 @@
         if (isModalOpen(ui.viewEditModal)) {
           closeViewEditModal();
           setStatus("View layer edit cancelled.");
+          render({ ui: true });
+          return true;
+        }
+        if (isModalOpen(ui.viewPdfModal)) {
+          closeModal(ui.viewPdfModal);
+          setStatus("PDF export cancelled.");
           render({ ui: true });
           return true;
         }
@@ -12038,12 +12265,27 @@
         button.addEventListener("click", () => {
           const slotIndex = Number(button.dataset.viewExportSlot);
           const format = (button.dataset.viewExportFormat || "png").toLowerCase();
+          if (format === "pdf") {
+            openViewPdfScaleModal(slotIndex);
+            return;
+          }
           if (format === "dxf") {
             exportViewPaneDxf(slotIndex);
             return;
           }
           exportViewPanePng(slotIndex);
         });
+      });
+      ui.viewPdfCancelButton.addEventListener("click", () => {
+        closeModal(ui.viewPdfModal);
+        setStatus("PDF export cancelled.");
+        render({ ui: true });
+      });
+      ui.viewPdfApplyButton.addEventListener("click", applyViewPdfExport);
+      ui.viewPdfScaleValue.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        applyViewPdfExport();
       });
       ui.sceneScaleCancelButton.addEventListener("click", () => {
         closeModal(ui.sceneScaleModal);
@@ -12468,7 +12710,11 @@
           }
           return;
         }
-        const hasOpenModal = isModalOpen(ui.settingsMenu) || isModalOpen(ui.sceneScaleModal) || isModalOpen(ui.viewEditModal);
+        const hasOpenModal =
+          isModalOpen(ui.settingsMenu) ||
+          isModalOpen(ui.sceneScaleModal) ||
+          isModalOpen(ui.viewEditModal) ||
+          isModalOpen(ui.viewPdfModal);
         if (event.key === "Delete" && state.activeTool === "select" && !hasOpenModal && !isEditableTarget) {
           if (deleteActiveTarget()) {
             event.preventDefault();

@@ -453,6 +453,10 @@ The current goal is to keep building `Milimetre` as a strong, minimal infinite c
   - export is raster and matches the currently rendered pane
   - filenames include the active view name and pane direction
   - the pane export control is disabled when that pane has no rendered output
+- `Views` now also support per-pane `PDF` export:
+  - `Export PDF` opens a modal with custom scale denominator input (`1:x`)
+  - PDF is raster and captures exactly what the pane currently shows (colors, depth effect, sky, ground, section appearance)
+  - PDF page size is custom (derived from chosen scale) with a fixed safety margin around the rendered pane
 - When `Section Cut` is enabled in `Views`, `Ground` and `Horizon Line` render behind the view drawing instead of over it:
   - this preserves underground / below-grade geometry visibility in section-style views
   - when `Section Cut` is off, ground and horizon keep their normal foreground behavior
