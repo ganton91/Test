@@ -17,7 +17,7 @@
 ### Max Zoom των panels (offscreen render scale)
 **Αρχείο:** `index.html`
 **Μεταβλητή:** `MAX_OFFSCREEN_PX` και το `Math.min(4, ...)` μέσα στη `renderDirectionalViewOutput`
-**Τρέχουσα τιμή:** max 4× zoom (canvas έως 2048px)
+**Τρέχουσα τιμή:** max 8× zoom (canvas έως 8192px)
 **Αναζήτηση:** `const MAX_OFFSCREEN_PX =`
 
 Τα panels ζωγραφίζονται μία φορά σε `offscreenScale × CSS size` pixels (όχι περισσότερο από 2048px). Το zoom/pan είναι pure CSS transform χωρίς re-render. Το max zoom είναι πάντα **4×** (sharp ποιότητα μέχρι `offscreenScale ×`, ελαφρά blur μετά). Αύξηση `MAX_OFFSCREEN_PX` → καλύτερη ποιότητα σε μεγαλύτερα panels, βαρύτερος render. Αλλαγή `maxZoom: 4` → αλλαγή max zoom.

@@ -5088,8 +5088,8 @@
           surfaceHeight = canvas.clientHeight;
           ratio = window.devicePixelRatio || 1;
           // Render at offscreenScale × CSS size so zoom is a pure CSS transform (no re-render)
-          const MAX_OFFSCREEN_PX = 2048;
-          offscreenScale = Math.max(1, Math.min(4, Math.floor(MAX_OFFSCREEN_PX / (Math.max(surfaceWidth, surfaceHeight) * ratio))));
+          const MAX_OFFSCREEN_PX = 8192;
+          offscreenScale = Math.max(1, Math.min(8, Math.floor(MAX_OFFSCREEN_PX / (Math.max(surfaceWidth, surfaceHeight) * ratio))));
           canvas.width = Math.round(surfaceWidth * ratio * offscreenScale);
           canvas.height = Math.round(surfaceHeight * ratio * offscreenScale);
           context.setTransform(1, 0, 0, 1, 0, 0);
@@ -5118,7 +5118,7 @@
           pixelHeight: canvas.height,
           surfaceWidth,
           surfaceHeight,
-          maxZoom: 4,
+          maxZoom: offscreenScale,
         });
 
         // Apply cell-space transform: drawing in cell coordinates maps to canvas pixels
@@ -5150,7 +5150,7 @@
 
         // === Background (sky/ground base) — drawn in screen space before transform ===
         context.save();
-        context.setTransform(ratio, 0, 0, ratio, 0, 0);
+        context.setTransform(drawRatio, 0, 0, drawRatio, 0, 0);
         context.fillStyle = isPlanDirection ? activeViewPlanGroundColor() : activeViewSkyColor();
         context.fillRect(0, 0, surfaceWidth, surfaceHeight);
         context.restore();
