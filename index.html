@@ -5069,7 +5069,7 @@
         emptyState.classList.add("hidden");
 
         const context = canvas.getContext("2d");
-        let surfaceWidth, surfaceHeight, ratio, exportPaddingPx = 0;
+        let surfaceWidth, surfaceHeight, ratio, exportPaddingPx = 0, offscreenScale = 1;
         if (exportOverride) {
           // Size canvas to content + margin at the target resolution
           const targetRes = exportOverride.targetResolution || 4000;
@@ -5087,6 +5087,12 @@
           surfaceWidth = canvas.clientWidth;
           surfaceHeight = canvas.clientHeight;
           ratio = window.devicePixelRatio || 1;
+          // Render at offscreenScale × CSS size so zoom is a pure CSS transform (no re-render)
+          const MAX_OFFSCREEN_PX = 2048;
+          offscreenScale = Math.max(1, Math.min(4, Math.floor(MAX_OFFSCREEN_PX / (Math.max(surfaceWidth, surfaceHeight) * ratio))));
+          canvas.width = Math.round(surfaceWidth * ratio * offscreenScale);
+          canvas.height = Math.round(surfaceHeight * ratio * offscreenScale);
+          context.setTransform(1, 0, 0, 1, 0, 0);
         }
         const padding = exportOverride ? exportPaddingPx : 64;
         const availableWidth = Math.max(1, surfaceWidth - padding * 2);
@@ -5095,32 +5101,31 @@
         // Fit scale: CSS pixels per cell at zoom=1
         const fitScale = Math.min(availableWidth / Math.max(1, contentColumns), availableHeight / Math.max(1, totalRows));
 
-        // Viewport state (zoom/pan per pane) — export always uses zoom=1 centered
-        const viewport = exportOverride
-          ? { panX: 0, panY: 0, zoom: 1 }
-          : (Number.isFinite(slotIndex) && state.viewPaneViewports && state.viewPaneViewports[slotIndex])
-            || { panX: 0, panY: 0, zoom: 1 };
-        const effectiveScale = fitScale * viewport.zoom;
+        // Always render at zoom=1, pan=0 — viewport (zoom/pan) is applied as a CSS transform on the element
+        const effectiveScale = fitScale;
+        const drawOffsetX = (surfaceWidth - contentColumns * effectiveScale) / 2;
+        const drawOffsetY = (surfaceHeight - totalRows * effectiveScale) / 2;
 
-        // Center offset with pan applied (CSS pixel space)
-        const drawOffsetX = (surfaceWidth - contentColumns * effectiveScale) / 2 + viewport.panX;
-        const drawOffsetY = (surfaceHeight - totalRows * effectiveScale) / 2 + viewport.panY;
+        // Canvas pixel scale: ratio × offscreenScale for screen, ratio for export
+        const drawRatio = ratio * offscreenScale;
 
-        // metersPerPixel metadata for PDF export — always at zoom=1 for consistent scale reference
+        // metersPerPixel metadata for PDF export
         const backingScaleX = canvas.width / Math.max(1, surfaceWidth);
         const metersPerCssPixel = 1 / Math.max(1e-9, fitScale * CELLS_PER_METER);
         setPaneMeta({
           metersPerPixel: metersPerCssPixel / Math.max(1e-9, backingScaleX),
           pixelWidth: canvas.width,
           pixelHeight: canvas.height,
+          surfaceWidth,
+          surfaceHeight,
+          maxZoom: 4,
         });
 
-        // Apply cell-space transform: drawing in cell coordinates (cx, cy)
-        // maps to device pixels at (drawOffsetX + cx*effectiveScale, drawOffsetY + cy*effectiveScale) * ratio
+        // Apply cell-space transform: drawing in cell coordinates maps to canvas pixels
         context.setTransform(
-          effectiveScale * ratio, 0,
-          0, effectiveScale * ratio,
-          drawOffsetX * ratio, drawOffsetY * ratio
+          effectiveScale * drawRatio, 0,
+          0, effectiveScale * drawRatio,
+          drawOffsetX * drawRatio, drawOffsetY * drawRatio
         );
 
         // Helper: convert screen pixel width to cell-space line width (strokes scale with zoom)
@@ -5387,56 +5392,88 @@
           context.restore();
         }
 
+        // Apply viewport (zoom/pan) as CSS transform — no re-render needed during interaction
+        if (!exportOverride && Number.isFinite(slotIndex)) {
+          const vp = (state.viewPaneViewports && state.viewPaneViewports[slotIndex]) || { panX: 0, panY: 0, zoom: 1 };
+          canvas.style.transformOrigin = "center center";
+          canvas.style.transform = (vp.zoom === 1 && vp.panX === 0 && vp.panY === 0)
+            ? ""
+            : `translate(${vp.panX}px, ${vp.panY}px) scale(${vp.zoom})`;
+        }
+
         return computedMeta;
       }
 
       function setupViewPaneInteraction() {
         const paneCanvases = [ui.viewFrontCanvas, ui.viewBackCanvas, ui.viewLeftCanvas, ui.viewRightCanvas];
+        // Apply viewport CSS transform (zoom + pan) to a pane canvas, with pan clamped to image bounds
+        const applyViewportCssTransform = (canvas, slotIndex) => {
+          const vp = state.viewPaneViewports && state.viewPaneViewports[slotIndex];
+          const meta = state.viewPaneRenderMeta && state.viewPaneRenderMeta[slotIndex];
+          if (!vp) return;
+          const W = (meta && meta.surfaceWidth) || canvas.clientWidth;
+          const H = (meta && meta.surfaceHeight) || canvas.clientHeight;
+          const maxPanX = Math.max(0, (vp.zoom - 1) * W / 2);
+          const maxPanY = Math.max(0, (vp.zoom - 1) * H / 2);
+          vp.panX = Math.max(-maxPanX, Math.min(maxPanX, vp.panX));
+          vp.panY = Math.max(-maxPanY, Math.min(maxPanY, vp.panY));
+          canvas.style.transformOrigin = "center center";
+          canvas.style.transform = (vp.zoom === 1 && vp.panX === 0 && vp.panY === 0)
+            ? ""
+            : `translate(${vp.panX}px, ${vp.panY}px) scale(${vp.zoom})`;
+        };
+
         paneCanvases.forEach((canvas, slotIndex) => {
           if (!canvas) return;
           let isPanning = false;
           let panStartX = 0;
           let panStartY = 0;
           let panStartViewport = null;
+
           canvas.addEventListener("wheel", (event) => {
             event.preventDefault();
             if (!state.viewPaneViewports || !state.viewPaneViewports[slotIndex]) return;
             const vp = state.viewPaneViewports[slotIndex];
+            const meta = state.viewPaneRenderMeta && state.viewPaneRenderMeta[slotIndex];
+            const maxZoom = (meta && meta.maxZoom) || 4;
             const rect = canvas.getBoundingClientRect();
-            const mouseX = event.clientX - rect.left;
-            const mouseY = event.clientY - rect.top;
             const zoomFactor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
-            const newZoom = Math.max(1, Math.min(20, vp.zoom * zoomFactor));
-            const scale = newZoom / vp.zoom;
-            vp.panX = mouseX - scale * (mouseX - vp.panX);
-            vp.panY = mouseY - scale * (mouseY - vp.panY);
+            const newZoom = Math.max(1, Math.min(maxZoom, vp.zoom * zoomFactor));
+            const zoomRatio = newZoom / vp.zoom;
+            // Zoom toward mouse cursor (relative to panel center)
+            vp.panX += (event.clientX - rect.left - rect.width / 2) * (1 - zoomRatio);
+            vp.panY += (event.clientY - rect.top - rect.height / 2) * (1 - zoomRatio);
             vp.zoom = newZoom;
-            render({ content: true });
+            applyViewportCssTransform(canvas, slotIndex);
           }, { passive: false });
+
           canvas.addEventListener("pointerdown", (event) => {
-            if (event.button === 0 || event.button === 1) {
-              isPanning = true;
-              panStartX = event.clientX;
-              panStartY = event.clientY;
-              panStartViewport = { ...state.viewPaneViewports[slotIndex] };
-              canvas.setPointerCapture(event.pointerId);
-              event.preventDefault();
-            }
+            if (event.button !== 0 && event.button !== 1) return;
+            const vp = state.viewPaneViewports && state.viewPaneViewports[slotIndex];
+            if (!vp || vp.zoom <= 1) return; // no pan when fully zoomed out
+            isPanning = true;
+            panStartX = event.clientX;
+            panStartY = event.clientY;
+            panStartViewport = { panX: vp.panX, panY: vp.panY, zoom: vp.zoom };
+            canvas.setPointerCapture(event.pointerId);
+            event.preventDefault();
           });
+
           canvas.addEventListener("pointermove", (event) => {
             if (!isPanning || !panStartViewport) return;
             state.viewPaneViewports[slotIndex].panX = panStartViewport.panX + (event.clientX - panStartX);
             state.viewPaneViewports[slotIndex].panY = panStartViewport.panY + (event.clientY - panStartY);
-            render({ content: true });
+            applyViewportCssTransform(canvas, slotIndex);
           });
-          canvas.addEventListener("pointerup", () => {
-            isPanning = false;
-            panStartViewport = null;
-          });
+
+          canvas.addEventListener("pointerup", () => { isPanning = false; panStartViewport = null; });
+          canvas.addEventListener("pointercancel", () => { isPanning = false; panStartViewport = null; });
+
           canvas.addEventListener("dblclick", () => {
             if (!state.viewPaneViewports) return;
             state.viewPaneViewports[slotIndex] = { panX: 0, panY: 0, zoom: 1 };
-            render({ content: true });
+            canvas.style.transformOrigin = "";
+            canvas.style.transform = "";
           });
         });
       }
