@@ -504,6 +504,11 @@ The current goal is to keep building `Milimetre` as a strong, minimal infinite c
 
 ## TODO
 
+- Each view layout preset (`1 Side`, `2 Sides`, `4 Sides`) should have its own independent pane direction memory:
+  - switching from `4 Sides` to `1 Side` and back should restore the pane directions as they were for each layout
+  - currently all layouts share the same `state.viewPaneDirections` array and overwrite each other
+  - implementation: store `viewPaneDirections` per layout key (e.g. `"1"`, `"2"`, `"4"`) in state, apply on layout switch
+
 - Add `Export Styles` as a separate action from full project export:
   - export only style/settings payload, not geometry/content (`scenes/layers/measurements/views` data body)
   - include global visual settings and view visual settings
