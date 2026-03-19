@@ -4285,6 +4285,50 @@
         return loops.filter((loop) => loop.length >= 4);
       }
 
+      // Computes the bounding box of ALL painted cells across all layers and elevations,
+      // used to produce a consistent viewport for all view panels.
+      function buildGlobalViewContentExtents(view) {
+        const bounds = viewCellBounds(view && view.bounds);
+        if (!bounds) return null;
+        const configuredLayers = orderedConfiguredLayersForView(view);
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        let minZ = Infinity, maxZ = -Infinity;
+        for (const { layer, config } of configuredLayers) {
+          const baseCells = Math.round(config.baseElevation * CELLS_PER_METER);
+          const heightCells = Math.max(0, Math.round(config.height * CELLS_PER_METER));
+          if (!heightCells) continue;
+          const topCells = baseCells + heightCells;
+          let layerHasCells = false;
+          for (const tile of Object.values(layer.tiles || {})) {
+            const tileMinX = tile.tileX * TILE_SIZE;
+            const tileMinY = tile.tileY * TILE_SIZE;
+            const tileMaxX = tileMinX + TILE_SIZE - 1;
+            const tileMaxY = tileMinY + TILE_SIZE - 1;
+            if (tileMaxX < bounds.minX || tileMinX > bounds.maxX ||
+                tileMaxY < bounds.minY || tileMinY > bounds.maxY) continue;
+            for (const [key] of tile.pixels.entries()) {
+              const [localX, localY] = key.split(":").map(Number);
+              const cellX = tileMinX + localX;
+              const cellY = tileMinY + localY;
+              if (cellX < bounds.minX || cellX > bounds.maxX ||
+                  cellY < bounds.minY || cellY > bounds.maxY) continue;
+              if (cellX < minX) minX = cellX;
+              if (cellX > maxX) maxX = cellX;
+              if (cellY < minY) minY = cellY;
+              if (cellY > maxY) maxY = cellY;
+              layerHasCells = true;
+            }
+          }
+          if (layerHasCells) {
+            if (baseCells < minZ) minZ = baseCells;
+            if (topCells > maxZ) maxZ = topCells;
+          }
+        }
+        if (!Number.isFinite(minX)) return null;
+        return { minX, maxX, minY, maxY, minZ, maxZ };
+      }
+
       function buildDirectionalOcclusionGrid(view, direction) {
         if (!view) return { error: "no-view" };
         const bounds = viewCellBounds(view.bounds);
@@ -4415,6 +4459,9 @@
           // Plan view behaves like a horizontal section:
           // only mass at/under the plan height participates.
           if (entry.baseCells > planeCells) continue;
+          // Ground sheet at z=0: hide layers entirely below or at ground level
+          // when the plan is at or above ground (planeCells >= 0).
+          if (planeCells >= 0 && topCells <= 0) continue;
           const visibleDepthCells = Math.min(topCells, planeCells);
           const isCutAtPlane = !entry.excludeFromSectionCut && planeCells >= entry.baseCells && planeCells < topCells;
           for (const tile of Object.values(entry.layer.tiles || {})) {
@@ -5273,11 +5320,17 @@
             const activeView = activeCanvasView();
             const planeElevation = snapViewElevationMeters(Number(activeView && activeView.planElevation));
             if (planeElevation < 0 && state.viewEnvironment.planUndergroundEnabled) {
+              // Underground plan: same flood-fill logic as side views but without a horizon row.
+              // undergroundStartRow=0 means the whole grid is the underground zone.
+              // isCut cells act as boundary walls; enclosed empty spaces become holes.
+              const planHoleMask = buildGroundHoleMaskFromGrid(renderGrid, 0);
               context.save();
               context.beginPath();
               context.rect(-safeExt, -safeExt, renderColumns + safeExt * 2, renderRows + safeExt * 2);
-              const contentLoops = buildViewContoursFromGrid(renderGrid, (cell) => !!cell);
-              for (const loop of contentLoops) applyViewContourPath(context, loop);
+              const holeLoops = buildViewContoursFromGrid(renderGrid, (cell, r, c) =>
+                !!planHoleMask[r] && planHoleMask[r][c]
+              );
+              for (const loop of holeLoops) applyViewContourPath(context, loop);
               context.fillStyle = activeViewPlanUndergroundColor();
               context.fill("evenodd");
               context.restore();
