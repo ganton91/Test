@@ -72,10 +72,11 @@
 ### Plan View — Ground & Underground
 
 **Elevation >= 0 (Ground Plan Color):**
-- Background = `planGroundColor` (ολόκληρος ο canvas)
-- Painted content από πάνω
-- **Κανένα overlay/flood fill** — απλό flat background
-- Στο `buildPlanOcclusionGrid` (γρ. 4472): `if (planeCells >= 0 && topCells <= 0) continue;` → layers εξολοκλήρου κάτω από z=0 αποκλείονται από το grid
+- ΔΕΝ υπάρχει πλέον flat background fill για plan direction
+- Painted content ζωγραφίζεται κανονικά
+- Ground Plan overlay: `buildGroundHoleMaskFromGrid(renderGrid, 0)` — ίδια λογική με underground
+- Full-canvas `rect` με `evenodd` τρύπες → fills με `planGroundColor`
+- Το φίλτρο `if (planeCells >= 0 && topCells <= 0) continue;` **έχει αφαιρεθεί** από το `buildPlanOcclusionGrid` → underground layers μπαίνουν στο grid, καλύπτονται από το overlay
 
 **Elevation < 0 (Underground Plan Color):**
 - Background = `planGroundColor`
@@ -90,4 +91,4 @@
 |---|---|---|
 | Flood fill boundary | isCut + zero-cap row (z=0 line) | isCut μόνο (no cap row) |
 | `undergroundStartRow` | `contentMaxZ` (z=0 row) | `0` (ολόκληρο το grid) |
-| Explicit pre-filter | Μόνο στο DXF, όχι στο render | `buildPlanOcclusionGrid` αποκλείει layers με `topCells <= 0` |
+| Explicit pre-filter | Μόνο στο DXF, όχι στο render | Κανένας πλέον (φίλτρο αφαιρέθηκε) |
