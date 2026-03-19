@@ -868,7 +868,7 @@
 
       .view-layout-toolbar {
         display: flex;
-        justify-content: flex-start;
+        justify-content: space-between;
         align-items: center;
         gap: 8px;
       }
@@ -2046,7 +2046,7 @@
                 <button class="view-layout-button" type="button" data-view-layout="4">4 Sides</button>
               </div>
               <div class="view-layout-group">
-                <button class="view-layout-button" type="button" id="viewPopoutButton">Pop-up in New Window</button>
+                <button class="view-layout-button" type="button" id="viewPopoutButton">Open in New Window</button>
               </div>
             </div>
             <div class="view-popout-notice hidden" id="viewPopoutNotice"></div>
@@ -3798,7 +3798,7 @@
             ui.viewPopoutButton.textContent = "Focus Window";
             ui.viewPopoutButton.disabled = false;
           } else {
-            ui.viewPopoutButton.textContent = "Pop-up in New Window";
+            ui.viewPopoutButton.textContent = "Open in New Window";
             ui.viewPopoutButton.disabled = !hasView;
           }
         }
