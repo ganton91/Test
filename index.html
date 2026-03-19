@@ -2610,6 +2610,12 @@
         viewLayoutPreset: 4,
         viewPaneDirections: ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"],
         viewPaneRenderMeta: [null, null, null, null],
+        viewPaneViewports: [
+          { panX: 0, panY: 0, zoom: 1 },
+          { panX: 0, panY: 0, zoom: 1 },
+          { panX: 0, panY: 0, zoom: 1 },
+          { panX: 0, panY: 0, zoom: 1 },
+        ],
         pendingViewPdfExportSlot: null,
         viewPdfScaleDenominator: 50,
         activeViewId: null,
@@ -4951,12 +4957,52 @@
         return { dxf, direction, view };
       }
 
-      function renderDirectionalViewOutput(canvas, emptyState, direction, placeholder, slotIndex = null) {
-        if (!canvas || !emptyState) return;
+      function applyViewContourPath(ctx, loop) {
+        if (!loop || loop.length < 3) return;
+        ctx.moveTo(loop[0].x, loop[0].y);
+        for (let i = 1; i < loop.length; i += 1) {
+          ctx.lineTo(loop[i].x, loop[i].y);
+        }
+        ctx.closePath();
+      }
+
+      function buildViewVectorFillGroups(renderGrid, nearestVisibleDepth, directionConfig) {
+        const rowCount = renderGrid.length;
+        const colCount = rowCount ? renderGrid[0].length : 0;
+        if (!rowCount || !colCount) return [];
+        const fillStyles = new Set();
+        for (let r = 0; r < rowCount; r += 1) {
+          const row = renderGrid[r];
+          for (let c = 0; c < colCount; c += 1) {
+            const cell = row[c];
+            if (!cell || cell.isCut) continue;
+            const depthOffset = directionConfig.frontBoundary === "min"
+              ? cell.depth - nearestVisibleDepth
+              : nearestVisibleDepth - cell.depth;
+            fillStyles.add(hexToRgba(applyViewDepthShading(cell.color, depthOffset), cell.opacity));
+          }
+        }
+        const result = [];
+        for (const fillStyle of fillStyles) {
+          const loops = buildViewContoursFromGrid(renderGrid, (cell) => {
+            if (!cell || cell.isCut) return false;
+            const depthOffset = directionConfig.frontBoundary === "min"
+              ? cell.depth - nearestVisibleDepth
+              : nearestVisibleDepth - cell.depth;
+            return hexToRgba(applyViewDepthShading(cell.color, depthOffset), cell.opacity) === fillStyle;
+          });
+          if (loops.length) result.push({ fillStyle, loops });
+        }
+        return result;
+      }
+
+      function renderDirectionalViewOutput(canvas, emptyState, direction, placeholder, slotIndex = null, exportOverride = null) {
+        if (!canvas || !emptyState) return null;
         const isPlanDirection = direction === "plan";
+        let computedMeta = null;
         const setPaneMeta = (meta) => {
-          if (!Number.isFinite(slotIndex)) return;
-          state.viewPaneRenderMeta[slotIndex] = meta;
+          computedMeta = meta;
+          if (!exportOverride && Number.isFinite(slotIndex)) state.viewPaneRenderMeta[slotIndex] = meta;
         };
         const build = isPlanDirection
           ? buildPlanOcclusionGrid(activeCanvasView())
@@ -4992,656 +5038,377 @@
           return;
         }
         const { directionConfig, contentColumns, totalRows, contentMaxZ } = build;
+        const renderGrid = build.grid;
+        const renderRows = totalRows;
+        const renderColumns = contentColumns;
 
         canvas.classList.remove("hidden");
         emptyState.classList.add("hidden");
+
         const context = canvas.getContext("2d");
-        resizeViewPaneCanvas(canvas, context);
-        const surfaceWidth = canvas.clientWidth;
-        const surfaceHeight = canvas.clientHeight;
-        const padding = 18;
+        let surfaceWidth, surfaceHeight, ratio;
+        if (exportOverride) {
+          // Size canvas exactly to content aspect ratio at the target resolution
+          const targetRes = exportOverride.targetResolution || 4000;
+          const ppc = targetRes / Math.max(contentColumns, totalRows);
+          surfaceWidth = Math.max(1, Math.round(contentColumns * ppc));
+          surfaceHeight = Math.max(1, Math.round(totalRows * ppc));
+          ratio = 1;
+          canvas.width = surfaceWidth;
+          canvas.height = surfaceHeight;
+          context.setTransform(1, 0, 0, 1, 0, 0);
+          context.imageSmoothingEnabled = false;
+        } else {
+          resizeViewPaneCanvas(canvas, context);
+          surfaceWidth = canvas.clientWidth;
+          surfaceHeight = canvas.clientHeight;
+          ratio = window.devicePixelRatio || 1;
+        }
+        const padding = exportOverride ? 0 : 18;
         const availableWidth = Math.max(1, surfaceWidth - padding * 2);
         const availableHeight = Math.max(1, surfaceHeight - padding * 2);
-        const uniformSourceScale = Math.max(1, contentColumns / availableWidth, totalRows / availableHeight);
-        const drawEnvironmentBehindContent = false;
 
-        const sourceGrid = build.grid;
-        let renderGrid = sourceGrid;
-        let renderRows = totalRows;
-        let renderColumns = contentColumns;
-        if (uniformSourceScale > 1) {
-          const reducedRows = Math.max(1, Math.floor((totalRows - 1) / uniformSourceScale) + 1);
-          const reducedColumns = Math.max(1, Math.floor((contentColumns - 1) / uniformSourceScale) + 1);
-          const reducedGrid = Array.from({ length: reducedRows }, () => Array(reducedColumns).fill(null));
-          const isCandidateCloser = (candidate, existing) => {
-            if (!existing) return true;
-            if (directionConfig.frontBoundary === "min") {
-              if (candidate.depth !== existing.depth) return candidate.depth < existing.depth;
-            } else if (candidate.depth !== existing.depth) {
-              return candidate.depth > existing.depth;
-            }
-            return candidate.orderIndex < existing.orderIndex;
-          };
-          for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
-            for (let columnIndex = 0; columnIndex < contentColumns; columnIndex += 1) {
-              const cell = sourceGrid[rowIndex][columnIndex];
-              if (!cell) continue;
-              const reducedRow = Math.min(reducedRows - 1, Math.floor(rowIndex / uniformSourceScale));
-              const reducedColumn = Math.min(reducedColumns - 1, Math.floor(columnIndex / uniformSourceScale));
-              const existing = reducedGrid[reducedRow][reducedColumn];
-              if (isCandidateCloser(cell, existing)) {
-                reducedGrid[reducedRow][reducedColumn] = { ...cell };
-              } else if (existing) {
-                if (cell.isCut) existing.isCut = true;
-                if (cell.forceOutline) existing.forceOutline = true;
-              }
-            }
-          }
-          renderGrid = reducedGrid;
-          renderRows = reducedRows;
-          renderColumns = reducedColumns;
-        }
+        // Fit scale: CSS pixels per cell at zoom=1
+        const fitScale = Math.min(availableWidth / Math.max(1, contentColumns), availableHeight / Math.max(1, totalRows));
 
-        const rawCellPixelSize = Math.max(1, Math.min(availableWidth / renderColumns, availableHeight / renderRows));
-        const cellPixelSize = Math.max(1, snapPixel(rawCellPixelSize, "floor"));
-        const drawWidth = renderColumns * cellPixelSize;
-        const drawHeight = renderRows * cellPixelSize;
-        const offsetX = snapPixel((surfaceWidth - drawWidth) / 2);
-        const offsetY = snapPixel((surfaceHeight - drawHeight) / 2);
-        const zeroLineY = snapPixel(offsetY + (contentMaxZ / uniformSourceScale) * cellPixelSize);
-        const undergroundStartRow = Math.max(0, Math.min(renderRows - 1, Math.ceil(contentMaxZ / Math.max(1e-9, uniformSourceScale))));
+        // Viewport state (zoom/pan per pane) — export always uses zoom=1 centered
+        const viewport = exportOverride
+          ? { panX: 0, panY: 0, zoom: 1 }
+          : (Number.isFinite(slotIndex) && state.viewPaneViewports && state.viewPaneViewports[slotIndex])
+            || { panX: 0, panY: 0, zoom: 1 };
+        const effectiveScale = fitScale * viewport.zoom;
+
+        // Center offset with pan applied (CSS pixel space)
+        const drawOffsetX = (surfaceWidth - contentColumns * effectiveScale) / 2 + viewport.panX;
+        const drawOffsetY = (surfaceHeight - totalRows * effectiveScale) / 2 + viewport.panY;
+
+        // metersPerPixel metadata for PDF export — always at zoom=1 for consistent scale reference
         const backingScaleX = canvas.width / Math.max(1, surfaceWidth);
-        const cellMeters = uniformSourceScale / CELLS_PER_METER;
-        const metersPerCssPixel = cellMeters / Math.max(1e-9, cellPixelSize);
+        const metersPerCssPixel = 1 / Math.max(1e-9, fitScale * CELLS_PER_METER);
         setPaneMeta({
           metersPerPixel: metersPerCssPixel / Math.max(1e-9, backingScaleX),
           pixelWidth: canvas.width,
           pixelHeight: canvas.height,
         });
 
-        context.clearRect(0, 0, surfaceWidth, surfaceHeight);
-        context.fillStyle = isPlanDirection ? activeViewPlanGroundColor() : activeViewSkyColor();
-        context.fillRect(0, 0, surfaceWidth, surfaceHeight);
+        // Apply cell-space transform: drawing in cell coordinates (cx, cy)
+        // maps to device pixels at (drawOffsetX + cx*effectiveScale, drawOffsetY + cy*effectiveScale) * ratio
+        context.setTransform(
+          effectiveScale * ratio, 0,
+          0, effectiveScale * ratio,
+          drawOffsetX * ratio, drawOffsetY * ratio
+        );
 
-        const buildGroundHoleMask = () => {
-          const holeMask = Array.from({ length: renderRows }, () => Array(renderColumns).fill(false));
-          const visitedVoid = Array.from({ length: renderRows }, () => Array(renderColumns).fill(false));
-          const zeroCapRow = undergroundStartRow - 1;
-          const neighbors = [
-            [-1, 0],
-            [1, 0],
-            [0, -1],
-            [0, 1],
-          ];
-          const isFloodBoundaryCell = (rowIndex, columnIndex) => {
-            if (rowIndex < 0 || rowIndex >= renderRows || columnIndex < 0 || columnIndex >= renderColumns) return false;
-            if (rowIndex === zeroCapRow) return true;
-            const cell = renderGrid[rowIndex] ? renderGrid[rowIndex][columnIndex] : null;
-            if (!cell) return false;
-            // Flood-fill boundary is a single rule-set: isCut OR any zero-cap cell.
-            if (cell.isCut) return true;
-            return false;
-          };
-          for (let rowIndex = undergroundStartRow; rowIndex < renderRows; rowIndex += 1) {
-            const row = renderGrid[rowIndex] || [];
-            for (let columnIndex = 0; columnIndex < renderColumns; columnIndex += 1) {
-              if (row[columnIndex] && row[columnIndex].isCut) holeMask[rowIndex][columnIndex] = true;
-            }
-          }
-          for (let startRow = undergroundStartRow; startRow < renderRows; startRow += 1) {
-            for (let startColumn = 0; startColumn < renderColumns; startColumn += 1) {
-              if (visitedVoid[startRow][startColumn]) continue;
-              if (isFloodBoundaryCell(startRow, startColumn)) {
-                visitedVoid[startRow][startColumn] = true;
-                continue;
-              }
+        // Helper: convert screen pixel width to cell-space line width (strokes scale with zoom)
+        const px = (screenPixels) => screenPixels / effectiveScale;
 
-              const queue = [[startRow, startColumn]];
-              const component = [];
-              let cursor = 0;
-              let leaks = false;
-              visitedVoid[startRow][startColumn] = true;
+        // Row where z=0 sits in cell-space (boundary between above-ground and underground)
+        const undergroundStartRow = contentMaxZ;
 
-              while (cursor < queue.length) {
-                const [rowIndex, columnIndex] = queue[cursor];
-                cursor += 1;
-                component.push([rowIndex, columnIndex]);
-
-                for (const [dy, dx] of neighbors) {
-                  const nextRow = rowIndex + dy;
-                  const nextColumn = columnIndex + dx;
-                  if (nextColumn < 0 || nextColumn >= renderColumns || nextRow >= renderRows) {
-                    leaks = true;
-                    continue;
-                  }
-                  if (nextRow < undergroundStartRow) {
-                    // Top side can be sealed by zero-cap/isCut boundary cells.
-                    if (!isFloodBoundaryCell(nextRow, nextColumn)) leaks = true;
-                    continue;
-                  }
-                  if (visitedVoid[nextRow][nextColumn]) continue;
-                  if (isFloodBoundaryCell(nextRow, nextColumn)) {
-                    visitedVoid[nextRow][nextColumn] = true;
-                    continue;
-                  }
-                  visitedVoid[nextRow][nextColumn] = true;
-                  queue.push([nextRow, nextColumn]);
-                }
-              }
-
-              if (!leaks) {
-                for (const [rowIndex, columnIndex] of component) {
-                  holeMask[rowIndex][columnIndex] = true;
-                }
-              }
-            }
-          }
-          return holeMask;
-        };
-
-        const groundHoleMask = buildGroundHoleMask();
-
-        const drawGroundWithCutExclusions = () => {
-          if (isPlanDirection) {
-            if (!state.viewEnvironment.planUndergroundEnabled) return;
-            const activeView = activeCanvasView();
-            const planeElevation = snapViewElevationMeters(Number(activeView?.planElevation));
-            if (planeElevation >= 0) return;
-            context.fillStyle = activeViewPlanUndergroundColor();
-
-            // Plan underground paints as a full below-zero overlay for negative plan heights.
-            if (offsetX > 0) context.fillRect(0, 0, offsetX, surfaceHeight);
-            const rightStart = offsetX + drawWidth;
-            if (rightStart < surfaceWidth) context.fillRect(rightStart, 0, surfaceWidth - rightStart, surfaceHeight);
-
-            if (offsetY > 0) context.fillRect(offsetX, 0, drawWidth, offsetY);
-            const drawBottom = offsetY + drawHeight;
-            if (drawBottom < surfaceHeight) context.fillRect(offsetX, drawBottom, drawWidth, surfaceHeight - drawBottom);
-
-            // Inside projected area: same flood-fill hole exclusion rule as side grounds.
-            for (let rowIndex = 0; rowIndex < renderRows; rowIndex += 1) {
-              const rowTop = offsetY + rowIndex * cellPixelSize;
-              const rowBottom = rowTop + cellPixelSize;
-              if (rowTop >= surfaceHeight) break;
-
-              const paintY = Math.max(rowTop, 0);
-              const paintHeight = Math.min(rowBottom, surfaceHeight) - paintY;
-              if (paintHeight <= 0) continue;
-
-              let runStart = -1;
-              for (let columnIndex = 0; columnIndex <= renderColumns; columnIndex += 1) {
-                const isHoleCell =
-                  rowIndex >= undergroundStartRow &&
-                  columnIndex < renderColumns &&
-                  groundHoleMask[rowIndex][columnIndex];
-                const shouldPaint = columnIndex < renderColumns ? !isHoleCell : false;
-                if (shouldPaint && runStart === -1) {
-                  runStart = columnIndex;
-                  continue;
-                }
-                if (!shouldPaint && runStart !== -1) {
-                  context.fillRect(
-                    offsetX + runStart * cellPixelSize,
-                    paintY,
-                    (columnIndex - runStart) * cellPixelSize,
-                    paintHeight
-                  );
-                  runStart = -1;
-                }
-              }
-            }
-            return;
-          }
-          const groundTop = Math.max(0, zeroLineY);
-          if (groundTop >= surfaceHeight) return;
-          context.fillStyle = activeViewGroundColor();
-
-          // Outside the projected drawing area, ground always paints normally.
-          if (offsetX > 0) context.fillRect(0, groundTop, offsetX, surfaceHeight - groundTop);
-          const rightStart = offsetX + drawWidth;
-          if (rightStart < surfaceWidth) context.fillRect(rightStart, groundTop, surfaceWidth - rightStart, surfaceHeight - groundTop);
-
-          // Below the drawing area, inside projected width, ground paints normally.
-          const drawBottom = offsetY + drawHeight;
-          if (drawBottom < surfaceHeight) {
-            const y = Math.max(groundTop, drawBottom);
-            if (y < surfaceHeight) {
-              context.fillRect(offsetX, y, drawWidth, surfaceHeight - y);
-            }
-          }
-
-          // Inside projected drawing area: paint ground row-by-row,
-          // excluding direct isCut cells and enclosed underground voids.
-          for (let rowIndex = 0; rowIndex < renderRows; rowIndex += 1) {
-            const rowTop = offsetY + rowIndex * cellPixelSize;
-            const rowBottom = rowTop + cellPixelSize;
-            if (rowBottom <= groundTop) continue;
-            if (rowTop >= surfaceHeight) break;
-
-            const paintY = Math.max(rowTop, groundTop);
-            const paintHeight = Math.min(rowBottom, surfaceHeight) - paintY;
-            if (paintHeight <= 0) continue;
-
-            const row = renderGrid[rowIndex] || [];
-            let runStart = -1;
-            for (let columnIndex = 0; columnIndex <= renderColumns; columnIndex += 1) {
-              const isHoleCell =
-                rowIndex >= undergroundStartRow &&
-                columnIndex < renderColumns &&
-                groundHoleMask[rowIndex][columnIndex];
-              const shouldPaint = columnIndex < renderColumns ? !isHoleCell : false;
-              if (shouldPaint && runStart === -1) {
-                runStart = columnIndex;
-                continue;
-              }
-              if (!shouldPaint && runStart !== -1) {
-                context.fillRect(
-                  offsetX + runStart * cellPixelSize,
-                  paintY,
-                  (columnIndex - runStart) * cellPixelSize,
-                  paintHeight
-                );
-                runStart = -1;
-              }
-            }
-          }
-        };
-
-        const drawHorizonWithBlockMask = () => {
-          if (isPlanDirection || !state.viewEnvironment.horizonEnabled) return;
-          const horizonLineWidth = Math.max(1, Number(state.viewEnvironment.horizonWidth) || 1) * 2;
-          const horizonY = snapStrokeCenter(zeroLineY, horizonLineWidth);
-          context.strokeStyle = activeViewHorizonColor();
-          context.lineWidth = horizonLineWidth;
-          context.lineCap = "butt";
-          context.lineJoin = "miter";
-          const blockIntervals = [];
-          if (undergroundStartRow >= 0 && undergroundStartRow < renderRows) {
-            let runStart = -1;
-            for (let columnIndex = 0; columnIndex <= renderColumns; columnIndex += 1) {
-              const blocked =
-                columnIndex < renderColumns &&
-                groundHoleMask[undergroundStartRow][columnIndex];
-              if (blocked && runStart === -1) {
-                runStart = columnIndex;
-                continue;
-              }
-              if (!blocked && runStart !== -1) {
-                blockIntervals.push([runStart, columnIndex]);
-                runStart = -1;
-              }
-            }
-          }
-
-          let cursorX = 0;
-          const drawSegment = (fromX, toX) => {
-            if (toX - fromX <= 0.01) return;
-            const startX = snapPixel(fromX);
-            const endX = snapPixel(toX);
-            context.beginPath();
-            context.moveTo(startX, horizonY);
-            context.lineTo(endX, horizonY);
-            context.stroke();
-          };
-          for (const [startColumn, endColumn] of blockIntervals) {
-            const startX = Math.max(0, Math.min(surfaceWidth, offsetX + startColumn * cellPixelSize));
-            const endX = Math.max(0, Math.min(surfaceWidth, offsetX + endColumn * cellPixelSize));
-            drawSegment(cursorX, startX);
-            cursorX = Math.max(cursorX, endX);
-          }
-          drawSegment(cursorX, surfaceWidth);
-        };
-
-        if (drawEnvironmentBehindContent) {
-          if (zeroLineY < surfaceHeight) {
-            drawGroundWithCutExclusions();
-          }
-
-          drawHorizonWithBlockMask();
-        }
-
+        // === Nearest visible depth ===
         let nearestVisibleDepth = directionConfig.frontBoundary === "min" ? Infinity : -Infinity;
-        for (let rowIndex = 0; rowIndex < renderRows; rowIndex += 1) {
-          for (let columnIndex = 0; columnIndex < renderColumns; columnIndex += 1) {
-            const cell = renderGrid[rowIndex][columnIndex];
+        for (let r = 0; r < renderRows; r += 1) {
+          for (let c = 0; c < renderColumns; c += 1) {
+            const cell = renderGrid[r][c];
             if (!cell) continue;
             if (directionConfig.frontBoundary === "min") {
-              nearestVisibleDepth = Math.min(nearestVisibleDepth, cell.depth);
+              if (cell.depth < nearestVisibleDepth) nearestVisibleDepth = cell.depth;
             } else {
-              nearestVisibleDepth = Math.max(nearestVisibleDepth, cell.depth);
+              if (cell.depth > nearestVisibleDepth) nearestVisibleDepth = cell.depth;
             }
           }
         }
 
-        const shadedRuns = buildViewRowRuns(renderGrid, (cell) => {
-          if (!cell) return null;
-          const depthOffsetCells = directionConfig.frontBoundary === "min"
-            ? cell.depth - nearestVisibleDepth
-            : nearestVisibleDepth - cell.depth;
-          const shadedColor = applyViewDepthShading(cell.color, depthOffsetCells);
-          const fillStyle = hexToRgba(shadedColor, cell.opacity);
-          return {
-            key: fillStyle,
-            fillStyle,
-          };
-        });
-        for (const run of shadedRuns) {
-          context.fillStyle = run.fillStyle;
-          context.fillRect(
-            offsetX + run.columnStart * cellPixelSize,
-            offsetY + run.rowIndex * cellPixelSize,
-            (run.columnEnd - run.columnStart) * cellPixelSize,
-            cellPixelSize
-          );
+        // === Background (sky/ground base) — drawn in screen space before transform ===
+        context.save();
+        context.setTransform(ratio, 0, 0, ratio, 0, 0);
+        context.fillStyle = isPlanDirection ? activeViewPlanGroundColor() : activeViewSkyColor();
+        context.fillRect(0, 0, surfaceWidth, surfaceHeight);
+        context.restore();
+
+        // === Ground hole mask (flood-fill, unchanged compute) ===
+        const groundHoleMask = buildGroundHoleMaskFromGrid(renderGrid, undergroundStartRow);
+
+        // === Vector fills (non-cut cells grouped by depth-shaded fill style) ===
+        {
+          const fillGroups = buildViewVectorFillGroups(renderGrid, nearestVisibleDepth, directionConfig);
+          context.save();
+          for (const group of fillGroups) {
+            context.beginPath();
+            for (const loop of group.loops) applyViewContourPath(context, loop);
+            context.fillStyle = group.fillStyle;
+            context.fill("evenodd");
+          }
+          context.restore();
         }
 
-        const hasForcedLayerOutline = renderGrid.some((row) => row.some((cell) => cell && cell.forceOutline));
-        const drawViewOutlinePass = ({ globalPass, layerPass }) => {
-          if ((!globalPass || !state.viewOutlineEffect.enabled) && (!layerPass || !hasForcedLayerOutline)) return;
-          context.save();
-          const fillOutlineRect = (color, rectX, rectY, rectWidth, rectHeight) => {
-            context.fillStyle = color;
-            fillRectDeviceSnapped(context, rectX, rectY, rectWidth, rectHeight);
-          };
-          for (let rowIndex = 0; rowIndex < renderRows; rowIndex += 1) {
-            for (let columnIndex = 0; columnIndex < renderColumns; columnIndex += 1) {
-              const cell = renderGrid[rowIndex][columnIndex];
-              if (!cell) continue;
-              if (layerPass && !cell.forceOutline) continue;
-              const x = offsetX + columnIndex * cellPixelSize;
-              const y = offsetY + rowIndex * cellPixelSize;
-              const strokeThickness = globalPass
-                ? quantizeStrokeThickness(Math.max(1, Number(state.viewOutlineEffect.thickness) || 1))
-                : quantizeStrokeThickness(Math.max(1, Math.min(12, Math.round(Number(cell.outlineWidth) || 1))));
-              const outlineColor = globalPass
-                ? state.viewOutlineEffect.color
-                : cell.outlineColor || state.viewOutlineEffect.color;
-              const topNeighbor = rowIndex > 0 ? renderGrid[rowIndex - 1][columnIndex] : null;
-              const bottomNeighbor = rowIndex < renderRows - 1 ? renderGrid[rowIndex + 1][columnIndex] : null;
-              const leftNeighbor = columnIndex > 0 ? renderGrid[rowIndex][columnIndex - 1] : null;
-              const rightNeighbor = columnIndex < renderColumns - 1 ? renderGrid[rowIndex][columnIndex + 1] : null;
-              const topLeftNeighbor = rowIndex > 0 && columnIndex > 0 ? renderGrid[rowIndex - 1][columnIndex - 1] : null;
-              const topRightNeighbor =
-                rowIndex > 0 && columnIndex < renderColumns - 1 ? renderGrid[rowIndex - 1][columnIndex + 1] : null;
-              const bottomLeftNeighbor =
-                rowIndex < renderRows - 1 && columnIndex > 0 ? renderGrid[rowIndex + 1][columnIndex - 1] : null;
-              const bottomRightNeighbor =
-                rowIndex < renderRows - 1 && columnIndex < renderColumns - 1 ? renderGrid[rowIndex + 1][columnIndex + 1] : null;
-              const boundaryInfo = (neighbor) => {
-                if (!neighbor) return { draw: true, outside: true };
-                const surfaceChanged = neighbor.depth !== cell.depth || neighbor.isCut !== cell.isCut;
-                if (surfaceChanged) {
-                  if (!layerPass) return { draw: true, outside: false };
-                  const neighborIsBehind = directionConfig.frontBoundary === "min"
-                    ? neighbor.depth > cell.depth
-                    : neighbor.depth < cell.depth;
-                  return { draw: true, outside: neighborIsBehind };
-                }
-                if (!layerPass) return { draw: false, outside: false };
-                if (neighbor.layerId === cell.layerId) return { draw: false, outside: false };
-                if (cell.forceOutline && !neighbor.forceOutline) return { draw: true, outside: true };
-                if (!cell.forceOutline && neighbor.forceOutline) return { draw: false, outside: false };
-                return cell.orderIndex <= neighbor.orderIndex
-                  ? { draw: true, outside: true }
-                  : { draw: false, outside: false };
-              };
-              const topBoundary = boundaryInfo(topNeighbor);
-              const bottomBoundary = boundaryInfo(bottomNeighbor);
-              const leftBoundary = boundaryInfo(leftNeighbor);
-              const rightBoundary = boundaryInfo(rightNeighbor);
-              const topLeftBoundary = boundaryInfo(topLeftNeighbor);
-              const topRightBoundary = boundaryInfo(topRightNeighbor);
-              const bottomLeftBoundary = boundaryInfo(bottomLeftNeighbor);
-              const bottomRightBoundary = boundaryInfo(bottomRightNeighbor);
-
-              if (topBoundary.draw) {
-                fillOutlineRect(outlineColor, x, y, cellPixelSize, strokeThickness);
-                if (topBoundary.outside) {
-                  fillOutlineRect(outlineColor, x, y - strokeThickness, cellPixelSize, strokeThickness);
-                }
-              }
-              if (bottomBoundary.draw) {
-                fillOutlineRect(outlineColor, x, y + cellPixelSize - strokeThickness, cellPixelSize, strokeThickness);
-                if (bottomBoundary.outside) {
-                  fillOutlineRect(outlineColor, x, y + cellPixelSize, cellPixelSize, strokeThickness);
-                }
-              }
-              if (leftBoundary.draw) {
-                fillOutlineRect(outlineColor, x, y, strokeThickness, cellPixelSize);
-                if (leftBoundary.outside) {
-                  fillOutlineRect(outlineColor, x - strokeThickness, y, strokeThickness, cellPixelSize);
-                }
-              }
-              if (rightBoundary.draw) {
-                fillOutlineRect(outlineColor, x + cellPixelSize - strokeThickness, y, strokeThickness, cellPixelSize);
-                if (rightBoundary.outside) {
-                  fillOutlineRect(outlineColor, x + cellPixelSize, y, strokeThickness, cellPixelSize);
-                }
-              }
-              if (topBoundary.draw && leftBoundary.draw) {
-                fillOutlineRect(outlineColor, x, y, strokeThickness, strokeThickness);
-              }
-              if (topBoundary.draw && rightBoundary.draw) {
-                fillOutlineRect(outlineColor, x + cellPixelSize - strokeThickness, y, strokeThickness, strokeThickness);
-              }
-              if (bottomBoundary.draw && leftBoundary.draw) {
-                fillOutlineRect(outlineColor, x, y + cellPixelSize - strokeThickness, strokeThickness, strokeThickness);
-              }
-              if (bottomBoundary.draw && rightBoundary.draw) {
-                fillOutlineRect(
-                  outlineColor,
-                  x + cellPixelSize - strokeThickness,
-                  y + cellPixelSize - strokeThickness,
-                  strokeThickness,
-                  strokeThickness
-                );
-              }
-              if (topBoundary.outside && leftBoundary.outside) {
-                fillOutlineRect(outlineColor, x - strokeThickness, y - strokeThickness, strokeThickness, strokeThickness);
-              }
-              if (topBoundary.outside && rightBoundary.outside) {
-                fillOutlineRect(outlineColor, x + cellPixelSize, y - strokeThickness, strokeThickness, strokeThickness);
-              }
-              if (bottomBoundary.outside && leftBoundary.outside) {
-                fillOutlineRect(outlineColor, x - strokeThickness, y + cellPixelSize, strokeThickness, strokeThickness);
-              }
-              if (bottomBoundary.outside && rightBoundary.outside) {
-                fillOutlineRect(outlineColor, x + cellPixelSize, y + cellPixelSize, strokeThickness, strokeThickness);
-              }
-
-              // Diagonal seam guard:
-              // when two orthogonal neighbors are treated as same surface (no draw),
-              // but diagonal is a boundary, fill the corner block to avoid tiny corner holes.
-              if (!topBoundary.draw && !leftBoundary.draw && topLeftBoundary.draw) {
-                fillOutlineRect(outlineColor, x, y, strokeThickness, strokeThickness);
-              }
-              if (!topBoundary.draw && !rightBoundary.draw && topRightBoundary.draw) {
-                fillOutlineRect(outlineColor, x + cellPixelSize - strokeThickness, y, strokeThickness, strokeThickness);
-              }
-              if (!bottomBoundary.draw && !leftBoundary.draw && bottomLeftBoundary.draw) {
-                fillOutlineRect(outlineColor, x, y + cellPixelSize - strokeThickness, strokeThickness, strokeThickness);
-              }
-              if (!bottomBoundary.draw && !rightBoundary.draw && bottomRightBoundary.draw) {
-                fillOutlineRect(
-                  outlineColor,
-                  x + cellPixelSize - strokeThickness,
-                  y + cellPixelSize - strokeThickness,
-                  strokeThickness,
-                  strokeThickness
-                );
+        // === Per-layer outlines (forceOutline cells, grouped by outlineColor × outlineWidth) ===
+        {
+          const layerOutlineGroups = new Map();
+          for (let r = 0; r < renderRows; r += 1) {
+            for (let c = 0; c < renderColumns; c += 1) {
+              const cell = renderGrid[r][c];
+              if (!cell || !cell.forceOutline) continue;
+              const key = (cell.outlineColor || state.viewOutlineEffect.color) + ":" + (cell.outlineWidth || 1);
+              if (!layerOutlineGroups.has(key)) {
+                layerOutlineGroups.set(key, {
+                  color: cell.outlineColor || state.viewOutlineEffect.color,
+                  width: Math.max(1, Math.min(12, Math.round(Number(cell.outlineWidth) || 1))),
+                });
               }
             }
           }
-          context.restore();
-        };
-        drawViewOutlinePass({ globalPass: false, layerPass: true });
-        drawViewOutlinePass({ globalPass: true, layerPass: false });
-
-        if (state.viewSectionCutEffect.enabled) {
-          context.save();
-          const cutColor = state.viewSectionCutEffect.color || defaultViewSectionCutColor();
-          const cutRuns = buildViewRowRuns(renderGrid, (cell) => {
-            if (!cell || !cell.isCut) return null;
-            const fillStyle = hexToRgba(cutColor, cell.opacity);
-            return {
-              key: fillStyle,
-              fillStyle,
-            };
-          });
-          for (const run of cutRuns) {
-            context.fillStyle = run.fillStyle;
-            context.fillRect(
-              offsetX + run.columnStart * cellPixelSize,
-              offsetY + run.rowIndex * cellPixelSize,
-              (run.columnEnd - run.columnStart) * cellPixelSize,
-              cellPixelSize
-            );
-          }
-          context.restore();
-        }
-
-        const drawSectionCutOutlinePass = () => {
-          if (!state.viewSectionCutOutlineEffect.enabled) return;
-          context.save();
-          const strokeThickness = quantizeStrokeThickness(Math.max(1, Number(state.viewSectionCutOutlineEffect.thickness) || 1));
-          const outlineColor = state.viewSectionCutOutlineEffect.color || defaultViewSectionCutOutlineColor();
-          const fillOutlineRect = (rectX, rectY, rectWidth, rectHeight) => {
-            context.fillStyle = outlineColor;
-            fillRectDeviceSnapped(context, rectX, rectY, rectWidth, rectHeight);
-          };
-          for (let rowIndex = 0; rowIndex < renderRows; rowIndex += 1) {
-            for (let columnIndex = 0; columnIndex < renderColumns; columnIndex += 1) {
-              const cell = renderGrid[rowIndex][columnIndex];
-              if (!cell || !cell.isCut) continue;
-              const x = offsetX + columnIndex * cellPixelSize;
-              const y = offsetY + rowIndex * cellPixelSize;
-              const topNeighbor = rowIndex > 0 ? renderGrid[rowIndex - 1][columnIndex] : null;
-              const bottomNeighbor = rowIndex < renderRows - 1 ? renderGrid[rowIndex + 1][columnIndex] : null;
-              const leftNeighbor = columnIndex > 0 ? renderGrid[rowIndex][columnIndex - 1] : null;
-              const rightNeighbor = columnIndex < renderColumns - 1 ? renderGrid[rowIndex][columnIndex + 1] : null;
-              const topLeftNeighbor = rowIndex > 0 && columnIndex > 0 ? renderGrid[rowIndex - 1][columnIndex - 1] : null;
-              const topRightNeighbor = rowIndex > 0 && columnIndex < renderColumns - 1 ? renderGrid[rowIndex - 1][columnIndex + 1] : null;
-              const bottomLeftNeighbor = rowIndex < renderRows - 1 && columnIndex > 0 ? renderGrid[rowIndex + 1][columnIndex - 1] : null;
-              const bottomRightNeighbor =
-                rowIndex < renderRows - 1 && columnIndex < renderColumns - 1 ? renderGrid[rowIndex + 1][columnIndex + 1] : null;
-              const boundaryInfo = (neighbor) => (!neighbor || !neighbor.isCut ? { draw: true, outside: true } : { draw: false, outside: false });
-              const topBoundary = boundaryInfo(topNeighbor);
-              const bottomBoundary = boundaryInfo(bottomNeighbor);
-              const leftBoundary = boundaryInfo(leftNeighbor);
-              const rightBoundary = boundaryInfo(rightNeighbor);
-
-              if (topBoundary.draw) {
-                fillOutlineRect(x, y, cellPixelSize, strokeThickness);
-                if (topBoundary.outside) fillOutlineRect(x, y - strokeThickness, cellPixelSize, strokeThickness);
-              }
-              if (bottomBoundary.draw) {
-                fillOutlineRect(x, y + cellPixelSize - strokeThickness, cellPixelSize, strokeThickness);
-                if (bottomBoundary.outside) fillOutlineRect(x, y + cellPixelSize, cellPixelSize, strokeThickness);
-              }
-              if (leftBoundary.draw) {
-                fillOutlineRect(x, y, strokeThickness, cellPixelSize);
-                if (leftBoundary.outside) fillOutlineRect(x - strokeThickness, y, strokeThickness, cellPixelSize);
-              }
-              if (rightBoundary.draw) {
-                fillOutlineRect(x + cellPixelSize - strokeThickness, y, strokeThickness, cellPixelSize);
-                if (rightBoundary.outside) fillOutlineRect(x + cellPixelSize, y, strokeThickness, cellPixelSize);
-              }
-              if (topBoundary.draw && leftBoundary.draw) fillOutlineRect(x, y, strokeThickness, strokeThickness);
-              if (topBoundary.draw && rightBoundary.draw) {
-                fillOutlineRect(x + cellPixelSize - strokeThickness, y, strokeThickness, strokeThickness);
-              }
-              if (bottomBoundary.draw && leftBoundary.draw) {
-                fillOutlineRect(x, y + cellPixelSize - strokeThickness, strokeThickness, strokeThickness);
-              }
-              if (bottomBoundary.draw && rightBoundary.draw) {
-                fillOutlineRect(
-                  x + cellPixelSize - strokeThickness,
-                  y + cellPixelSize - strokeThickness,
-                  strokeThickness,
-                  strokeThickness
-                );
-              }
-              if (topBoundary.outside && leftBoundary.outside) {
-                fillOutlineRect(x - strokeThickness, y - strokeThickness, strokeThickness, strokeThickness);
-              }
-              if (topBoundary.outside && rightBoundary.outside) {
-                fillOutlineRect(x + cellPixelSize, y - strokeThickness, strokeThickness, strokeThickness);
-              }
-              if (bottomBoundary.outside && leftBoundary.outside) {
-                fillOutlineRect(x - strokeThickness, y + cellPixelSize, strokeThickness, strokeThickness);
-              }
-              if (bottomBoundary.outside && rightBoundary.outside) {
-                fillOutlineRect(x + cellPixelSize, y + cellPixelSize, strokeThickness, strokeThickness);
-              }
-
-              if (!topBoundary.draw && !leftBoundary.draw && (!topLeftNeighbor || !topLeftNeighbor.isCut)) {
-                fillOutlineRect(x, y, strokeThickness, strokeThickness);
-              }
-              if (!topBoundary.draw && !rightBoundary.draw && (!topRightNeighbor || !topRightNeighbor.isCut)) {
-                fillOutlineRect(x + cellPixelSize - strokeThickness, y, strokeThickness, strokeThickness);
-              }
-              if (!bottomBoundary.draw && !leftBoundary.draw && (!bottomLeftNeighbor || !bottomLeftNeighbor.isCut)) {
-                fillOutlineRect(x, y + cellPixelSize - strokeThickness, strokeThickness, strokeThickness);
-              }
-              if (!bottomBoundary.draw && !rightBoundary.draw && (!bottomRightNeighbor || !bottomRightNeighbor.isCut)) {
-                fillOutlineRect(
-                  x + cellPixelSize - strokeThickness,
-                  y + cellPixelSize - strokeThickness,
-                  strokeThickness,
-                  strokeThickness
-                );
-              }
+          if (layerOutlineGroups.size) {
+            context.save();
+            for (const [key, group] of layerOutlineGroups) {
+              const loops = buildViewContoursFromGrid(renderGrid, (cell) => {
+                if (!cell || !cell.forceOutline) return false;
+                return (cell.outlineColor || state.viewOutlineEffect.color) + ":" + (cell.outlineWidth || 1) === key;
+              });
+              if (!loops.length) continue;
+              context.beginPath();
+              for (const loop of loops) applyViewContourPath(context, loop);
+              context.strokeStyle = group.color;
+              context.lineWidth = px(group.width);
+              context.lineJoin = "miter";
+              context.stroke();
             }
+            context.restore();
           }
-          context.restore();
-        };
-
-        if (!drawEnvironmentBehindContent) {
-          if (zeroLineY < surfaceHeight) {
-            drawGroundWithCutExclusions();
-          }
-
-          if (!isPlanDirection) drawHorizonWithBlockMask();
         }
 
-        drawSectionCutOutlinePass();
-
-        if (DEBUG_VIEW_CELL_GRID) {
+        // === Global outline (mass boundary + depth-transition lines) ===
+        if (state.viewOutlineEffect.enabled) {
           context.save();
-          context.strokeStyle = "rgba(236, 72, 153, 0.45)";
-          context.lineWidth = 1;
+          const outlineThickness = Math.max(1, Number(state.viewOutlineEffect.thickness) || 1);
+          const outlineColor = state.viewOutlineEffect.color;
+
+          // Mass boundary: outer contour of all non-cut filled cells
+          const massLoops = buildViewContoursFromGrid(renderGrid, (cell) => !!cell && !cell.isCut);
+          if (massLoops.length) {
+            context.beginPath();
+            for (const loop of massLoops) applyViewContourPath(context, loop);
+            context.strokeStyle = outlineColor;
+            context.lineWidth = px(outlineThickness);
+            context.lineJoin = "miter";
+            context.stroke();
+          }
+
+          // Depth transitions: segments where adjacent non-cut cells have different depth values
           context.beginPath();
-          for (let sourceColumn = 0; sourceColumn <= contentColumns; sourceColumn += 1) {
-            const x = offsetX + (sourceColumn / uniformSourceScale) * cellPixelSize + 0.5;
-            context.moveTo(x, offsetY);
-            context.lineTo(x, offsetY + drawHeight);
+          for (let r = 0; r < renderRows; r += 1) {
+            for (let c = 0; c < renderColumns; c += 1) {
+              const cell = renderGrid[r][c];
+              if (!cell || cell.isCut) continue;
+              if (c + 1 < renderColumns) {
+                const right = renderGrid[r][c + 1];
+                if (right && !right.isCut && right.depth !== cell.depth) {
+                  context.moveTo(c + 1, r);
+                  context.lineTo(c + 1, r + 1);
+                }
+              }
+              if (r + 1 < renderRows) {
+                const bottom = renderGrid[r + 1][c];
+                if (bottom && !bottom.isCut && bottom.depth !== cell.depth) {
+                  context.moveTo(c, r + 1);
+                  context.lineTo(c + 1, r + 1);
+                }
+              }
+            }
           }
-          for (let sourceRow = 0; sourceRow <= totalRows; sourceRow += 1) {
-            const y = offsetY + (sourceRow / uniformSourceScale) * cellPixelSize + 0.5;
-            context.moveTo(offsetX, y);
-            context.lineTo(offsetX + drawWidth, y);
+          context.strokeStyle = outlineColor;
+          context.lineWidth = px(outlineThickness);
+          context.lineCap = "square";
+          context.stroke();
+
+          context.restore();
+        }
+
+        // === Section cut fills ===
+        if (state.viewSectionCutEffect.enabled) {
+          const cutColor = state.viewSectionCutEffect.color || defaultViewSectionCutColor();
+          const cutFillStyles = new Set();
+          for (let r = 0; r < renderRows; r += 1) {
+            for (let c = 0; c < renderColumns; c += 1) {
+              const cell = renderGrid[r][c];
+              if (cell && cell.isCut) cutFillStyles.add(hexToRgba(cutColor, cell.opacity));
+            }
+          }
+          if (cutFillStyles.size) {
+            context.save();
+            for (const fillStyle of cutFillStyles) {
+              const loops = buildViewContoursFromGrid(renderGrid, (cell) => {
+                if (!cell || !cell.isCut) return false;
+                return hexToRgba(cutColor, cell.opacity) === fillStyle;
+              });
+              if (!loops.length) continue;
+              context.beginPath();
+              for (const loop of loops) applyViewContourPath(context, loop);
+              context.fillStyle = fillStyle;
+              context.fill("evenodd");
+            }
+            context.restore();
+          }
+        }
+
+        // === Ground ===
+        {
+          // Extend enough cells to always cover the full canvas regardless of zoom/pan
+          const safeExt = Math.ceil(Math.max(surfaceWidth, surfaceHeight) / Math.max(1e-6, effectiveScale)) + 10;
+          if (!isPlanDirection && state.viewEnvironment.groundEnabled) {
+            context.save();
+            context.beginPath();
+            context.rect(
+              -safeExt, undergroundStartRow,
+              renderColumns + safeExt * 2, renderRows - undergroundStartRow + safeExt
+            );
+            const holeLoops = buildViewContoursFromGrid(renderGrid, (cell, r, c) => {
+              return r >= undergroundStartRow && !!groundHoleMask[r] && groundHoleMask[r][c];
+            });
+            for (const loop of holeLoops) applyViewContourPath(context, loop);
+            context.fillStyle = activeViewGroundColor();
+            context.fill("evenodd");
+            context.restore();
+          } else if (isPlanDirection) {
+            const activeView = activeCanvasView();
+            const planeElevation = snapViewElevationMeters(Number(activeView && activeView.planElevation));
+            if (planeElevation < 0 && state.viewEnvironment.planUndergroundEnabled) {
+              context.save();
+              context.beginPath();
+              context.rect(-safeExt, -safeExt, renderColumns + safeExt * 2, renderRows + safeExt * 2);
+              const contentLoops = buildViewContoursFromGrid(renderGrid, (cell) => !!cell);
+              for (const loop of contentLoops) applyViewContourPath(context, loop);
+              context.fillStyle = activeViewPlanUndergroundColor();
+              context.fill("evenodd");
+              context.restore();
+            }
+          }
+        }
+
+        // === Horizon line ===
+        if (!isPlanDirection && state.viewEnvironment.horizonEnabled) {
+          context.save();
+          const horizonLineWidth = Math.max(1, Number(state.viewEnvironment.horizonWidth) || 1);
+          context.strokeStyle = activeViewHorizonColor();
+          context.lineWidth = px(horizonLineWidth);
+          context.lineCap = "butt";
+
+          // Block intervals: columns where ground hole mask covers the zero-line row
+          const blockIntervals = [];
+          const checkRow = Math.min(renderRows - 1, undergroundStartRow);
+          if (checkRow >= 0 && checkRow < renderRows && groundHoleMask[checkRow]) {
+            let runStart = -1;
+            for (let c = 0; c <= renderColumns; c += 1) {
+              const blocked = c < renderColumns && groundHoleMask[checkRow][c];
+              if (blocked && runStart === -1) { runStart = c; continue; }
+              if (!blocked && runStart !== -1) { blockIntervals.push([runStart, c]); runStart = -1; }
+            }
+          }
+
+          const safeExt = Math.ceil(Math.max(surfaceWidth, surfaceHeight) / Math.max(1e-6, effectiveScale)) + 10;
+          let cursorX = -safeExt;
+          const endX = renderColumns + safeExt;
+          const horizonY = undergroundStartRow;
+
+          context.beginPath();
+          for (const [startCol, endCol] of blockIntervals) {
+            if (startCol > cursorX) {
+              context.moveTo(cursorX, horizonY);
+              context.lineTo(startCol, horizonY);
+            }
+            cursorX = Math.max(cursorX, endCol);
+          }
+          if (cursorX < endX) {
+            context.moveTo(cursorX, horizonY);
+            context.lineTo(endX, horizonY);
           }
           context.stroke();
           context.restore();
+        }
+
+        // === Section cut outline ===
+        if (state.viewSectionCutEffect.enabled && state.viewSectionCutOutlineEffect.enabled) {
+          const cutOutlineColor = state.viewSectionCutOutlineEffect.color || defaultViewSectionCutOutlineColor();
+          const cutOutlineThickness = Math.max(1, Number(state.viewSectionCutOutlineEffect.thickness) || 1);
+          const cutLoops = buildViewContoursFromGrid(renderGrid, (cell) => !!cell && !!cell.isCut);
+          if (cutLoops.length) {
+            context.save();
+            context.beginPath();
+            for (const loop of cutLoops) applyViewContourPath(context, loop);
+            context.strokeStyle = cutOutlineColor;
+            context.lineWidth = px(cutOutlineThickness);
+            context.lineJoin = "miter";
+            context.stroke();
+            context.restore();
+          }
         }
 
         if (DEBUG_VIEW_VECTOR_CONTOURS) {
           const loops = buildViewContoursFromGrid(renderGrid, (cell) => !!cell);
           context.save();
           context.strokeStyle = "rgba(34, 197, 94, 0.9)";
-          context.lineWidth = 1.25;
+          context.lineWidth = px(1.25);
+          context.beginPath();
           for (const loop of loops) {
             if (!loop.length) continue;
-            context.beginPath();
-            context.moveTo(offsetX + loop[0].x * cellPixelSize + 0.5, offsetY + loop[0].y * cellPixelSize + 0.5);
-            for (let i = 1; i < loop.length; i += 1) {
-              context.lineTo(offsetX + loop[i].x * cellPixelSize + 0.5, offsetY + loop[i].y * cellPixelSize + 0.5);
-            }
-            context.closePath();
-            context.stroke();
+            applyViewContourPath(context, loop);
           }
+          context.stroke();
           context.restore();
         }
+
+        return computedMeta;
+      }
+
+      function setupViewPaneInteraction() {
+        const paneCanvases = [ui.viewFrontCanvas, ui.viewBackCanvas, ui.viewLeftCanvas, ui.viewRightCanvas];
+        paneCanvases.forEach((canvas, slotIndex) => {
+          if (!canvas) return;
+          let isPanning = false;
+          let panStartX = 0;
+          let panStartY = 0;
+          let panStartViewport = null;
+          canvas.addEventListener("wheel", (event) => {
+            event.preventDefault();
+            if (!state.viewPaneViewports || !state.viewPaneViewports[slotIndex]) return;
+            const vp = state.viewPaneViewports[slotIndex];
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = event.clientX - rect.left;
+            const mouseY = event.clientY - rect.top;
+            const zoomFactor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+            const newZoom = Math.max(1, Math.min(20, vp.zoom * zoomFactor));
+            const scale = newZoom / vp.zoom;
+            vp.panX = mouseX - scale * (mouseX - vp.panX);
+            vp.panY = mouseY - scale * (mouseY - vp.panY);
+            vp.zoom = newZoom;
+            render({ content: true });
+          }, { passive: false });
+          canvas.addEventListener("pointerdown", (event) => {
+            if (event.button === 0 || event.button === 1) {
+              isPanning = true;
+              panStartX = event.clientX;
+              panStartY = event.clientY;
+              panStartViewport = { ...state.viewPaneViewports[slotIndex] };
+              canvas.setPointerCapture(event.pointerId);
+              event.preventDefault();
+            }
+          });
+          canvas.addEventListener("pointermove", (event) => {
+            if (!isPanning || !panStartViewport) return;
+            state.viewPaneViewports[slotIndex].panX = panStartViewport.panX + (event.clientX - panStartX);
+            state.viewPaneViewports[slotIndex].panY = panStartViewport.panY + (event.clientY - panStartY);
+            render({ content: true });
+          });
+          canvas.addEventListener("pointerup", () => {
+            isPanning = false;
+            panStartViewport = null;
+          });
+          canvas.addEventListener("dblclick", () => {
+            if (!state.viewPaneViewports) return;
+            state.viewPaneViewports[slotIndex] = { panX: 0, panY: 0, zoom: 1 };
+            render({ content: true });
+          });
+        });
       }
 
       function renderViewOutputs() {
@@ -5714,13 +5481,17 @@
           return;
         }
         const direction = state.viewPaneDirections[slotIndex];
+        // Render to a high-res offscreen canvas (zoom=1, no pan)
+        const offscreen = document.createElement("canvas");
+        const dummy = document.createElement("div");
+        renderDirectionalViewOutput(offscreen, dummy, direction, "", null, { targetResolution: 4000 });
         const filename =
           "millimetre-view-" +
           slugifyFilenamePart(view.name, "view") +
           "-" +
           slugifyFilenamePart(viewDirectionLabel(direction), "direction") +
           ".png";
-        paneCanvas.toBlob((blob) => {
+        offscreen.toBlob((blob) => {
           if (!blob) {
             setStatus("PNG export failed.");
             render({ ui: true });
@@ -5853,19 +5624,31 @@
           render({ ui: true });
           return;
         }
-        const meta = state.viewPaneRenderMeta[slotIndex];
-        if (!meta || !meta.metersPerPixel || !meta.pixelWidth || !meta.pixelHeight) {
+        const direction = state.viewPaneDirections[slotIndex];
+        const scale = Math.max(1, Number(scaleDenominator) || 1);
+
+        if (!state.viewPaneRenderMeta[slotIndex]) {
           setStatus("PDF export metadata is unavailable. Re-render the pane and try again.");
           render({ ui: true });
           return;
         }
-        const scale = Math.max(1, Number(scaleDenominator) || 1);
-        const mmPerPixel = (meta.metersPerPixel * 1000) / scale;
-        const imageWidthMm = meta.pixelWidth * mmPerPixel;
-        const imageHeightMm = meta.pixelHeight * mmPerPixel;
-        const pageWidthMm = imageWidthMm + VIEW_PDF_MARGIN_MM * 2;
-        const pageHeightMm = imageHeightMm + VIEW_PDF_MARGIN_MM * 2;
-        const jpegDataUrl = paneCanvas.toDataURL("image/jpeg", 0.96);
+
+        // Render at high resolution into an offscreen canvas (zoom=1, no pan, exact content aspect ratio)
+        const offscreen = document.createElement("canvas");
+        const dummy = document.createElement("div");
+        const exportMeta = renderDirectionalViewOutput(offscreen, dummy, direction, "", null, { targetResolution: 4000 });
+        if (!exportMeta || !exportMeta.metersPerPixel || !exportMeta.pixelWidth || !exportMeta.pixelHeight) {
+          setStatus("PDF export failed.");
+          render({ ui: true });
+          return;
+        }
+
+        // Physical content size in mm derived from the high-res render meta
+        const contentWidthMm = (exportMeta.metersPerPixel * exportMeta.pixelWidth * 1000) / scale;
+        const contentHeightMm = (exportMeta.metersPerPixel * exportMeta.pixelHeight * 1000) / scale;
+        const pageWidthMm = contentWidthMm + VIEW_PDF_MARGIN_MM * 2;
+        const pageHeightMm = contentHeightMm + VIEW_PDF_MARGIN_MM * 2;
+        const jpegDataUrl = offscreen.toDataURL("image/jpeg", 0.96);
         const base64 = jpegDataUrl.split(",")[1] || "";
         if (!base64) {
           setStatus("PDF export failed.");
@@ -5875,13 +5658,12 @@
         const jpegBytes = decodeBase64(base64);
         const pdfBytes = buildSingleImagePdf({
           jpegBytes,
-          imageWidthPx: meta.pixelWidth,
-          imageHeightPx: meta.pixelHeight,
+          imageWidthPx: exportMeta.pixelWidth,
+          imageHeightPx: exportMeta.pixelHeight,
           pageWidthMm,
           pageHeightMm,
           marginMm: VIEW_PDF_MARGIN_MM,
         });
-        const direction = state.viewPaneDirections[slotIndex];
         const filename =
           "millimetre-view-" +
           slugifyFilenamePart(view.name, "view") +
@@ -14387,6 +14169,7 @@
         }
         resizeCanvases();
         centerViewportOrigin();
+        setupViewPaneInteraction();
         render();
       }
 
