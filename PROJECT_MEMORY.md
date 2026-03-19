@@ -525,6 +525,15 @@ The current goal is to keep building `Milimetre` as a strong, minimal infinite c
   - restores only the one-time backup snapshot from before first import
   - does not touch project geometry/content
   - one-click rollback to the user's original local settings
+- Add a staged `Cell Compute -> Vector Render` migration for `Views`:
+  - keep current cell/grid-based compute pipeline for visibility, occlusion, cut detection, and depth ordering
+  - replace pane paint step with vector primitives (paths/polygons/segments) generated from computed regions
+  - preserve current draw-order/depth rules (front-back ordering and depth effect application), but apply them on vector shapes
+  - keep exports (`PNG/PDF/DXF`) visually consistent with the same final composed pane result
+  - target outcome:
+    - cleaner edges
+    - less aliasing/striping artifacts
+    - better consistency across pane sizes/zoom levels
 
 ## Recent Updates (March 2026)
 
