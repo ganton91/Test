@@ -47,3 +47,47 @@
 - `ratio = 1` (no devicePixelRatio)
 
 **Κανόνας:** Το panel render δεν συνδέεται με το Main View rAF pipeline. Triggered μόνο όταν αλλάζει το `uiDirty` ή `contentDirty`.
+
+---
+
+## Ground & Underground Rendering στα Panels
+
+### Σειρά ζωγραφίσματος μέσα στη `renderDirectionalViewOutput`
+
+1. Background fill (sky για sides, `planGroundColor` για plan)
+2. Vector fills — painted non-cut κελιά (`buildViewVectorFillGroups`)
+3. Per-layer outlines
+4. Global outline
+5. Section cut fills (isCut κελιά)
+6. **Ground overlay** (sides) ή **Underground overlay** (plan < 0)
+
+### Side Views — Ground
+
+- Το ground ζωγραφίζεται **μετά** τα content fills, καλύπτοντας όλη την underground ζώνη (`undergroundStartRow` και κάτω)
+- Χρησιμοποιεί `evenodd` fill: ένα μεγάλο `rect` + contour paths από το `groundHoleMask` για να "τρυπήσει" το χρώμα
+- `groundHoleMask` (`buildGroundHoleMaskFromGrid`): `isCut` κελιά + κενά κελιά εγκλωβισμένα από (isCut + zero-cap row)
+- Τα underground non-isCut κελιά ζωγραφίζονται στο step 2 αλλά **καλύπτονται** από το ground — δεν φιλτράρονται ρητά στο render path
+- Ρητό φιλτράρισμα υπάρχει **μόνο στο DXF export** (`buildViewPaneDxfContent`, γρ. ~4857): nulls out `cellZ < 0` + `applyGroundMaskToVisibleGrid`
+
+### Plan View — Ground & Underground
+
+**Elevation >= 0 (Ground Plan Color):**
+- Background = `planGroundColor` (ολόκληρος ο canvas)
+- Painted content από πάνω
+- **Κανένα overlay/flood fill** — απλό flat background
+- Στο `buildPlanOcclusionGrid` (γρ. 4472): `if (planeCells >= 0 && topCells <= 0) continue;` → layers εξολοκλήρου κάτω από z=0 αποκλείονται από το grid
+
+**Elevation < 0 (Underground Plan Color):**
+- Background = `planGroundColor`
+- Painted content από πάνω
+- Underground overlay: `buildGroundHoleMaskFromGrid(renderGrid, 0)` (ολόκληρο το grid = underground zone)
+- Full-canvas `rect` με `evenodd` τρύπες → fills με `planUndergroundColor`
+- Τρύπες = isCut κελιά + εγκλωβισμένα κενά (ίδια λογική με sides, χωρίς zero-cap row)
+
+### Βασική διαφορά sides vs plan underground
+
+| | Side Views | Plan (elevation < 0) |
+|---|---|---|
+| Flood fill boundary | isCut + zero-cap row (z=0 line) | isCut μόνο (no cap row) |
+| `undergroundStartRow` | `contentMaxZ` (z=0 row) | `0` (ολόκληρο το grid) |
+| Explicit pre-filter | Μόνο στο DXF, όχι στο render | `buildPlanOcclusionGrid` αποκλείει layers με `topCells <= 0` |
