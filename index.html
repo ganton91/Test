@@ -4360,8 +4360,10 @@
           return { error: "no-renderable" };
         }
 
-        const contentMinZ = renderableEntries.reduce((min, entry) => Math.min(min, entry.baseCells), Infinity);
-        const contentMaxZ = renderableEntries.reduce((max, entry) => Math.max(max, entry.baseCells + entry.heightCells), -Infinity);
+        const globalExtents = buildGlobalViewContentExtents(view);
+        if (!globalExtents) return { error: "no-renderable" };
+        const contentMinZ = globalExtents.minZ;
+        const contentMaxZ = globalExtents.maxZ;
         const totalRows = contentMaxZ - contentMinZ;
         if (!totalRows) return { error: "no-renderable" };
 
@@ -4377,15 +4379,20 @@
         if (!Number.isFinite(contentMinProjectedColumn) || !Number.isFinite(contentMaxProjectedColumn)) {
           return { error: "no-painted" };
         }
-        const contentColumns = contentMaxProjectedColumn - contentMinProjectedColumn + 1;
+        const globalXExtent = globalExtents.maxX - globalExtents.minX + 1;
+        const globalYExtent = globalExtents.maxY - globalExtents.minY + 1;
+        const globalW = Math.max(globalXExtent, globalYExtent);
+        const paintedWidth = contentMaxProjectedColumn - contentMinProjectedColumn + 1;
+        const horizontalOffset = Math.floor((globalW - paintedWidth) / 2);
+        const contentColumns = globalW;
         const grid = Array.from({ length: totalRows }, () => Array(contentColumns).fill(null));
 
         for (const entry of columnsByLayer) {
           if (!entry.heightCells || !entry.colorByColumn.size) continue;
           entry.colorByColumn.forEach((column, columnIndex) => {
             const projectedColumnIndex = directionConfig.mirrorColumns ? totalColumns - 1 - columnIndex : columnIndex;
-            if (projectedColumnIndex < contentMinProjectedColumn || projectedColumnIndex > contentMaxProjectedColumn) return;
-            const adjustedColumnIndex = projectedColumnIndex - contentMinProjectedColumn;
+            const adjustedColumnIndex = horizontalOffset + (projectedColumnIndex - contentMinProjectedColumn);
+            if (adjustedColumnIndex < 0 || adjustedColumnIndex >= contentColumns) return;
             for (let z = entry.baseCells; z < entry.baseCells + entry.heightCells; z += 1) {
               if (z < contentMinZ || z >= contentMaxZ) continue;
               const rowIndex = totalRows - 1 - (z - contentMinZ);
@@ -4414,7 +4421,7 @@
 
         return {
           directionConfig,
-          contentMinProjectedColumn,
+          contentMinProjectedColumn: contentMinProjectedColumn - horizontalOffset,
           contentMaxZ,
           contentColumns,
           totalRows,
@@ -4431,13 +4438,14 @@
         const configuredLayers = orderedConfiguredLayersForView(view);
         if (!configuredLayers.length) return { error: "no-layers" };
 
-        const totalColumns = bounds.maxX - bounds.minX + 1;
-        const totalRows = bounds.maxY - bounds.minY + 1;
-        if (!totalColumns || !totalRows) return { error: "invalid-bounds" };
+        const globalExtents = buildGlobalViewContentExtents(view);
+        if (!globalExtents) return { error: "no-renderable" };
+        const globalColumns = globalExtents.maxX - globalExtents.minX + 1;
+        const globalRows = globalExtents.maxY - globalExtents.minY + 1;
 
         const planeElevation = snapViewElevationMeters(Number(view.planElevation));
         const planeCells = Math.round(planeElevation * CELLS_PER_METER);
-        const grid = Array.from({ length: totalRows }, () => Array(totalColumns).fill(null));
+        const grid = Array.from({ length: globalRows }, () => Array(globalColumns).fill(null));
         let hasRenderable = false;
 
         const configuredEntries = configuredLayers.map(({ layer, config }, orderIndex) => ({
@@ -4476,8 +4484,8 @@
               const cellY = tileMinY + localY;
               if (cellX < bounds.minX || cellX > bounds.maxX || cellY < bounds.minY || cellY > bounds.maxY) continue;
               hasRenderable = true;
-              const rowIndex = cellY - bounds.minY;
-              const columnIndex = cellX - bounds.minX;
+              const rowIndex = cellY - globalExtents.minY;
+              const columnIndex = cellX - globalExtents.minX;
               const candidate = {
                 layerId: entry.layer.id,
                 color: entry.overrideColor || color,
@@ -4503,38 +4511,6 @@
 
         if (!hasRenderable || !grid.some((row) => row.some(Boolean))) return { error: "no-renderable" };
 
-        let contentMinColumn = Infinity;
-        let contentMaxColumn = -Infinity;
-        let contentMinRow = Infinity;
-        let contentMaxRow = -Infinity;
-        for (let rowIndex = 0; rowIndex < totalRows; rowIndex += 1) {
-          for (let columnIndex = 0; columnIndex < totalColumns; columnIndex += 1) {
-            if (!grid[rowIndex][columnIndex]) continue;
-            if (columnIndex < contentMinColumn) contentMinColumn = columnIndex;
-            if (columnIndex > contentMaxColumn) contentMaxColumn = columnIndex;
-            if (rowIndex < contentMinRow) contentMinRow = rowIndex;
-            if (rowIndex > contentMaxRow) contentMaxRow = rowIndex;
-          }
-        }
-
-        if (
-          !Number.isFinite(contentMinColumn) ||
-          !Number.isFinite(contentMaxColumn) ||
-          !Number.isFinite(contentMinRow) ||
-          !Number.isFinite(contentMaxRow)
-        ) {
-          return { error: "no-renderable" };
-        }
-
-        const croppedGrid = [];
-        for (let rowIndex = contentMinRow; rowIndex <= contentMaxRow; rowIndex += 1) {
-          croppedGrid.push(grid[rowIndex].slice(contentMinColumn, contentMaxColumn + 1));
-        }
-        const croppedColumns = contentMaxColumn - contentMinColumn + 1;
-        const croppedRows = contentMaxRow - contentMinRow + 1;
-        const contentMinProjectedColumn = bounds.minX + contentMinColumn;
-        const contentMaxProjectedRow = bounds.maxY + 1 - contentMinRow;
-
         return {
           directionConfig: {
             primaryAxis: "x",
@@ -4542,12 +4518,12 @@
             frontBoundary: "max",
             mirrorColumns: false,
           },
-          contentMinProjectedColumn,
-          contentMaxProjectedRow,
+          contentMinProjectedColumn: globalExtents.minX,
+          contentMaxProjectedRow: globalExtents.maxY + 1,
           contentMaxZ: planeCells,
-          contentColumns: croppedColumns,
-          totalRows: croppedRows,
-          grid: croppedGrid,
+          contentColumns: globalColumns,
+          totalRows: globalRows,
+          grid,
         };
       }
 
