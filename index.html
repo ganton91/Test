@@ -899,10 +899,19 @@
         font-size: 11px;
         font-weight: 600;
         white-space: nowrap;
+        transition:
+          color 140ms ease,
+          background 140ms ease,
+          border-color 140ms ease;
       }
 
       .view-layout-button {
         padding: 5px 7px;
+      }
+
+      .view-layout-button:hover:not(:disabled),
+      .view-pane-selector-button:hover:not(:disabled) {
+        color: var(--text);
       }
 
       .view-layout-button.active,
@@ -922,6 +931,17 @@
         font-size: 12px;
         font-weight: 600;
         letter-spacing: 0.01em;
+        min-height: 220px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        text-align: center;
+      }
+
+      .view-popout-notice-text {
+        max-width: 520px;
       }
 
       .view-pane {
@@ -973,6 +993,21 @@
         color: var(--text);
         border-color: var(--line-strong);
         background: var(--bg-elevated);
+      }
+
+      #viewPopoutButton {
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+
+      .view-layout-group:has(#viewPopoutButton:hover:not(:disabled)) {
+        border-color: var(--line-strong);
+        background: var(--bg-elevated);
+      }
+
+      #viewPopoutButton:hover:not(:disabled) {
+        color: var(--text);
       }
 
       .view-pane-export-button:disabled {
@@ -2017,8 +2052,8 @@
             </div>
           </div>
           <div class="calibration-actions">
-            <button class="ghost-button" id="viewPropertiesCancelButton">Close</button>
-            <button class="ghost-button" id="viewPropertiesApplyButton">Apply</button>
+            <button class="ghost-button modal-action-button" id="viewPropertiesCancelButton">Close</button>
+            <button class="ghost-button modal-action-button" id="viewPropertiesApplyButton">Apply</button>
           </div>
         </div>
         <div class="modal-backdrop hidden" id="modalBackdrop"></div>
@@ -5505,15 +5540,38 @@
         if (!state.isPopoutWindow && currentView && isExternalViewWindowOpen(currentView.id)) {
           ui.viewOutputGrid.classList.add("hidden");
           if (ui.viewPopoutNotice) {
-            ui.viewPopoutNotice.textContent =
-              "View is open on another window. Close the window to return to the default view.";
+            ui.viewPopoutNotice.innerHTML = "";
+            const text = document.createElement("div");
+            text.className = "view-popout-notice-text";
+            text.textContent = "View is open on another window. Close the window to return to the default view.";
+            ui.viewPopoutNotice.appendChild(text);
+            const closeButton = document.createElement("button");
+            closeButton.type = "button";
+            closeButton.className = "ghost-button modal-action-button";
+            closeButton.textContent = "Close Window";
+            closeButton.addEventListener("click", () => {
+              if (state.popoutWindowRef && !state.popoutWindowRef.closed) {
+                try {
+                  state.popoutWindowRef.close();
+                } catch (error) {
+                  console.warn(error);
+                }
+              }
+              clearViewPopoutTracking({ silent: true });
+              setStatus("Pop-up window closed.");
+              render({ ui: true, content: true });
+            });
+            ui.viewPopoutNotice.appendChild(closeButton);
             ui.viewPopoutNotice.classList.remove("hidden");
           }
           renderViewWorkspaceControls();
           return;
         }
         ui.viewOutputGrid.classList.remove("hidden");
-        if (ui.viewPopoutNotice) ui.viewPopoutNotice.classList.add("hidden");
+        if (ui.viewPopoutNotice) {
+          ui.viewPopoutNotice.classList.add("hidden");
+          ui.viewPopoutNotice.innerHTML = "";
+        }
 
         const panes = [
           { canvas: ui.viewFrontCanvas, empty: ui.viewFrontEmpty },
@@ -5903,7 +5961,7 @@
         const parsed = Number(ui.viewPropertiesHeight.value);
         const nextElevation = snapViewElevationMeters(Number.isFinite(parsed) ? parsed : draft.planElevation);
         view.planElevation = nextElevation;
-        closeModal(ui.viewPropertiesModal);
+        draft.planElevation = nextElevation;
         commitHistoryAction("views:properties", "Edit View Properties");
         requestPopoutSync({ viewId: view.id });
         setStatus("View properties applied.");
