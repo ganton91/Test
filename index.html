@@ -1980,6 +1980,14 @@
                 <input id="viewPlanGroundColor" type="color" value="#d4d0c8" />
               </div>
             </div>
+            <div class="menu-section">
+              <div class="menu-title">Plan Underground</div>
+              <div class="menu-actions">
+                <button class="mode-button active" data-view-plan-underground="on">On</button>
+                <button class="mode-button" data-view-plan-underground="off">Off</button>
+                <input id="viewPlanUndergroundColor" type="color" value="#c8c3ba" />
+              </div>
+            </div>
           </div>
           <div class="calibration-actions settings-actions">
             <button class="ghost-button modal-action-button" id="settingsCloseButton">Close</button>
@@ -2452,6 +2460,7 @@
         viewHorizonButtons: Array.from(document.querySelectorAll("[data-view-horizon]")),
         viewGroundButtons: Array.from(document.querySelectorAll("[data-view-ground]")),
         viewPlanGroundButtons: Array.from(document.querySelectorAll("[data-view-plan-ground]")),
+        viewPlanUndergroundButtons: Array.from(document.querySelectorAll("[data-view-plan-underground]")),
         viewDepthStrengthDecrease: document.getElementById("viewDepthStrengthDecrease"),
         viewDepthStrengthIncrease: document.getElementById("viewDepthStrengthIncrease"),
         viewDepthStrengthValue: document.getElementById("viewDepthStrengthValue"),
@@ -2465,6 +2474,7 @@
         viewHorizonWidth: document.getElementById("viewHorizonWidth"),
         viewGroundColor: document.getElementById("viewGroundColor"),
         viewPlanGroundColor: document.getElementById("viewPlanGroundColor"),
+        viewPlanUndergroundColor: document.getElementById("viewPlanUndergroundColor"),
         selectionToolButton: document.getElementById("selectionToolButton"),
         brushToolButton: document.getElementById("brushToolButton"),
         shapeToolButton: document.getElementById("shapeToolButton"),
@@ -2656,6 +2666,8 @@
           groundColor: "#d4d0c8",
           planGroundEnabled: true,
           planGroundColor: "#d4d0c8",
+          planUndergroundEnabled: true,
+          planUndergroundColor: "#c8c3ba",
         },
         layers: [createLayer("Layer 1")],
         activeLayerId: null,
@@ -3150,6 +3162,8 @@
             groundColor: state.viewEnvironment.groundColor,
             planGroundEnabled: !!state.viewEnvironment.planGroundEnabled,
             planGroundColor: state.viewEnvironment.planGroundColor,
+            planUndergroundEnabled: !!state.viewEnvironment.planUndergroundEnabled,
+            planUndergroundColor: state.viewEnvironment.planUndergroundColor,
           },
           sceneSectionCollapsed: state.sceneSectionCollapsed,
           layerSectionCollapsed: state.layerSectionCollapsed,
@@ -3291,6 +3305,9 @@
           state.viewEnvironment.planGroundEnabled = project.viewEnvironment?.planGroundEnabled !== false;
           state.viewEnvironment.planGroundColor =
             typeof project.viewEnvironment?.planGroundColor === "string" ? project.viewEnvironment.planGroundColor : "#d4d0c8";
+          state.viewEnvironment.planUndergroundEnabled = project.viewEnvironment?.planUndergroundEnabled !== false;
+          state.viewEnvironment.planUndergroundColor =
+            typeof project.viewEnvironment?.planUndergroundColor === "string" ? project.viewEnvironment.planUndergroundColor : "#c8c3ba";
           state.sceneSectionCollapsed = !!project.sceneSectionCollapsed;
           state.layerSectionCollapsed = !!project.layerSectionCollapsed;
           state.measurementSectionCollapsed = !!project.measurementSectionCollapsed;
@@ -3522,6 +3539,8 @@
             groundColor: state.viewEnvironment.groundColor,
             planGroundEnabled: !!state.viewEnvironment.planGroundEnabled,
             planGroundColor: state.viewEnvironment.planGroundColor,
+            planUndergroundEnabled: !!state.viewEnvironment.planUndergroundEnabled,
+            planUndergroundColor: state.viewEnvironment.planUndergroundColor,
           },
           views: state.views.map(cloneViewForSnapshot),
           layers: state.layers.map(cloneLayerForSnapshot),
@@ -3579,6 +3598,11 @@
               typeof snapshot.viewEnvironment.planGroundColor === "string"
                 ? snapshot.viewEnvironment.planGroundColor
                 : state.viewEnvironment.planGroundColor;
+            state.viewEnvironment.planUndergroundEnabled = snapshot.viewEnvironment.planUndergroundEnabled !== false;
+            state.viewEnvironment.planUndergroundColor =
+              typeof snapshot.viewEnvironment.planUndergroundColor === "string"
+                ? snapshot.viewEnvironment.planUndergroundColor
+                : state.viewEnvironment.planUndergroundColor;
           }
           if (Array.isArray(snapshot.layers)) {
             state.layers = snapshot.layers.map(restoreLayerFromSnapshot);
@@ -5073,14 +5097,57 @@
           return holeMask;
         };
 
-        const groundHoleMask = isPlanDirection
-          ? Array.from({ length: renderRows }, () => Array(renderColumns).fill(false))
-          : buildGroundHoleMask();
+        const groundHoleMask = buildGroundHoleMask();
 
         const drawGroundWithCutExclusions = () => {
           if (isPlanDirection) {
-            context.fillStyle = activeViewPlanGroundColor();
-            context.fillRect(0, 0, surfaceWidth, surfaceHeight);
+            if (!state.viewEnvironment.planUndergroundEnabled) return;
+            const activeView = activeCanvasView();
+            const planeElevation = snapViewElevationMeters(Number(activeView?.planElevation));
+            if (planeElevation >= 0) return;
+            context.fillStyle = activeViewPlanUndergroundColor();
+
+            // Plan underground paints as a full below-zero overlay for negative plan heights.
+            if (offsetX > 0) context.fillRect(0, 0, offsetX, surfaceHeight);
+            const rightStart = offsetX + drawWidth;
+            if (rightStart < surfaceWidth) context.fillRect(rightStart, 0, surfaceWidth - rightStart, surfaceHeight);
+
+            if (offsetY > 0) context.fillRect(offsetX, 0, drawWidth, offsetY);
+            const drawBottom = offsetY + drawHeight;
+            if (drawBottom < surfaceHeight) context.fillRect(offsetX, drawBottom, drawWidth, surfaceHeight - drawBottom);
+
+            // Inside projected area: same flood-fill hole exclusion rule as side grounds.
+            for (let rowIndex = 0; rowIndex < renderRows; rowIndex += 1) {
+              const rowTop = offsetY + rowIndex * cellPixelSize;
+              const rowBottom = rowTop + cellPixelSize;
+              if (rowTop >= surfaceHeight) break;
+
+              const paintY = Math.max(rowTop, 0);
+              const paintHeight = Math.min(rowBottom, surfaceHeight) - paintY;
+              if (paintHeight <= 0) continue;
+
+              let runStart = -1;
+              for (let columnIndex = 0; columnIndex <= renderColumns; columnIndex += 1) {
+                const isHoleCell =
+                  rowIndex >= undergroundStartRow &&
+                  columnIndex < renderColumns &&
+                  groundHoleMask[rowIndex][columnIndex];
+                const shouldPaint = columnIndex < renderColumns ? !isHoleCell : false;
+                if (shouldPaint && runStart === -1) {
+                  runStart = columnIndex;
+                  continue;
+                }
+                if (!shouldPaint && runStart !== -1) {
+                  context.fillRect(
+                    offsetX + runStart * cellPixelSize,
+                    paintY,
+                    (columnIndex - runStart) * cellPixelSize,
+                    paintHeight
+                  );
+                  runStart = -1;
+                }
+              }
+            }
             return;
           }
           const groundTop = Math.max(0, zeroLineY);
@@ -5488,7 +5555,7 @@
         };
 
         if (!drawEnvironmentBehindContent) {
-          if (!isPlanDirection && zeroLineY < surfaceHeight) {
+          if (zeroLineY < surfaceHeight) {
             drawGroundWithCutExclusions();
           }
 
@@ -7286,6 +7353,12 @@
         return state.viewEnvironment.planGroundEnabled ? state.viewEnvironment.planGroundColor : defaultViewGroundColor();
       }
 
+      function activeViewPlanUndergroundColor() {
+        return state.viewEnvironment.planUndergroundEnabled
+          ? state.viewEnvironment.planUndergroundColor
+          : activeViewPlanGroundColor();
+      }
+
       function createSettingsDraft() {
         const sectionCutEnabled = !!state.viewSectionCutEffect.enabled;
         return {
@@ -7322,6 +7395,8 @@
             groundColor: state.viewEnvironment.groundColor,
             planGroundEnabled: !!state.viewEnvironment.planGroundEnabled,
             planGroundColor: state.viewEnvironment.planGroundColor,
+            planUndergroundEnabled: !!state.viewEnvironment.planUndergroundEnabled,
+            planUndergroundColor: state.viewEnvironment.planUndergroundColor,
           },
         };
       }
@@ -7362,6 +7437,8 @@
         state.viewEnvironment.groundColor = draft.viewEnvironment.groundColor;
         state.viewEnvironment.planGroundEnabled = !!draft.viewEnvironment.planGroundEnabled;
         state.viewEnvironment.planGroundColor = draft.viewEnvironment.planGroundColor;
+        state.viewEnvironment.planUndergroundEnabled = !!draft.viewEnvironment.planUndergroundEnabled;
+        state.viewEnvironment.planUndergroundColor = draft.viewEnvironment.planUndergroundColor;
         return true;
       }
 
@@ -8248,6 +8325,12 @@
             button.dataset.viewPlanGround === (settings.viewEnvironment.planGroundEnabled ? "on" : "off")
           );
         });
+        ui.viewPlanUndergroundButtons.forEach((button) => {
+          button.classList.toggle(
+            "active",
+            button.dataset.viewPlanUnderground === (settings.viewEnvironment.planUndergroundEnabled ? "on" : "off")
+          );
+        });
         ui.viewDepthStrengthValue.value = settings.viewDepthEffect.strength.toFixed(2);
         ui.viewDepthStrengthDecrease.disabled = !settings.viewDepthEffect.enabled;
         ui.viewDepthStrengthIncrease.disabled = !settings.viewDepthEffect.enabled;
@@ -8264,6 +8347,7 @@
         ui.viewHorizonWidth.value = String(settings.viewEnvironment.horizonWidth);
         ui.viewGroundColor.value = settings.viewEnvironment.groundColor;
         ui.viewPlanGroundColor.value = settings.viewEnvironment.planGroundColor;
+        ui.viewPlanUndergroundColor.value = settings.viewEnvironment.planUndergroundColor;
       }
 
       function renderToolState() {
@@ -13856,6 +13940,26 @@
           if (!state.settingsDraft) return;
           state.settingsDraft.viewEnvironment.planGroundEnabled = button.dataset.viewPlanGround === "on";
           setStatus(state.settingsDraft.viewEnvironment.planGroundEnabled ? "Custom plan ground color enabled." : "Plan ground using theme default.");
+          updateThemeButtons();
+        });
+      });
+
+      ui.viewPlanUndergroundColor.addEventListener("input", () => {
+        if (!state.settingsDraft) return;
+        state.settingsDraft.viewEnvironment.planUndergroundColor = ui.viewPlanUndergroundColor.value || "#c8c3ba";
+        setStatus("Plan underground color updated.");
+        updateThemeButtons();
+      });
+
+      ui.viewPlanUndergroundButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          if (!state.settingsDraft) return;
+          state.settingsDraft.viewEnvironment.planUndergroundEnabled = button.dataset.viewPlanUnderground === "on";
+          setStatus(
+            state.settingsDraft.viewEnvironment.planUndergroundEnabled
+              ? "Custom plan underground color enabled."
+              : "Plan underground using plan ground color."
+          );
           updateThemeButtons();
         });
       });
