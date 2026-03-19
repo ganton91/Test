@@ -98,6 +98,22 @@
         height: 100vh;
       }
 
+      body.popout-window .app {
+        grid-template-rows: 1fr;
+      }
+
+      body.popout-window .topbar,
+      body.popout-window .layers-panel,
+      body.popout-window .floating-tools,
+      body.popout-window .floating-panels-left,
+      body.popout-window #canvasModeHint {
+        display: none !important;
+      }
+
+      body.popout-window .workspace {
+        grid-template-columns: 1fr;
+      }
+
       .topbar {
         display: flex;
         align-items: center;
@@ -894,6 +910,18 @@
         background: var(--accent-soft);
         border-color: var(--line-strong);
         color: var(--text);
+      }
+
+      .view-popout-notice {
+        margin: 6px 2px 8px;
+        padding: 10px 12px;
+        border: 1px dashed var(--line);
+        border-radius: 10px;
+        background: var(--panel);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
       }
 
       .view-pane {
@@ -2017,7 +2045,11 @@
                 <button class="view-layout-button" type="button" data-view-layout="2">2 Sides</button>
                 <button class="view-layout-button" type="button" data-view-layout="4">4 Sides</button>
               </div>
+              <div class="view-layout-group">
+                <button class="view-layout-button" type="button" id="viewPopoutButton">Pop-up in New Window</button>
+              </div>
             </div>
+            <div class="view-popout-notice hidden" id="viewPopoutNotice"></div>
             <div class="view-output-grid" id="viewOutputGrid">
               <section class="view-pane" data-view-slot="0">
                 <div class="view-pane-header">
@@ -2293,6 +2325,11 @@
       const DEFAULT_COLOR = "#111827";
       const MAX_HISTORY_STATES = 50;
       const VIEW_PDF_MARGIN_MM = 10;
+      const VIEW_POPOUT_PAYLOAD_KEY_PREFIX = "millimetre:view-popout:";
+      const launchParams = new URLSearchParams(window.location.search);
+      const INITIAL_POPOUT_MODE = launchParams.get("popout") === "1";
+      const INITIAL_POPOUT_VIEW_ID = launchParams.get("viewId") || "";
+      const INITIAL_POPOUT_TOKEN = launchParams.get("token") || "";
 
       const ui = {
         body: document.body,
@@ -2429,6 +2466,8 @@
         selectionPicker: document.getElementById("selectionPicker"),
         viewSwitcher: document.getElementById("viewSwitcher"),
         viewOutputShell: document.getElementById("viewOutputShell"),
+        viewPopoutButton: document.getElementById("viewPopoutButton"),
+        viewPopoutNotice: document.getElementById("viewPopoutNotice"),
         viewOutputGrid: document.getElementById("viewOutputGrid"),
         viewLayoutButtons: Array.from(document.querySelectorAll("[data-view-layout]")),
         viewPaneSlots: Array.from(document.querySelectorAll(".view-pane[data-view-slot]")),
@@ -2515,6 +2554,14 @@
         views: [],
         pendingViewCreation: null,
         activeCanvasViewTab: "main",
+        isPopoutWindow: INITIAL_POPOUT_MODE,
+        popoutViewId: INITIAL_POPOUT_VIEW_ID,
+        popoutToken: INITIAL_POPOUT_TOKEN,
+        popoutWindowRef: null,
+        popoutMonitorTimer: null,
+        popoutOwnerViewId: null,
+        popoutChannel: null,
+        popoutSyncTimer: null,
         viewLayoutPreset: 4,
         viewPaneDirections: ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"],
         viewPaneRenderMeta: [null, null, null, null],
@@ -2974,6 +3021,7 @@
         const previous = state.history.undoStack[state.history.undoStack.length - 1];
         if (!previous) return false;
         restoreDocumentState(previous.snapshot);
+        requestPopoutSync();
         return true;
       }
 
@@ -2982,6 +3030,7 @@
         if (!next) return false;
         state.history.undoStack.push(next);
         restoreDocumentState(next.snapshot);
+        requestPopoutSync();
         return true;
       }
 
@@ -3355,9 +3404,322 @@
         return state.views.find((view) => view.id === state.activeCanvasViewTab) || null;
       }
 
+      function popoutPayloadStorageKey(token) {
+        return VIEW_POPOUT_PAYLOAD_KEY_PREFIX + token;
+      }
+
+      function popoutChannelName(token) {
+        return "millimetre:view-popout-channel:" + token;
+      }
+
+      function isExternalViewWindowOpen(viewId) {
+        return (
+          !state.isPopoutWindow &&
+          !!viewId &&
+          state.popoutOwnerViewId === viewId &&
+          !!state.popoutWindowRef &&
+          !state.popoutWindowRef.closed
+        );
+      }
+
+      function clearViewPopoutTracking(options = {}) {
+        if (state.popoutSyncTimer) {
+          clearTimeout(state.popoutSyncTimer);
+          state.popoutSyncTimer = null;
+        }
+        if (state.popoutMonitorTimer) {
+          clearInterval(state.popoutMonitorTimer);
+          state.popoutMonitorTimer = null;
+        }
+        if (state.popoutChannel) {
+          try {
+            state.popoutChannel.close();
+          } catch (error) {
+            console.warn(error);
+          }
+          state.popoutChannel = null;
+        }
+        if (state.popoutToken) {
+          try {
+            localStorage.removeItem(popoutPayloadStorageKey(state.popoutToken));
+          } catch (error) {
+            console.warn(error);
+          }
+        }
+        state.popoutWindowRef = null;
+        state.popoutOwnerViewId = null;
+        state.popoutToken = "";
+        if (!options.silent) {
+          render({ ui: true, content: true });
+        }
+      }
+
+      function capturePopoutMirrorState() {
+        return {
+          theme: state.theme,
+          viewColorOverride: !!state.viewColorOverride,
+          viewDepthEffect: {
+            enabled: !!state.viewDepthEffect.enabled,
+            strength: state.viewDepthEffect.strength,
+            mode: state.viewDepthEffect.mode,
+          },
+          viewOutlineEffect: {
+            enabled: !!state.viewOutlineEffect.enabled,
+            thickness: state.viewOutlineEffect.thickness,
+            color: state.viewOutlineEffect.color,
+          },
+          viewSectionCutEffect: {
+            enabled: !!state.viewSectionCutEffect.enabled,
+            color: state.viewSectionCutEffect.color,
+          },
+          viewSectionCutOutlineEffect: {
+            enabled: !!state.viewSectionCutOutlineEffect.enabled,
+            thickness: state.viewSectionCutOutlineEffect.thickness,
+            color: state.viewSectionCutOutlineEffect.color,
+          },
+          viewEnvironment: {
+            skyEnabled: !!state.viewEnvironment.skyEnabled,
+            skyColor: state.viewEnvironment.skyColor,
+            horizonEnabled: !!state.viewEnvironment.horizonEnabled,
+            horizonColor: state.viewEnvironment.horizonColor,
+            horizonWidth: state.viewEnvironment.horizonWidth,
+            groundEnabled: !!state.viewEnvironment.groundEnabled,
+            groundColor: state.viewEnvironment.groundColor,
+            planGroundEnabled: !!state.viewEnvironment.planGroundEnabled,
+            planGroundColor: state.viewEnvironment.planGroundColor,
+          },
+          views: state.views.map(cloneViewForSnapshot),
+          layers: state.layers.map(cloneLayerForSnapshot),
+        };
+      }
+
+      function applyPopoutMirrorState(snapshot) {
+        if (!state.isPopoutWindow || !snapshot) return;
+        state.history.isRestoring = true;
+        try {
+          if (snapshot.theme === "dark" || snapshot.theme === "light") {
+            state.theme = snapshot.theme;
+          }
+          state.viewColorOverride = snapshot.viewColorOverride !== false;
+          if (snapshot.viewDepthEffect) {
+            state.viewDepthEffect.mode =
+              snapshot.viewDepthEffect.mode === "fog" || snapshot.viewDepthEffect.mode === "shadow" || snapshot.viewDepthEffect.mode === "off"
+                ? snapshot.viewDepthEffect.mode
+                : state.viewDepthEffect.mode;
+            state.viewDepthEffect.enabled = state.viewDepthEffect.mode !== "off" && snapshot.viewDepthEffect.enabled !== false;
+            state.viewDepthEffect.strength = Math.max(0.01, Math.min(100, Number(snapshot.viewDepthEffect.strength) || state.viewDepthEffect.strength));
+          }
+          if (snapshot.viewOutlineEffect) {
+            state.viewOutlineEffect.enabled = snapshot.viewOutlineEffect.enabled !== false;
+            state.viewOutlineEffect.thickness = Math.max(1, Math.min(12, Number(snapshot.viewOutlineEffect.thickness) || state.viewOutlineEffect.thickness));
+            state.viewOutlineEffect.color = typeof snapshot.viewOutlineEffect.color === "string" ? snapshot.viewOutlineEffect.color : state.viewOutlineEffect.color;
+          }
+          if (snapshot.viewSectionCutEffect) {
+            state.viewSectionCutEffect.enabled = snapshot.viewSectionCutEffect.enabled !== false;
+            state.viewSectionCutEffect.color = typeof snapshot.viewSectionCutEffect.color === "string" ? snapshot.viewSectionCutEffect.color : state.viewSectionCutEffect.color;
+          }
+          if (snapshot.viewSectionCutOutlineEffect) {
+            state.viewSectionCutOutlineEffect.enabled = snapshot.viewSectionCutOutlineEffect.enabled !== false;
+            state.viewSectionCutOutlineEffect.thickness = Math.max(
+              1,
+              Math.min(12, Number(snapshot.viewSectionCutOutlineEffect.thickness) || state.viewSectionCutOutlineEffect.thickness)
+            );
+            state.viewSectionCutOutlineEffect.color =
+              typeof snapshot.viewSectionCutOutlineEffect.color === "string"
+                ? snapshot.viewSectionCutOutlineEffect.color
+                : state.viewSectionCutOutlineEffect.color;
+          }
+          if (snapshot.viewEnvironment) {
+            state.viewEnvironment.skyEnabled = snapshot.viewEnvironment.skyEnabled !== false;
+            state.viewEnvironment.skyColor = typeof snapshot.viewEnvironment.skyColor === "string" ? snapshot.viewEnvironment.skyColor : state.viewEnvironment.skyColor;
+            state.viewEnvironment.horizonEnabled = snapshot.viewEnvironment.horizonEnabled !== false;
+            state.viewEnvironment.horizonColor =
+              typeof snapshot.viewEnvironment.horizonColor === "string" ? snapshot.viewEnvironment.horizonColor : state.viewEnvironment.horizonColor;
+            state.viewEnvironment.horizonWidth = Math.max(1, Math.min(12, Number(snapshot.viewEnvironment.horizonWidth) || state.viewEnvironment.horizonWidth));
+            state.viewEnvironment.groundEnabled = snapshot.viewEnvironment.groundEnabled !== false;
+            state.viewEnvironment.groundColor =
+              typeof snapshot.viewEnvironment.groundColor === "string" ? snapshot.viewEnvironment.groundColor : state.viewEnvironment.groundColor;
+            state.viewEnvironment.planGroundEnabled = snapshot.viewEnvironment.planGroundEnabled !== false;
+            state.viewEnvironment.planGroundColor =
+              typeof snapshot.viewEnvironment.planGroundColor === "string"
+                ? snapshot.viewEnvironment.planGroundColor
+                : state.viewEnvironment.planGroundColor;
+          }
+          if (Array.isArray(snapshot.layers)) {
+            state.layers = snapshot.layers.map(restoreLayerFromSnapshot);
+          }
+          if (Array.isArray(snapshot.views)) {
+            state.views = snapshot.views.map(restoreViewFromSnapshot);
+          }
+          const requestedViewId = state.popoutViewId;
+          if (requestedViewId && state.views.some((view) => view.id === requestedViewId)) {
+            state.activeCanvasViewTab = requestedViewId;
+            setActiveViewById(requestedViewId);
+          } else if (state.views.length) {
+            state.activeCanvasViewTab = state.views[0].id;
+            setActiveViewById(state.views[0].id);
+          } else {
+            state.activeCanvasViewTab = "main";
+            clearActiveTarget();
+          }
+        } finally {
+          state.history.isRestoring = false;
+        }
+        render({ ui: true, content: true, overlay: true, static: true, scenes: true, rulers: true });
+      }
+
+      function setupPopoutSyncChannel() {
+        if (!state.popoutToken || typeof BroadcastChannel === "undefined") return;
+        if (state.popoutChannel) return;
+        state.popoutChannel = new BroadcastChannel(popoutChannelName(state.popoutToken));
+        if (state.isPopoutWindow) {
+          state.popoutChannel.onmessage = (event) => {
+            const message = event.data || {};
+            if (message.type === "mirror-state" && message.payload) {
+              applyPopoutMirrorState(message.payload);
+            }
+            if (message.type === "close-popout") {
+              window.close();
+            }
+          };
+          state.popoutChannel.postMessage({ type: "ready" });
+        } else {
+          state.popoutChannel.onmessage = (event) => {
+            const message = event.data || {};
+            if (message.type === "ready") {
+              state.popoutChannel.postMessage({ type: "mirror-state", payload: capturePopoutMirrorState() });
+            }
+            if (message.type === "closed") {
+              clearViewPopoutTracking({ silent: true });
+              render({ ui: true, content: true });
+            }
+          };
+        }
+      }
+
+      function schedulePopoutMirrorSync() {
+        if (state.isPopoutWindow) return;
+        if (!isExternalViewWindowOpen(state.popoutOwnerViewId)) return;
+        setupPopoutSyncChannel();
+        if (!state.popoutChannel) return;
+        if (state.popoutSyncTimer) return;
+        state.popoutSyncTimer = setTimeout(() => {
+          state.popoutSyncTimer = null;
+          if (!isExternalViewWindowOpen(state.popoutOwnerViewId)) return;
+          if (!state.popoutChannel) return;
+          state.popoutChannel.postMessage({ type: "mirror-state", payload: capturePopoutMirrorState() });
+        }, 120);
+      }
+
+      function shouldSyncLayerForPopoutView(layerId) {
+        if (!layerId) return false;
+        const popoutViewId = state.popoutOwnerViewId;
+        if (!popoutViewId) return false;
+        const popoutView = state.views.find((view) => view.id === popoutViewId);
+        if (!popoutView) return false;
+        const config = defaultViewLayerConfig(popoutView.layerConfigs && popoutView.layerConfigs[layerId]);
+        return snapViewElevationMeters(Number(config.height), { allowNegative: false }) > 0;
+      }
+
+      function requestPopoutSync(options = {}) {
+        if (state.isPopoutWindow) return false;
+        if (!isExternalViewWindowOpen(state.popoutOwnerViewId)) return false;
+        if (options.viewId && options.viewId !== state.popoutOwnerViewId) return false;
+        if (options.layerId && !shouldSyncLayerForPopoutView(options.layerId)) return false;
+        schedulePopoutMirrorSync();
+        return true;
+      }
+
+      async function openActiveViewInNewWindow() {
+        const view = activeCanvasView();
+        if (!view || state.isPopoutWindow) return false;
+        let popoutWindow = null;
+        let token = "";
+        let payloadStored = false;
+        if (isExternalViewWindowOpen(view.id)) {
+          state.popoutWindowRef.focus();
+          setStatus("View already open in another window.");
+          render({ ui: true });
+          return true;
+        }
+        try {
+          token = "vw-" + Math.random().toString(36).slice(2, 10) + "-" + Date.now().toString(36);
+          const popoutUrl = new URL(window.location.href);
+          popoutUrl.searchParams.set("popout", "1");
+          popoutUrl.searchParams.set("viewId", view.id);
+          popoutUrl.searchParams.set("token", token);
+
+          popoutWindow = window.open(
+            "about:blank",
+            "millimetre-view-popout-" + view.id,
+            "popup=yes,width=1440,height=960,resizable=yes,scrollbars=yes"
+          );
+          if (!popoutWindow) {
+            setStatus("Popup blocked by browser.");
+            render({ ui: true });
+            return false;
+          }
+
+          popoutWindow.document.title = "Opening View...";
+          popoutWindow.document.body.style.margin = "0";
+          popoutWindow.document.body.style.fontFamily = "\"IBM Plex Sans\", \"Segoe UI\", sans-serif";
+          popoutWindow.document.body.style.display = "grid";
+          popoutWindow.document.body.style.placeItems = "center";
+          popoutWindow.document.body.style.color = "#4b5563";
+          popoutWindow.document.body.style.background = "#f8fafc";
+          popoutWindow.document.body.textContent = "Loading view...";
+
+          try {
+            const project = await captureProjectState();
+            localStorage.setItem(popoutPayloadStorageKey(token), JSON.stringify({ project }));
+            payloadStored = true;
+          } catch (payloadError) {
+            console.warn("Pop-out payload snapshot failed; continuing with live sync fallback.", payloadError);
+          }
+          popoutWindow.location.replace(popoutUrl.toString());
+
+          state.popoutToken = token;
+          state.popoutOwnerViewId = view.id;
+          state.popoutWindowRef = popoutWindow;
+          setupPopoutSyncChannel();
+          if (state.popoutMonitorTimer) clearInterval(state.popoutMonitorTimer);
+          state.popoutMonitorTimer = setInterval(() => {
+            if (!state.popoutWindowRef || state.popoutWindowRef.closed) {
+              clearViewPopoutTracking();
+            }
+          }, 500);
+          schedulePopoutMirrorSync();
+          setStatus("View opened in a new window.");
+          render({ ui: true, content: true });
+          return true;
+        } catch (error) {
+          if (token && payloadStored) {
+            try {
+              localStorage.removeItem(popoutPayloadStorageKey(token));
+            } catch (cleanupError) {
+              console.warn(cleanupError);
+            }
+          }
+          console.error(error);
+          setStatus("Could not open view in a new window.");
+          render({ ui: true });
+          return false;
+        }
+      }
+
       function renderViewSwitcher() {
         if (!ui.viewSwitcher) return;
         ui.viewSwitcher.innerHTML = "";
+        if (state.isPopoutWindow) {
+          const view = state.views.find((entry) => entry.id === state.activeCanvasViewTab);
+          const onlyButton = document.createElement("button");
+          onlyButton.type = "button";
+          onlyButton.className = "view-switcher-button active";
+          onlyButton.textContent = view ? view.name : "View";
+          onlyButton.disabled = true;
+          ui.viewSwitcher.appendChild(onlyButton);
+          return;
+        }
         if (state.activeCanvasViewTab !== "main" && !state.views.some((view) => view.id === state.activeCanvasViewTab)) {
           state.activeCanvasViewTab = "main";
         }
@@ -3422,9 +3784,24 @@
       }
 
       function renderViewWorkspaceControls() {
+        const activeViewTab = activeCanvasView();
         ui.viewLayoutButtons.forEach((button) => {
           button.classList.toggle("active", Number(button.dataset.viewLayout) === state.viewLayoutPreset);
         });
+        if (ui.viewPopoutButton) {
+          const hasView = !!activeViewTab;
+          ui.viewPopoutButton.classList.toggle("hidden", !hasView);
+          if (state.isPopoutWindow) {
+            ui.viewPopoutButton.textContent = "Close Window";
+            ui.viewPopoutButton.disabled = !hasView;
+          } else if (hasView && isExternalViewWindowOpen(activeViewTab.id)) {
+            ui.viewPopoutButton.textContent = "Focus Window";
+            ui.viewPopoutButton.disabled = false;
+          } else {
+            ui.viewPopoutButton.textContent = "Pop-up in New Window";
+            ui.viewPopoutButton.disabled = !hasView;
+          }
+        }
 
         const visibleCount = visibleViewPaneCount();
         ui.viewOutputGrid.classList.toggle("layout-1", visibleCount === 1);
@@ -5124,6 +5501,20 @@
       }
 
       function renderViewOutputs() {
+        const currentView = activeCanvasView();
+        if (!state.isPopoutWindow && currentView && isExternalViewWindowOpen(currentView.id)) {
+          ui.viewOutputGrid.classList.add("hidden");
+          if (ui.viewPopoutNotice) {
+            ui.viewPopoutNotice.textContent =
+              "View is open on another window. Close the window to return to the default view.";
+            ui.viewPopoutNotice.classList.remove("hidden");
+          }
+          renderViewWorkspaceControls();
+          return;
+        }
+        ui.viewOutputGrid.classList.remove("hidden");
+        if (ui.viewPopoutNotice) ui.viewPopoutNotice.classList.add("hidden");
+
         const panes = [
           { canvas: ui.viewFrontCanvas, empty: ui.viewFrontEmpty },
           { canvas: ui.viewBackCanvas, empty: ui.viewBackEmpty },
@@ -5475,6 +5866,7 @@
           ...currentLayerOrder.filter((layerId) => !draft.items.some((item) => item.layerId === layerId)),
         ];
         commitHistory("Edit View Layers");
+        requestPopoutSync({ viewId: view.id });
         setStatus("View layers applied.");
         render({ ui: true, content: true, overlay: true });
         return true;
@@ -5513,6 +5905,7 @@
         view.planElevation = nextElevation;
         closeModal(ui.viewPropertiesModal);
         commitHistoryAction("views:properties", "Edit View Properties");
+        requestPopoutSync({ viewId: view.id });
         setStatus("View properties applied.");
         render({ ui: true, content: true, overlay: true });
         return true;
@@ -5715,9 +6108,11 @@
         if (state.activeLayerId) {
           const index = state.layers.findIndex((entry) => entry.id === state.activeLayerId);
           if (index === -1) return false;
+          const deletedLayerId = state.layers[index].id;
           state.layers.splice(index, 1);
           clearActiveTarget();
           commitHistory("Delete Layer");
+          requestPopoutSync({ layerId: deletedLayerId });
           render({ ui: true, content: true, overlay: true });
           return true;
         }
@@ -5765,6 +6160,16 @@
             return true;
           }
           state.views.splice(index, 1);
+          if (state.popoutOwnerViewId === view.id) {
+            if (state.popoutWindowRef && !state.popoutWindowRef.closed) {
+              try {
+                state.popoutWindowRef.close();
+              } catch (error) {
+                console.warn(error);
+              }
+            }
+            clearViewPopoutTracking({ silent: true });
+          }
           if (state.activeCanvasViewTab === view.id) {
             state.activeCanvasViewTab = "main";
           }
@@ -5799,6 +6204,7 @@
         state.layers.splice(index, 0, duplicate);
         setActiveLayerById(duplicate.id, { tool: "select" });
         commitHistory("Duplicate Layer");
+        requestPopoutSync({ layerId });
         render({ ui: true, content: true, overlay: true });
         return true;
       }
@@ -7683,6 +8089,7 @@
       function flushRender() {
         state.renderState.frame = 0;
         ui.body.classList.toggle("theme-dark", state.theme === "dark");
+        ui.body.classList.toggle("popout-window", !!state.isPopoutWindow);
 
         if (state.renderState.uiDirty) {
           updateThemeButtons();
@@ -7735,6 +8142,7 @@
           drawRulers();
           state.renderState.rulersDirty = false;
         }
+
       }
 
       function updateThemeButtons() {
@@ -8606,6 +9014,7 @@
           removeInline.title = "Delete layer";
           removeInline.addEventListener("click", (event) => {
             event.stopPropagation();
+            const deletedLayerId = layer.id;
             const index = state.layers.findIndex((entry) => entry.id === layer.id);
             if (index === -1) return;
             state.layers.splice(index, 1);
@@ -8613,6 +9022,7 @@
               clearActiveTarget();
             }
             commitHistoryAction("layers:delete", "Delete Layer");
+            requestPopoutSync({ layerId: deletedLayerId });
             render({ ui: true, content: true, overlay: true });
           });
           inlineControls.appendChild(removeInline);
@@ -12569,6 +12979,7 @@
         }
         if (state.interaction.type === "brush" && state.interaction.changed) {
           commitHistory(state.interaction.mode === "erase" ? "Erase Brush Stroke" : "Paint Brush Stroke");
+          requestPopoutSync({ layerId: state.interaction.layerId });
         }
         if (state.interaction.type === "viewbox-draw") {
           const draftBounds = normalizeViewBounds(state.interaction.start, state.interaction.current);
@@ -12613,6 +13024,7 @@
             state.shapeDraft = null;
             if (changed) {
               commitHistory(interaction.mode === "erase" ? "Erase Shape" : "Paint Shape");
+              requestPopoutSync({ layerId: interaction.layerId });
             }
             render({ ui: changed, content: true, overlay: true });
             return;
@@ -12630,6 +13042,7 @@
             state.shapeDraft = null;
             if (changed) {
               commitHistory(interaction.mode === "erase" ? "Erase Shape" : "Paint Shape");
+              requestPopoutSync({ layerId: interaction.layerId });
             }
             render({ ui: changed, content: true, overlay: true });
             return;
@@ -12642,10 +13055,12 @@
         }
         if (state.interaction.type === "layer-move") {
           commitHistory("Move Layer");
+          requestPopoutSync({ layerId: state.interaction.layerId });
           setStatus("Layer moved.");
         }
         if (state.interaction.type === "layer-rotate") {
           commitHistory("Rotate Layer");
+          requestPopoutSync({ layerId: state.interaction.layerId });
           setStatus("Layer rotated.");
         }
         if (state.interaction.type === "measurement-move") {
@@ -12684,6 +13099,7 @@
         }
         if (state.interaction.type === "view-move" || state.interaction.type === "view-resize") {
           commitHistory("Update View Box");
+          requestPopoutSync({ viewId: state.interaction.viewId });
           setStatus("View box updated.");
         }
         if (state.interaction.sceneId) {
@@ -13097,6 +13513,7 @@
       });
       ui.settingsApplyButton.addEventListener("click", () => {
         if (!applySettingsDraft()) return;
+        requestPopoutSync();
         setStatus("Settings applied.");
         render({ ui: true, content: true, static: true, scenes: true, overlay: true, rulers: true });
       });
@@ -13159,6 +13576,25 @@
           setStatus("View layout set to " + state.viewLayoutPreset + (state.viewLayoutPreset === 1 ? " pane." : " panes."));
           render({ ui: true, content: true });
         });
+      });
+
+      ui.viewPopoutButton.addEventListener("click", async () => {
+        if (state.isPopoutWindow) {
+          window.close();
+          return;
+        }
+        const currentView = activeCanvasView();
+        if (!currentView) return;
+        if (isExternalViewWindowOpen(currentView.id)) {
+          if (state.popoutWindowRef && !state.popoutWindowRef.closed) {
+            state.popoutWindowRef.focus();
+            setStatus("View already open in another window.");
+            render({ ui: true });
+            return;
+          }
+          clearViewPopoutTracking({ silent: true });
+        }
+        await openActiveViewInNewWindow();
       });
 
       ui.viewPaneSelectorButtons.forEach((button) => {
@@ -13685,11 +14121,68 @@
         }
       });
       window.addEventListener("resize", resizeCanvases);
+      window.addEventListener("beforeunload", () => {
+        if (state.isPopoutWindow && state.popoutChannel) {
+          try {
+            state.popoutChannel.postMessage({ type: "closed" });
+          } catch (error) {
+            console.warn(error);
+          }
+        }
+        if (state.popoutChannel) {
+          try {
+            state.popoutChannel.close();
+          } catch (error) {
+            console.warn(error);
+          }
+          state.popoutChannel = null;
+        }
+        if (state.popoutSyncTimer) {
+          clearTimeout(state.popoutSyncTimer);
+          state.popoutSyncTimer = null;
+        }
+        if (state.popoutMonitorTimer) {
+          clearInterval(state.popoutMonitorTimer);
+          state.popoutMonitorTimer = null;
+        }
+      });
 
-      resetHistoryBaseline("Initial State");
-      resizeCanvases();
-      centerViewportOrigin();
-      render();
+      async function initializeApplication() {
+        resetHistoryBaseline("Initial State");
+        if (state.popoutToken) {
+          setupPopoutSyncChannel();
+        }
+        if (state.isPopoutWindow && state.popoutToken) {
+          try {
+            const payloadRaw = localStorage.getItem(popoutPayloadStorageKey(state.popoutToken));
+            if (payloadRaw) {
+              const payload = JSON.parse(payloadRaw);
+              if (payload && payload.project) {
+                await restoreProjectState(payload.project);
+              }
+            }
+          } catch (error) {
+            console.error(error);
+          }
+        }
+        if (state.isPopoutWindow) {
+          const requestedView = state.popoutViewId;
+          if (requestedView && state.views.some((view) => view.id === requestedView)) {
+            state.activeCanvasViewTab = requestedView;
+            setActiveViewById(requestedView);
+          } else if (state.views.length) {
+            state.activeCanvasViewTab = state.views[0].id;
+            setActiveViewById(state.views[0].id);
+          } else {
+            state.activeCanvasViewTab = "main";
+          }
+        }
+        resizeCanvases();
+        centerViewportOrigin();
+        render();
+      }
+
+      initializeApplication();
     </script>
   </body>
 </html>
