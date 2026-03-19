@@ -525,3 +525,32 @@ The current goal is to keep building `Milimetre` as a strong, minimal infinite c
   - restores only the one-time backup snapshot from before first import
   - does not touch project geometry/content
   - one-click rollback to the user's original local settings
+
+## Recent Updates (March 2026)
+
+- `Views` now support `PL` (`Plan`) as a pane direction alongside `T-B`, `B-T`, `L-R`, `R-L`.
+- A dedicated `View Properties` modal exists per view:
+  - includes `Plan Elevation` (supports negative/positive values)
+  - elevation is snapped with the same project step logic used in views.
+- `Plan` rendering has dedicated environment behavior (separate from side elevations):
+  - plan-specific ground behavior is supported
+  - plan underground support exists with:
+    - `Plan Underground` on/off
+    - separate underground color.
+- `View pop-out window` workflow is implemented:
+  - toolbar action text is `Open in New Window`
+  - pop-out window has `Close Window`
+  - main window shows a centered notice when the active view is open in another window
+  - main window can also close the pop-out directly from that notice.
+- Pop-out state synchronization is implemented via `BroadcastChannel` mirror state:
+  - view layout preset and pane directions sync between main and pop-out
+  - sync is request-driven from important commits/events (not naïve always-on redraw).
+- `Undo/Redo` integration updates:
+  - toolbar disabled state reflects actual stack availability
+  - undo/redo actions trigger pop-out sync so external view stays coherent.
+- Card reorder UX was upgraded:
+  - custom pointer drag path is used where introduced
+  - insertion indicator line between cards is supported and tuned for compact UI feedback.
+- View toolbar interaction polish:
+  - hover/press behavior was aligned with existing button interaction language
+  - `Open in New Window` / `Close Window` placement and visual behavior were standardized.
