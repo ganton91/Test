@@ -3658,6 +3658,20 @@
             if (message.type === "ready") {
               state.popoutChannel.postMessage({ type: "mirror-state", payload: capturePopoutMirrorState() });
             }
+            if (message.type === "view-ui-state" && message.payload) {
+              const payload = message.payload || {};
+              if ([1, 2, 4].includes(payload.viewLayoutPreset)) {
+                state.viewLayoutPreset = payload.viewLayoutPreset;
+              }
+              if (Array.isArray(payload.viewPaneDirections) && payload.viewPaneDirections.length === 4) {
+                state.viewPaneDirections = payload.viewPaneDirections.map((direction, index) =>
+                  ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft", "plan"].includes(direction)
+                    ? direction
+                    : ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"][index]
+                );
+              }
+              render({ ui: true, content: true });
+            }
             if (message.type === "closed") {
               clearViewPopoutTracking({ silent: true });
               render({ ui: true, content: true });
@@ -3697,6 +3711,24 @@
         if (options.layerId && !shouldSyncLayerForPopoutView(options.layerId)) return false;
         schedulePopoutMirrorSync();
         return true;
+      }
+
+      function broadcastPopoutViewUiState() {
+        if (!state.isPopoutWindow) return false;
+        if (!state.popoutChannel) return false;
+        try {
+          state.popoutChannel.postMessage({
+            type: "view-ui-state",
+            payload: {
+              viewLayoutPreset: state.viewLayoutPreset,
+              viewPaneDirections: [...state.viewPaneDirections],
+            },
+          });
+          return true;
+        } catch (error) {
+          console.warn(error);
+          return false;
+        }
       }
 
       async function openActiveViewInNewWindow() {
@@ -13725,6 +13757,7 @@
       ui.viewLayoutButtons.forEach((button) => {
         button.addEventListener("click", () => {
           state.viewLayoutPreset = Number(button.dataset.viewLayout) || 4;
+          broadcastPopoutViewUiState();
           requestPopoutSync({ viewId: activeCanvasView()?.id });
           setStatus("View layout set to " + state.viewLayoutPreset + (state.viewLayoutPreset === 1 ? " pane." : " panes."));
           render({ ui: true, content: true });
@@ -13755,6 +13788,7 @@
           const slotIndex = Number(button.dataset.viewSlot);
           if (!Number.isFinite(slotIndex)) return;
           state.viewPaneDirections[slotIndex] = button.dataset.viewDirection;
+          broadcastPopoutViewUiState();
           requestPopoutSync({ viewId: activeCanvasView()?.id });
           setStatus(viewDirectionLabel(button.dataset.viewDirection) + " shown in view slot.");
           render({ ui: true, content: true });
