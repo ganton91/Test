@@ -5069,13 +5069,14 @@
         emptyState.classList.add("hidden");
 
         const context = canvas.getContext("2d");
-        let surfaceWidth, surfaceHeight, ratio;
+        let surfaceWidth, surfaceHeight, ratio, exportPaddingPx = 0;
         if (exportOverride) {
-          // Size canvas exactly to content aspect ratio at the target resolution
+          // Size canvas to content + margin at the target resolution
           const targetRes = exportOverride.targetResolution || 4000;
           const ppc = targetRes / Math.max(contentColumns, totalRows);
-          surfaceWidth = Math.max(1, Math.round(contentColumns * ppc));
-          surfaceHeight = Math.max(1, Math.round(totalRows * ppc));
+          exportPaddingPx = Math.round(targetRes * 0.05);
+          surfaceWidth = Math.max(1, Math.round(contentColumns * ppc) + exportPaddingPx * 2);
+          surfaceHeight = Math.max(1, Math.round(totalRows * ppc) + exportPaddingPx * 2);
           ratio = 1;
           canvas.width = surfaceWidth;
           canvas.height = surfaceHeight;
@@ -5087,7 +5088,7 @@
           surfaceHeight = canvas.clientHeight;
           ratio = window.devicePixelRatio || 1;
         }
-        const padding = exportOverride ? 0 : 64;
+        const padding = exportOverride ? exportPaddingPx : 64;
         const availableWidth = Math.max(1, surfaceWidth - padding * 2);
         const availableHeight = Math.max(1, surfaceHeight - padding * 2);
 
