@@ -220,7 +220,10 @@ isCutGeometry: planeCells >= baseCells && planeCells < topCells
 - `formatSectionValue(v)` → trim trailing zeros
 
 **Render pipeline extensions:**
-- `collectLayerProjectedColumns`: `options.frontBoundaryOverride` αντικαθιστά computed `frontBoundaryValue`
+- `collectLayerProjectedColumns`: `options.frontBoundaryOverride` αντικαθιστά computed `frontBoundaryValue`. **Κρίσιμο:** όταν υπάρχει override, κελιά που βρίσκονται μπροστά από το section plane (πιο κοντά στον θεατή) **εξαιρούνται ρητά** πριν το occlusion test, αλλιώς θα κέρδιζαν το test και θα απέκρυπταν το section:
+  - `frontBoundary === "min"` (π.χ. L→R): `depthValue < frontBoundaryValue → continue`
+  - `frontBoundary === "max"` (π.χ. R→L): `depthValue > frontBoundaryValue → continue`
+  - Κελιά ακριβώς στο `frontBoundaryValue` περνούν και flagγάρονται `isCut`/`isCutGeometry` κανονικά
 - `buildDirectionalOcclusionGrid(view, direction, options)`: passes `frontBoundaryOverride` κάτω
 - `buildPlanOcclusionGrid(view, options)`: `options.planElevationOverride` αντικαθιστά `view.planElevation`
 - `renderDirectionalViewOutput`: αν `isSectionAxisId(direction)` → lookup axis → dispatch σωστά
@@ -237,5 +240,11 @@ isCutGeometry: planeCells >= baseCells && planeCells < topCells
   - Containers: `#viewPaneSectionButtons{0-3}` (div.view-pane-section-buttons, display:contents)
   - Click listeners added per-button during render
 - `viewDirectionLabel(direction)`: αν section axis ID → lookup → `sectionAxisFullLabel`
+
+**Main View overlay lines (`drawOverlayScene`):** Για κάθε view που έχει X ή Y section axes, σχεδιάζεται μέσα στο view box rectangle:
+- X axis → κατακόρυφη διακεκομμένη γραμμή (`setLineDash([6, 5])`) στο `cellX * CELL_SIZE` world X, από `view.bounds.minY` έως `view.bounds.maxY`
+- Y axis → οριζόντια διακεκομμένη γραμμή στο `cellY * CELL_SIZE` world Y, από `view.bounds.minX` έως `view.bounds.maxX`
+- Κεντρικό γεμιστό τριγωνικό βέλος που δείχνει προς την `axis.direction` (leftToRight → 0, rightToLeft → π, topToBottom → π/2, bottomToTop → -π/2)
+- Χρώμα: `--crosshair` αν active view, `--selection` αν inactive, opacity 0.75
 
 **Validation:** `viewPaneDirections` serialization/restore δέχεται οποιοδήποτε string (no strict whitelist), fallback σε standard direction αν `null/undefined`. Ορφανά section IDs → graceful empty state στο render.
