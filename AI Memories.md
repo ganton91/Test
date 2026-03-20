@@ -62,10 +62,13 @@
 
 1. Background fill (sky για sides, `planGroundColor` για plan)
 2. Vector fills — painted non-cut κελιά (`buildViewVectorFillGroups`)
-3. Per-layer outlines
+3. Per-layer outlines — **pass 1**: μόνο layers που ΔΕΝ είναι `excludedFromSectionCut`
 4. Global outline
-5. Section cut fills (isCut κελιά)
+5. Section cut fills (`isCut` κελιά)
 6. **Ground overlay** (sides) ή **Underground overlay** (plan < 0)
+7. Horizon line
+8. Section cut outline
+9. Per-layer outlines — **pass 2**: μόνο layers που είναι `excludedFromSectionCut` (πάνω από όλα)
 
 ### Side Views — Ground
 
@@ -130,6 +133,7 @@
 |---|---|---|
 | `isCut` | γεωμετρικά κομμένο **και** δεν έχει εξαιρεθεί | Section fill coloring |
 | `isCutGeometry` | γεωμετρικά κομμένο, **αγνοεί** το `excludeFromSectionCut` | Ground / Underground hole mask |
+| `excludedFromSectionCut` | το layer είναι excluded — σε **όλα** τα κελιά του, όχι μόνο τα cut-boundary | Per-layer outline pass 2 (rendering μετά το Ground) |
 
 **Side Views** (`collectLayerProjectedColumns`):
 ```

@@ -4350,6 +4350,7 @@
           outline: !!config.outline,
           outlineColor: config.outlineColor || state.viewOutlineEffect.color,
           outlineWidth: config.outlineWidth,
+          excludedFromSectionCut: !!config.excludeFromSectionCut,
           baseCells: Math.round(config.baseElevation * CELLS_PER_METER),
           heightCells: Math.max(0, Math.round(config.height * CELLS_PER_METER)),
           orderIndex,
@@ -4408,6 +4409,7 @@
                 forceOutline: !!entry.outline,
                 outlineColor: entry.outlineColor || state.viewOutlineEffect.color,
                 outlineWidth: Math.max(1, Math.min(12, Math.round(Number(entry.outlineWidth) || 1))),
+                excludedFromSectionCut: !!entry.excludedFromSectionCut,
                 orderIndex: entry.orderIndex,
               };
               if (
@@ -4496,6 +4498,7 @@
                 forceOutline: entry.forceOutline,
                 outlineColor: entry.outlineColor,
                 outlineWidth: entry.outlineWidth,
+                excludedFromSectionCut: !!entry.excludeFromSectionCut,
                 orderIndex: entry.orderIndex,
               };
               const existing = grid[rowIndex][columnIndex];
@@ -5174,13 +5177,13 @@
           context.restore();
         }
 
-        // === Per-layer outlines (forceOutline cells, grouped by outlineColor × outlineWidth) ===
+        // === Per-layer outlines — pass 1: normal layers (not excluded from section cut) ===
         {
           const layerOutlineGroups = new Map();
           for (let r = 0; r < renderRows; r += 1) {
             for (let c = 0; c < renderColumns; c += 1) {
               const cell = renderGrid[r][c];
-              if (!cell || !cell.forceOutline) continue;
+              if (!cell || !cell.forceOutline || cell.excludedFromSectionCut) continue;
               const key = (cell.outlineColor || state.viewOutlineEffect.color) + ":" + (cell.outlineWidth || 1);
               if (!layerOutlineGroups.has(key)) {
                 layerOutlineGroups.set(key, {
@@ -5194,7 +5197,7 @@
             context.save();
             for (const [key, group] of layerOutlineGroups) {
               const loops = buildViewContoursFromGrid(renderGrid, (cell) => {
-                if (!cell || !cell.forceOutline) return false;
+                if (!cell || !cell.forceOutline || cell.excludedFromSectionCut) return false;
                 return (cell.outlineColor || state.viewOutlineEffect.color) + ":" + (cell.outlineWidth || 1) === key;
               });
               if (!loops.length) continue;
@@ -5283,6 +5286,12 @@
           }
         }
 
+        // planeElevation and planHoleMask hoisted here so pass 2 outlines can use them
+        const planeElevation = isPlanDirection
+          ? snapViewElevationMeters(Number(activeCanvasView() && activeCanvasView().planElevation))
+          : null;
+        const planHoleMask = isPlanDirection ? buildGroundHoleMaskFromGrid(renderGrid, 0) : null;
+
         // === Ground ===
         {
           // Extend enough cells to always cover the full canvas regardless of zoom/pan
@@ -5302,9 +5311,6 @@
             context.fill("evenodd");
             context.restore();
           } else if (isPlanDirection) {
-            const activeView = activeCanvasView();
-            const planeElevation = snapViewElevationMeters(Number(activeView && activeView.planElevation));
-            const planHoleMask = buildGroundHoleMaskFromGrid(renderGrid, 0);
             if (planeElevation >= 0 && state.viewEnvironment.planGroundEnabled) {
               // Ground plan: same flood-fill logic as underground plan.
               // isCut cells act as boundary walls; enclosed empty spaces become holes.
@@ -5388,6 +5394,55 @@
             context.lineWidth = px(cutOutlineThickness);
             context.lineJoin = "miter";
             context.stroke();
+            context.restore();
+          }
+        }
+
+        // === Per-layer outlines — pass 2: excluded-from-section-cut layers (on top of ground + section cut) ===
+        {
+          const planOverlayActive = isPlanDirection && (
+            (planeElevation >= 0 && state.viewEnvironment.planGroundEnabled) ||
+            (planeElevation < 0 && state.viewEnvironment.planUndergroundEnabled)
+          );
+          const isCellVisibleInPass2 = (r, c) => {
+            if (!isPlanDirection) {
+              if (r < undergroundStartRow) return true;
+              return !!groundHoleMask[r] && groundHoleMask[r][c];
+            }
+            if (!planOverlayActive) return true;
+            return !!planHoleMask[r] && planHoleMask[r][c];
+          };
+          const layerOutlineGroups = new Map();
+          for (let r = 0; r < renderRows; r += 1) {
+            for (let c = 0; c < renderColumns; c += 1) {
+              const cell = renderGrid[r][c];
+              if (!cell || !cell.forceOutline || !cell.excludedFromSectionCut) continue;
+              if (!isCellVisibleInPass2(r, c)) continue;
+              const key = (cell.outlineColor || state.viewOutlineEffect.color) + ":" + (cell.outlineWidth || 1);
+              if (!layerOutlineGroups.has(key)) {
+                layerOutlineGroups.set(key, {
+                  color: cell.outlineColor || state.viewOutlineEffect.color,
+                  width: Math.max(1, Math.min(12, Math.round(Number(cell.outlineWidth) || 1))),
+                });
+              }
+            }
+          }
+          if (layerOutlineGroups.size) {
+            context.save();
+            for (const [key, group] of layerOutlineGroups) {
+              const loops = buildViewContoursFromGrid(renderGrid, (cell, r, c) => {
+                if (!cell || !cell.forceOutline || !cell.excludedFromSectionCut) return false;
+                if ((cell.outlineColor || state.viewOutlineEffect.color) + ":" + (cell.outlineWidth || 1) !== key) return false;
+                return isCellVisibleInPass2(r, c);
+              });
+              if (!loops.length) continue;
+              context.beginPath();
+              for (const loop of loops) applyViewContourPath(context, loop);
+              context.strokeStyle = group.color;
+              context.lineWidth = px(group.width);
+              context.lineJoin = "miter";
+              context.stroke();
+            }
             context.restore();
           }
         }
