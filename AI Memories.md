@@ -99,6 +99,8 @@
 
 **`planeElevation` + `planHoleMask` στο outer scope:** Και τα δύο υπολογίζονται πριν το `// === Ground ===` block, ώστε να είναι διαθέσιμα σε όλα τα επόμενα render steps (Global Outline, pass 2). Για side views έχουν τιμή `null`.
 
+**`isCellVisibleAfterGround` για plan views:** Ελέγχει `planHoleMask[r][c] || (renderGrid[r][c] && renderGrid[r][c].depth > 0)` — ώστε τα outlines αντικειμένων κάτω από το cut plane αλλά πάνω από z=0 να μην κόβονται.
+
 **`buildViewContoursFromGrid(renderGrid, predicate)`:** Το predicate δέχεται `(cell, rowIndex, columnIndex)` — όχι μόνο `(cell)`. Το `r` και `c` είναι απαραίτητα για visibility checks που εξαρτώνται από θέση (π.χ. `groundHoleMask[r][c]`).
 
 **Global Outline — depth-awareness:** Το Global Outline δεν είναι απλό silhouette. Ζωγραφίζει δύο πράγματα:
@@ -120,6 +122,7 @@
 - Painted content ζωγραφίζεται κανονικά
 - Ground Plan overlay: `buildGroundHoleMaskFromGrid(renderGrid, 0)` — ίδια λογική με underground
 - Full-canvas `rect` με `evenodd` τρύπες → fills με `planGroundColor`
+- Τρύπες = `planHoleMask` cells (isCutGeometry + εγκλωβισμένα κενά) **ΚΑΙ** cells με `depth > 0` (geometry πάνω από z=0 αλλά κάτω από το cut plane). Αυτό εξασφαλίζει ότι αντικείμενα χαμηλότερα από το cut level αλλά ορατά πάνω από το έδαφος δεν καλύπτονται από το planGroundColor.
 - Το φίλτρο `if (planeCells >= 0 && topCells <= 0) continue;` **έχει αφαιρεθεί** από το `buildPlanOcclusionGrid` → underground layers μπαίνουν στο grid, καλύπτονται από το overlay
 
 **Elevation < 0 (Underground Plan Color):**
@@ -127,7 +130,7 @@
 - Painted content από πάνω
 - Underground overlay: `buildGroundHoleMaskFromGrid(renderGrid, 0)` (ολόκληρο το grid = underground zone)
 - Full-canvas `rect` με `evenodd` τρύπες → fills με `planUndergroundColor`
-- Τρύπες = `isCutGeometry` κελιά + εγκλωβισμένα κενά (ίδια λογική με sides, χωρίς zero-cap row)
+- Τρύπες = `planHoleMask` cells **ΚΑΙ** cells με `depth > 0` — ίδια λογική με ground plan
 
 ### Βασική διαφορά sides vs plan underground
 

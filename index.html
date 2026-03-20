@@ -5546,25 +5546,25 @@
             context.restore();
           } else if (isPlanLike) {
             if (planeElevation >= 0 && state.viewEnvironment.planGroundEnabled) {
-              // Ground plan: same flood-fill logic as underground plan.
-              // isCut cells act as boundary walls; enclosed empty spaces become holes.
+              // Ground plan: punch holes where planHoleMask is set (isCut walls + enclosed empties)
+              // AND where any painted cell has depth > 0 (geometry above z=0 but below cut plane).
               context.save();
               context.beginPath();
               context.rect(-safeExt, -safeExt, renderColumns + safeExt * 2, renderRows + safeExt * 2);
               const holeLoops = buildViewContoursFromGrid(renderGrid, (cell, r, c) =>
-                !!planHoleMask[r] && planHoleMask[r][c]
+                (!!planHoleMask[r] && planHoleMask[r][c]) || !!(cell && cell.depth > 0)
               );
               for (const loop of holeLoops) applyViewContourPath(context, loop);
               context.fillStyle = activeViewPlanGroundColor();
               context.fill("evenodd");
               context.restore();
             } else if (planeElevation < 0 && state.viewEnvironment.planUndergroundEnabled) {
-              // Underground plan: same flood-fill logic but for below-ground plans.
+              // Underground plan: same logic — also show geometry above z=0.
               context.save();
               context.beginPath();
               context.rect(-safeExt, -safeExt, renderColumns + safeExt * 2, renderRows + safeExt * 2);
               const holeLoops = buildViewContoursFromGrid(renderGrid, (cell, r, c) =>
-                !!planHoleMask[r] && planHoleMask[r][c]
+                (!!planHoleMask[r] && planHoleMask[r][c]) || !!(cell && cell.depth > 0)
               );
               for (const loop of holeLoops) applyViewContourPath(context, loop);
               context.fillStyle = activeViewPlanUndergroundColor();
@@ -5627,7 +5627,8 @@
             if (r < undergroundStartRow) return true;
             return !!groundHoleMask[r] && groundHoleMask[r][c];
           }
-          return !!planHoleMask[r] && planHoleMask[r][c];
+          const planCell = renderGrid[r] ? renderGrid[r][c] : null;
+          return (!!planHoleMask[r] && planHoleMask[r][c]) || !!(planCell && planCell.depth > 0);
         };
 
         // === Global outline (mass boundary + depth-transition lines) ===
