@@ -11043,6 +11043,7 @@
                   overlayCtx.fillStyle = viewIsActive ? getCssVar("--crosshair") : getCssVar("--selection");
                   overlayCtx.translate(mx, my);
                   overlayCtx.rotate(angle);
+                  overlayCtx.translate(arrowSize + 1, 0);
                   overlayCtx.beginPath();
                   overlayCtx.moveTo(arrowSize, 0);
                   overlayCtx.lineTo(-arrowSize * 0.55, -arrowSize * 0.5);
