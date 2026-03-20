@@ -5212,52 +5212,6 @@
           }
         }
 
-        // === Global outline (mass boundary + depth-transition lines) ===
-        if (state.viewOutlineEffect.enabled) {
-          context.save();
-          const outlineThickness = Math.max(1, Number(state.viewOutlineEffect.thickness) || 1);
-          const outlineColor = state.viewOutlineEffect.color;
-
-          // Mass boundary: outer contour of all non-cut filled cells
-          const massLoops = buildViewContoursFromGrid(renderGrid, (cell) => !!cell && !cell.isCut);
-          if (massLoops.length) {
-            context.beginPath();
-            for (const loop of massLoops) applyViewContourPath(context, loop);
-            context.strokeStyle = outlineColor;
-            context.lineWidth = px(outlineThickness);
-            context.lineJoin = "miter";
-            context.stroke();
-          }
-
-          // Depth transitions: segments where adjacent non-cut cells have different depth values
-          context.beginPath();
-          for (let r = 0; r < renderRows; r += 1) {
-            for (let c = 0; c < renderColumns; c += 1) {
-              const cell = renderGrid[r][c];
-              if (!cell || cell.isCut) continue;
-              if (c + 1 < renderColumns) {
-                const right = renderGrid[r][c + 1];
-                if (right && !right.isCut && right.depth !== cell.depth) {
-                  context.moveTo(c + 1, r);
-                  context.lineTo(c + 1, r + 1);
-                }
-              }
-              if (r + 1 < renderRows) {
-                const bottom = renderGrid[r + 1][c];
-                if (bottom && !bottom.isCut && bottom.depth !== cell.depth) {
-                  context.moveTo(c, r + 1);
-                  context.lineTo(c + 1, r + 1);
-                }
-              }
-            }
-          }
-          context.strokeStyle = outlineColor;
-          context.lineWidth = px(outlineThickness);
-          context.lineCap = "square";
-          context.stroke();
-
-          context.restore();
-        }
 
         // === Section cut fills ===
         if (state.viewSectionCutEffect.enabled) {
@@ -5381,6 +5335,70 @@
           context.restore();
         }
 
+        // Visibility helper: a cell is "above ground" (not buried under the ground overlay).
+        // Used by Global Outline and per-layer outline pass 2.
+        const groundOverlayActive = !isPlanDirection
+          ? state.viewEnvironment.groundEnabled
+          : (planeElevation >= 0 && state.viewEnvironment.planGroundEnabled) ||
+            (planeElevation < 0 && state.viewEnvironment.planUndergroundEnabled);
+        const isCellVisibleAfterGround = (r, c) => {
+          if (!groundOverlayActive) return true;
+          if (!isPlanDirection) {
+            if (r < undergroundStartRow) return true;
+            return !!groundHoleMask[r] && groundHoleMask[r][c];
+          }
+          return !!planHoleMask[r] && planHoleMask[r][c];
+        };
+
+        // === Global outline (mass boundary + depth-transition lines) ===
+        if (state.viewOutlineEffect.enabled) {
+          context.save();
+          const outlineThickness = Math.max(1, Number(state.viewOutlineEffect.thickness) || 1);
+          const outlineColor = state.viewOutlineEffect.color;
+
+          // Mass boundary: outer contour of all visible non-cut filled cells
+          const massLoops = buildViewContoursFromGrid(renderGrid, (cell, r, c) =>
+            !!cell && !cell.isCut && isCellVisibleAfterGround(r, c)
+          );
+          if (massLoops.length) {
+            context.beginPath();
+            for (const loop of massLoops) applyViewContourPath(context, loop);
+            context.strokeStyle = outlineColor;
+            context.lineWidth = px(outlineThickness);
+            context.lineJoin = "miter";
+            context.stroke();
+          }
+
+          // Depth transitions: segments where adjacent visible non-cut cells have different depth values
+          context.beginPath();
+          for (let r = 0; r < renderRows; r += 1) {
+            for (let c = 0; c < renderColumns; c += 1) {
+              const cell = renderGrid[r][c];
+              if (!cell || cell.isCut || !isCellVisibleAfterGround(r, c)) continue;
+              if (c + 1 < renderColumns) {
+                const right = renderGrid[r][c + 1];
+                if (right && !right.isCut && isCellVisibleAfterGround(r, c + 1) && right.depth !== cell.depth) {
+                  context.moveTo(c + 1, r);
+                  context.lineTo(c + 1, r + 1);
+                }
+              }
+              if (r + 1 < renderRows) {
+                const bottom = renderGrid[r + 1][c];
+                if (bottom && !bottom.isCut && isCellVisibleAfterGround(r + 1, c) && bottom.depth !== cell.depth) {
+                  context.moveTo(c, r + 1);
+                  context.lineTo(c + 1, r + 1);
+                }
+              }
+            }
+          }
+          context.strokeStyle = outlineColor;
+          context.lineWidth = px(outlineThickness);
+          context.lineCap = "square";
+          context.stroke();
+
+          context.restore();
+        }
+
         // === Section cut outline ===
         if (state.viewSectionCutEffect.enabled && state.viewSectionCutOutlineEffect.enabled) {
           const cutOutlineColor = state.viewSectionCutOutlineEffect.color || defaultViewSectionCutOutlineColor();
@@ -5400,24 +5418,12 @@
 
         // === Per-layer outlines — pass 2: excluded-from-section-cut layers (on top of ground + section cut) ===
         {
-          const planOverlayActive = isPlanDirection && (
-            (planeElevation >= 0 && state.viewEnvironment.planGroundEnabled) ||
-            (planeElevation < 0 && state.viewEnvironment.planUndergroundEnabled)
-          );
-          const isCellVisibleInPass2 = (r, c) => {
-            if (!isPlanDirection) {
-              if (r < undergroundStartRow) return true;
-              return !!groundHoleMask[r] && groundHoleMask[r][c];
-            }
-            if (!planOverlayActive) return true;
-            return !!planHoleMask[r] && planHoleMask[r][c];
-          };
           const layerOutlineGroups = new Map();
           for (let r = 0; r < renderRows; r += 1) {
             for (let c = 0; c < renderColumns; c += 1) {
               const cell = renderGrid[r][c];
               if (!cell || !cell.forceOutline || !cell.excludedFromSectionCut) continue;
-              if (!isCellVisibleInPass2(r, c)) continue;
+              if (!isCellVisibleAfterGround(r, c)) continue;
               const key = (cell.outlineColor || state.viewOutlineEffect.color) + ":" + (cell.outlineWidth || 1);
               if (!layerOutlineGroups.has(key)) {
                 layerOutlineGroups.set(key, {
@@ -5433,7 +5439,7 @@
               const loops = buildViewContoursFromGrid(renderGrid, (cell, r, c) => {
                 if (!cell || !cell.forceOutline || !cell.excludedFromSectionCut) return false;
                 if ((cell.outlineColor || state.viewOutlineEffect.color) + ":" + (cell.outlineWidth || 1) !== key) return false;
-                return isCellVisibleInPass2(r, c);
+                return isCellVisibleAfterGround(r, c);
               });
               if (!loops.length) continue;
               context.beginPath();

@@ -63,12 +63,14 @@
 1. Background fill (sky για sides, `planGroundColor` για plan)
 2. Vector fills — painted non-cut κελιά (`buildViewVectorFillGroups`)
 3. Per-layer outlines — **pass 1**: μόνο layers που ΔΕΝ είναι `excludedFromSectionCut`
-4. Global outline
-5. Section cut fills (`isCut` κελιά)
-6. **Ground overlay** (sides) ή **Underground overlay** (plan < 0)
-7. Horizon line
+4. Section cut fills (`isCut` κελιά)
+5. **Ground overlay** (sides) ή **Underground overlay** (plan < 0)
+6. Horizon line
+7. **Global outline** — με visibility filter (`isCellVisibleAfterGround`): μόνο για ορατά κελιά
 8. Section cut outline
-9. Per-layer outlines — **pass 2**: μόνο layers που είναι `excludedFromSectionCut` (πάνω από όλα)
+9. Per-layer outlines — **pass 2**: μόνο `excludedFromSectionCut` layers, με visibility filter
+
+**Visibility helper `isCellVisibleAfterGround(r, c)`:** κελί θεωρείται ορατό αν είναι πάνω από το ground (side views: `r < undergroundStartRow`) ή μέσα στο hole mask (`groundHoleMask` / `planHoleMask`). Αν το ground overlay είναι ανενεργό, όλα τα κελιά θεωρούνται ορατά. Χρησιμοποιείται από Global Outline και pass 2.
 
 ### Side Views — Ground
 
