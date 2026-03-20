@@ -201,7 +201,7 @@ isCutGeometry: planeCells >= baseCells && planeCells < topCells
 - `sectionAxes` — custom section planes μέσα στο view box (βλ. παρακάτω)
 
 **Read-only dimensions (modal, για reference):**
-- **H** — auto-computed plan elevation: `(max(baseCells + heightCells) + 1) / CELLS_PER_METER` από τα configured layers του view
+- **H** — `maxTopCells / CELLS_PER_METER` (= πραγματικό ύψος ζωγραφισμένης γεωμετρίας, **5cm λιγότερα** από το cut plane που χρησιμοποιεί το render). Το render χρησιμοποιεί `maxTopCells + 1` για να κόβει πάνω από όλη τη γεωμετρία, αλλά η εμφάνιση δείχνει το πραγματικό ύψος.
 - **L** — view box X dimension σε μέτρα: `(cellBounds.maxX - cellBounds.minX + 1) / CELLS_PER_METER`
 - **W** — view box Y dimension σε μέτρα: `(cellBounds.maxY - cellBounds.minY + 1) / CELLS_PER_METER`
 
