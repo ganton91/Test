@@ -25,8 +25,8 @@
 
 ## Renderer
 
-- **Cell Compute → Vector Render migration για Views:**
-  - Κρατάμε compute pipeline (visibility / occlusion / cut detection / depth ordering)
-  - Αντικαθιστούμε paint step με vector primitives (paths/polygons/segments) από computed regions
-  - Διατηρούμε draw-order/depth rules και export consistency (PNG/PDF/DXF)
-  - Target: cleaner edges, λιγότερα aliasing/striping artifacts, consistency across pane sizes
+- ~~**Cell Compute → Vector Render migration για Views:**~~
+  - ~~Κρατάμε compute pipeline (visibility / occlusion / cut detection / depth ordering)~~
+  - ~~Αντικαθιστούμε paint step με vector primitives (paths/polygons/segments) από computed regions~~
+  - ~~Διατηρούμε draw-order/depth rules και export consistency (PNG/PDF/DXF)~~
+  - ~~Target: cleaner edges, λιγότερα aliasing/striping artifacts, consistency across pane sizes~~
