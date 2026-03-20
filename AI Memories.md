@@ -201,7 +201,7 @@ isCutGeometry: planeCells >= baseCells && planeCells < topCells
 - `sectionAxes` — custom section planes μέσα στο view box (βλ. παρακάτω)
 
 **Read-only dimensions (modal, για reference):**
-- **H** — `maxTopCells / CELLS_PER_METER` (= πραγματικό ύψος ζωγραφισμένης γεωμετρίας, **5cm λιγότερα** από το cut plane που χρησιμοποιεί το render). Το render χρησιμοποιεί `maxTopCells + 1` για να κόβει πάνω από όλη τη γεωμετρία, αλλά η εμφάνιση δείχνει το πραγματικό ύψος.
+- **H** — `(maxTopCells - minBaseCells) / CELLS_PER_METER` = η **απόλυτη κατακόρυφη απόσταση** από το χαμηλότερο ζωγραφισμένο κελί ως το ψηλότερο. Για γεωμετρία -3m έως +3m: H = 6m. Δεν είναι απόσταση από 0, είναι total span.
 - **L** — view box X dimension σε μέτρα: `(cellBounds.maxX - cellBounds.minX + 1) / CELLS_PER_METER`
 - **W** — view box Y dimension σε μέτρα: `(cellBounds.maxY - cellBounds.minY + 1) / CELLS_PER_METER`
 
@@ -243,9 +243,14 @@ isCutGeometry: planeCells >= baseCells && planeCells < topCells
 - `buildViewPaneDxfContent`: ίδια λογική, χρησιμοποιεί `isPlanLike` αντί `isPlanDirection`
 
 **UI:**
-- View Properties modal: 3 dynamic groups (Z/X/Y Sections) κάτω από `planElevation`
+- View Properties modal: 3 dynamic groups (Z/X/Y Sections)
   - Rendered via `renderViewPropertiesModalSections()`, called on open + add/delete
   - Edits mutate `state.viewPropertiesDraft.sectionAxes` inline
+  - Inputs έχουν min/max από τις διαστάσεις του view box (computed στην αρχή του render):
+    - Z elevation: `min = minElevM` (χαμηλότερο baseCells layer), `max = maxElevM` (υψηλότερο topCells layer)
+    - X distance: `max = lengthM` (view box X σε μέτρα)
+    - Y distance: `max = widthM` (view box Y σε μέτρα)
+  - Change handlers clamp την τιμή στο `[0, max]` (ή `[min, max]` για Z)
 - Pane selector: dynamic buttons μετά το PL, rendered στο `renderViewWorkspaceControls`
   - Containers: `#viewPaneSectionButtons{0-3}` (div.view-pane-section-buttons, display:contents)
   - Click listeners added per-button during render

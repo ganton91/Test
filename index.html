@@ -6292,6 +6292,21 @@
         const axes = draft.sectionAxes;
         container.innerHTML = "";
 
+        // Compute bounds for input limits
+        const boundsView = state.views.find(v => v.id === draft.viewId);
+        const cellBoundsForSections = boundsView ? viewCellBounds(boundsView.bounds) : null;
+        const lengthM = cellBoundsForSections ? (cellBoundsForSections.maxX - cellBoundsForSections.minX + 1) / CELLS_PER_METER : 0;
+        const widthM = cellBoundsForSections ? (cellBoundsForSections.maxY - cellBoundsForSections.minY + 1) / CELLS_PER_METER : 0;
+        const configuredForBounds = boundsView ? orderedConfiguredLayersForView(boundsView) : [];
+        const validForBounds = configuredForBounds
+          .map(({ config }) => ({
+            baseCells: Math.round(snapViewElevationMeters(Number(config.baseElevation)) * CELLS_PER_METER),
+            heightCells: Math.max(0, Math.round(snapViewElevationMeters(Number(config.height), { allowNegative: false }) * CELLS_PER_METER)),
+          }))
+          .filter(e => e.heightCells > 0);
+        const minElevM = validForBounds.length ? Math.min(...validForBounds.map(e => e.baseCells)) / CELLS_PER_METER : 0;
+        const maxElevM = validForBounds.length ? Math.max(...validForBounds.map(e => e.baseCells + e.heightCells)) / CELLS_PER_METER : 0;
+
         function makeGroup(type, label, entries) {
           const group = document.createElement("div");
           group.className = "view-properties-section-group";
@@ -6329,11 +6344,13 @@
               const elevEl = document.createElement("input");
               elevEl.type = "number";
               elevEl.step = "0.05";
+              elevEl.min = String(minElevM);
+              elevEl.max = String(maxElevM);
               elevEl.value = String(axis.elevation);
               elevEl.placeholder = "Elevation (m)";
               elevEl.addEventListener("change", () => {
                 const v = Number(elevEl.value);
-                axis.elevation = Number.isFinite(v) ? snapViewElevationMeters(v) : axis.elevation;
+                axis.elevation = Number.isFinite(v) ? Math.max(minElevM, Math.min(maxElevM, snapViewElevationMeters(v))) : axis.elevation;
                 elevEl.value = String(axis.elevation);
               });
               row.appendChild(elevEl);
@@ -6352,11 +6369,12 @@
               distEl.type = "number";
               distEl.step = "0.05";
               distEl.min = "0";
+              distEl.max = String(lengthM);
               distEl.value = String(axis.distance);
               distEl.placeholder = "Distance (m)";
               distEl.addEventListener("change", () => {
                 const v = Number(distEl.value);
-                axis.distance = Number.isFinite(v) ? Math.max(0, v) : axis.distance;
+                axis.distance = Number.isFinite(v) ? Math.max(0, Math.min(lengthM, v)) : axis.distance;
                 distEl.value = String(axis.distance);
               });
 
@@ -6388,11 +6406,12 @@
               distEl.type = "number";
               distEl.step = "0.05";
               distEl.min = "0";
+              distEl.max = String(widthM);
               distEl.value = String(axis.distance);
               distEl.placeholder = "Distance (m)";
               distEl.addEventListener("change", () => {
                 const v = Number(distEl.value);
-                axis.distance = Number.isFinite(v) ? Math.max(0, v) : axis.distance;
+                axis.distance = Number.isFinite(v) ? Math.max(0, Math.min(widthM, v)) : axis.distance;
                 distEl.value = String(axis.distance);
               });
 
@@ -6454,7 +6473,8 @@
           }))
           .filter(e => e.heightCells > 0);
         const maxTopCells = validForDims.length ? Math.max(...validForDims.map(e => e.baseCells + e.heightCells)) : 0;
-        const autoHeightM = maxTopCells / CELLS_PER_METER;
+        const minBaseCells = validForDims.length ? Math.min(...validForDims.map(e => e.baseCells)) : 0;
+        const autoHeightM = (maxTopCells - minBaseCells) / CELLS_PER_METER;
         const cellBoundsForDims = viewCellBounds(view.bounds);
         const lengthM = cellBoundsForDims ? (cellBoundsForDims.maxX - cellBoundsForDims.minX + 1) / CELLS_PER_METER : 0;
         const widthM = cellBoundsForDims ? (cellBoundsForDims.maxY - cellBoundsForDims.minY + 1) / CELLS_PER_METER : 0;
