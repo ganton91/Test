@@ -7,9 +7,9 @@
 - **Per-layout pane direction memory:** κάθε preset (1 Side / 2 Sides / 4 Sides) να θυμάται ανεξάρτητα τα `viewPaneDirections` — σήμερα μοιράζονται το ίδιο array και αλληλοεπικαλύπτονται
   - Implementation: store `viewPaneDirections` per layout key (`"1"`, `"2"`, `"4"`) in state, apply on layout switch
 
-- **Multi-section axes μέσα σε View Box**
+- ~~**Multi-section axes μέσα σε View Box**~~
 
-  **Τι κάνει:** Στο View Properties ο χρήστης ορίζει επιπλέον section planes μέσα στο view box. Κάθε section γίνεται νέα επιλογή στον pane direction selector (μαζί με τα υπάρχοντα T-B / B-T / L-R / R-L / PL). Έτσι μπορεί να βλέπει πολλές τομές από διαφορετικές θέσεις μέσα στο ίδιο view.
+  ~~**Τι κάνει:** Στο View Properties ο χρήστης ορίζει επιπλέον section planes μέσα στο view box. Κάθε section γίνεται νέα επιλογή στον pane direction selector (μαζί με τα υπάρχοντα T-B / B-T / L-R / R-L / PL). Έτσι μπορεί να βλέπει πολλές τομές από διαφορετικές θέσεις μέσα στο ίδιο view.~~
 
   ---
 

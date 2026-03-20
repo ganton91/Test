@@ -192,7 +192,50 @@ isCutGeometry: planeCells >= baseCells && planeCells < topCells
 
 Ανοίγει με "View Properties" button σε κάθε View card → `openViewPropertiesModal(viewId)`.
 
-**Μοναδικό πεδίο:** `planElevation` (meters, snapped) — το ύψος στο οποίο ο `Plan` pane κόβει οριζόντια το μοντέλο.
-- Αποθηκεύεται στο `view.planElevation`
-- Χρησιμοποιείται από `buildPlanOcclusionGrid`: `planeCells = Math.round(planElevation * CELLS_PER_METER)`
-- Αλλαγή trigger: `render({ ui: true, content: true, overlay: true })`
+**Πεδία:**
+- `planElevation` (meters, snapped) — ύψος horizontal section για τον `Plan` pane
+  - Χρησιμοποιείται από `buildPlanOcclusionGrid`: `planeCells = Math.round(planElevation * CELLS_PER_METER)`
+- `sectionAxes` — custom section planes μέσα στο view box (βλ. παρακάτω)
+
+Αλλαγή trigger: `render({ ui: true, content: true, overlay: true })`
+
+---
+
+## Multi-Section Axes
+
+**Data model:** `view.sectionAxes = { z: [{id, elevation}], x: [{id, fromSide, distance, direction}], y: [{id, fromSide, distance, direction}] }`
+
+- Z sections: horizontal cuts σε συγκεκριμένο ύψος → render ως plan view με `planElevationOverride`
+- X sections: vertical cuts κατά τον X άξονα → direction "leftToRight" ή "rightToLeft", `frontBoundaryOverride` computed από `fromSide` + `distance`
+- Y sections: vertical cuts κατά τον Y άξονα → direction "topToBottom" ή "bottomToTop", `frontBoundaryOverride` computed από `fromSide` + `distance`
+
+**Helper functions:**
+- `generateSectionAxisId()` → `"sax-" + random`
+- `isSectionAxisId(direction)` → true αν δεν είναι στο `STANDARD_VIEW_DIRECTIONS`
+- `resolveSectionAxisInfo(view, axisId)` → `{ type, axis }` ή `null`
+- `computeSectionFrontBoundary(sectionInfo, bounds)` → absolute cell coordinate
+- `cloneSectionAxes / restoreSectionAxes` → για snapshot/restore
+- `sectionAxisShortLabel(type, axis)` → e.g. `"Z2.4"`, `"X3→"`, `"Y5↓"` (για selector buttons)
+- `sectionAxisFullLabel(type, axis)` → e.g. `"Z 2.40m"`, `"X 3m →"` (για title/export)
+- `formatSectionValue(v)` → trim trailing zeros
+
+**Render pipeline extensions:**
+- `collectLayerProjectedColumns`: `options.frontBoundaryOverride` αντικαθιστά computed `frontBoundaryValue`
+- `buildDirectionalOcclusionGrid(view, direction, options)`: passes `frontBoundaryOverride` κάτω
+- `buildPlanOcclusionGrid(view, options)`: `options.planElevationOverride` αντικαθιστά `view.planElevation`
+- `renderDirectionalViewOutput`: αν `isSectionAxisId(direction)` → lookup axis → dispatch σωστά
+  - Z section: `buildPlanOcclusionGrid` με `planElevationOverride`
+  - X/Y section: `buildDirectionalOcclusionGrid` με axis direction + `frontBoundaryOverride`
+  - `isPlanLike = isPlanDirection || (Z section)` → ελέγχει sky/ground/horizon rendering
+- `buildViewPaneDxfContent`: ίδια λογική, χρησιμοποιεί `isPlanLike` αντί `isPlanDirection`
+
+**UI:**
+- View Properties modal: 3 dynamic groups (Z/X/Y Sections) κάτω από `planElevation`
+  - Rendered via `renderViewPropertiesModalSections()`, called on open + add/delete
+  - Edits mutate `state.viewPropertiesDraft.sectionAxes` inline
+- Pane selector: dynamic buttons μετά το PL, rendered στο `renderViewWorkspaceControls`
+  - Containers: `#viewPaneSectionButtons{0-3}` (div.view-pane-section-buttons, display:contents)
+  - Click listeners added per-button during render
+- `viewDirectionLabel(direction)`: αν section axis ID → lookup → `sectionAxisFullLabel`
+
+**Validation:** `viewPaneDirections` serialization/restore δέχεται οποιοδήποτε string (no strict whitelist), fallback σε standard direction αν `null/undefined`. Ορφανά section IDs → graceful empty state στο render.
