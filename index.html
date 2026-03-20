@@ -4163,6 +4163,7 @@
                 color,
                 depth: depthValue,
                 isCut: !excludeFromSectionCut && depthValue === frontBoundaryValue,
+                isCutGeometry: depthValue === frontBoundaryValue,
               });
             }
           }
@@ -4402,6 +4403,7 @@
                 color: entry.overrideColor || column.color,
                 depth: column.depth,
                 isCut: !!column.isCut,
+                isCutGeometry: !!column.isCutGeometry,
                 opacity: entry.opacity,
                 forceOutline: !!entry.outline,
                 outlineColor: entry.outlineColor || state.viewOutlineEffect.color,
@@ -4469,6 +4471,7 @@
           if (entry.baseCells > planeCells) continue;
           const visibleDepthCells = Math.min(topCells, planeCells);
           const isCutAtPlane = !entry.excludeFromSectionCut && planeCells >= entry.baseCells && planeCells < topCells;
+          const isCutGeometryAtPlane = planeCells >= entry.baseCells && planeCells < topCells;
           for (const tile of Object.values(entry.layer.tiles || {})) {
             const tileMinX = tile.tileX * TILE_SIZE;
             const tileMinY = tile.tileY * TILE_SIZE;
@@ -4488,6 +4491,7 @@
                 color: entry.overrideColor || color,
                 depth: visibleDepthCells,
                 isCut: isCutAtPlane,
+                isCutGeometry: isCutGeometryAtPlane,
                 opacity: entry.opacity,
                 forceOutline: entry.forceOutline,
                 outlineColor: entry.outlineColor,
@@ -4763,13 +4767,13 @@
           if (rowIndex < 0 || rowIndex >= rowCount || columnIndex < 0 || columnIndex >= columnCount) return false;
           if (rowIndex === zeroCapRow) return true;
           const cell = sourceGrid[rowIndex] ? sourceGrid[rowIndex][columnIndex] : null;
-          return !!(cell && cell.isCut);
+          return !!(cell && cell.isCutGeometry);
         };
 
         for (let rowIndex = undergroundStartRow; rowIndex < rowCount; rowIndex += 1) {
           const row = sourceGrid[rowIndex] || [];
           for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
-            if (row[columnIndex] && row[columnIndex].isCut) holeMask[rowIndex][columnIndex] = true;
+            if (row[columnIndex] && row[columnIndex].isCutGeometry) holeMask[rowIndex][columnIndex] = true;
           }
         }
 
