@@ -1789,6 +1789,28 @@
         }
       }
 
+      .view-properties-dims {
+        display: flex;
+        gap: 12px;
+      }
+      .view-properties-dim {
+        display: flex;
+        align-items: baseline;
+        gap: 5px;
+      }
+      .view-properties-dim-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .view-properties-dim-value {
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+        color: var(--text);
+      }
+
       .view-properties-sections {
         margin-top: 8px;
         display: flex;
@@ -2001,8 +2023,6 @@
             <div class="menu-section">
               <div class="menu-title">Section Cut</div>
               <div class="menu-actions">
-                <button class="mode-button active" data-view-section-cut="on">On</button>
-                <button class="mode-button" data-view-section-cut="off">Off</button>
                 <input id="viewSectionCutColor" type="color" value="#000000" />
               </div>
             </div>
@@ -2140,9 +2160,19 @@
           <div class="menu-title">View Properties</div>
           <div class="tool-heading" id="viewPropertiesTitle">View</div>
           <div class="tool-fields">
-            <div class="field">
-              <label for="viewPropertiesHeight">View Height (meters)</label>
-              <input id="viewPropertiesHeight" type="number" step="0.05" value="0" />
+            <div class="view-properties-dims">
+              <div class="view-properties-dim">
+                <span class="view-properties-dim-label">H</span>
+                <span class="view-properties-dim-value" id="viewPropertiesDimH">—</span>
+              </div>
+              <div class="view-properties-dim">
+                <span class="view-properties-dim-label">L</span>
+                <span class="view-properties-dim-value" id="viewPropertiesDimL">—</span>
+              </div>
+              <div class="view-properties-dim">
+                <span class="view-properties-dim-label">W</span>
+                <span class="view-properties-dim-value" id="viewPropertiesDimW">—</span>
+              </div>
             </div>
           </div>
           <div class="view-properties-sections" id="viewPropertiesSectionsContainer"></div>
@@ -2531,7 +2561,9 @@
         viewPdfApplyButton: document.getElementById("viewPdfApplyButton"),
         viewPropertiesModal: document.getElementById("viewPropertiesModal"),
         viewPropertiesTitle: document.getElementById("viewPropertiesTitle"),
-        viewPropertiesHeight: document.getElementById("viewPropertiesHeight"),
+        viewPropertiesDimH: document.getElementById("viewPropertiesDimH"),
+        viewPropertiesDimL: document.getElementById("viewPropertiesDimL"),
+        viewPropertiesDimW: document.getElementById("viewPropertiesDimW"),
         viewPropertiesSectionsContainer: document.getElementById("viewPropertiesSectionsContainer"),
         viewPropertiesCancelButton: document.getElementById("viewPropertiesCancelButton"),
         viewPropertiesApplyButton: document.getElementById("viewPropertiesApplyButton"),
@@ -3474,7 +3506,7 @@
           state.viewOutlineEffect.enabled = project.viewOutlineEffect?.enabled !== false;
           state.viewOutlineEffect.thickness = Math.max(1, Math.min(12, Number(project.viewOutlineEffect?.thickness) || 2));
           state.viewOutlineEffect.color = typeof project.viewOutlineEffect?.color === "string" ? project.viewOutlineEffect.color : defaultViewOutlineColor();
-          state.viewSectionCutEffect.enabled = project.viewSectionCutEffect?.enabled !== false;
+          state.viewSectionCutEffect.enabled = true;
           state.viewSectionCutEffect.color =
             typeof project.viewSectionCutEffect?.color === "string" ? project.viewSectionCutEffect.color : defaultViewSectionCutColor();
           state.viewSectionCutOutlineEffect.enabled = project.viewSectionCutOutlineEffect?.enabled !== false;
@@ -3771,7 +3803,7 @@
             state.viewOutlineEffect.color = typeof snapshot.viewOutlineEffect.color === "string" ? snapshot.viewOutlineEffect.color : state.viewOutlineEffect.color;
           }
           if (snapshot.viewSectionCutEffect) {
-            state.viewSectionCutEffect.enabled = snapshot.viewSectionCutEffect.enabled !== false;
+            state.viewSectionCutEffect.enabled = true;
             state.viewSectionCutEffect.color = typeof snapshot.viewSectionCutEffect.color === "string" ? snapshot.viewSectionCutEffect.color : state.viewSectionCutEffect.color;
           }
           if (snapshot.viewSectionCutOutlineEffect) {
@@ -4677,13 +4709,6 @@
         const globalColumns = globalExtents.maxX - globalExtents.minX + 1;
         const globalRows = globalExtents.maxY - globalExtents.minY + 1;
 
-        const planeElevation = options.planElevationOverride !== undefined
-          ? snapViewElevationMeters(Number(options.planElevationOverride))
-          : snapViewElevationMeters(Number(view.planElevation));
-        const planeCells = Math.round(planeElevation * CELLS_PER_METER);
-        const grid = Array.from({ length: globalRows }, () => Array(globalColumns).fill(null));
-        let hasRenderable = false;
-
         const configuredEntries = configuredLayers.map(({ layer, config }, orderIndex) => ({
           layer,
           orderIndex,
@@ -4696,6 +4721,20 @@
           opacity: Math.max(0, Math.min(1, state.viewColorOverride ? config.opacity : layer.opacity)),
           overrideColor: state.viewColorOverride ? config.color || layerRepresentativeColor(layer) : null,
         }));
+
+        // Auto-compute plan elevation: one cell above the highest layer top.
+        // When planElevationOverride is given (Z section axes), use that instead.
+        let planeCells;
+        if (options.planElevationOverride !== undefined) {
+          planeCells = Math.round(snapViewElevationMeters(Number(options.planElevationOverride)) * CELLS_PER_METER);
+        } else {
+          const validEntries = configuredEntries.filter(e => e.heightCells > 0);
+          const maxTopCells = validEntries.length ? Math.max(...validEntries.map(e => e.baseCells + e.heightCells)) : 0;
+          planeCells = maxTopCells + 1;
+        }
+        const planeElevation = planeCells / CELLS_PER_METER;
+        const grid = Array.from({ length: globalRows }, () => Array(globalColumns).fill(null));
+        let hasRenderable = false;
 
         for (const entry of configuredEntries) {
           if (entry.heightCells <= 0) continue;
@@ -4759,6 +4798,7 @@
           contentMaxZ: planeCells,
           contentColumns: globalColumns,
           totalRows: globalRows,
+          planeElevation,
           grid,
         };
       }
@@ -5103,7 +5143,7 @@
         const isPlanLike = isPlanDirection || (isSectionDir && sectionInfo && sectionInfo.type === "z");
         if (build.error) return { error: build.error };
         const { grid, contentMaxZ, contentMinProjectedColumn, contentColumns, directionConfig, contentMaxProjectedRow } = build;
-        const sectionCutEnabled = !!state.viewSectionCutEffect.enabled;
+        const sectionCutEnabled = true;
 
         let visibleGrid;
         if (isPlanLike) {
@@ -5492,7 +5532,7 @@
 
 
         // === Section cut fills ===
-        if (state.viewSectionCutEffect.enabled) {
+        {
           const cutColor = state.viewSectionCutEffect.color || defaultViewSectionCutColor();
           const cutFillStyles = new Set();
           for (let r = 0; r < renderRows; r += 1) {
@@ -5522,7 +5562,7 @@
         const planeElevation = isPlanLike
           ? (sectionInfo && sectionInfo.type === "z"
               ? snapViewElevationMeters(Number(sectionInfo.axis.elevation))
-              : snapViewElevationMeters(Number(view && view.planElevation)))
+              : build.planeElevation)
           : null;
         const planHoleMask = isPlanLike ? buildGroundHoleMaskFromGrid(renderGrid, 0) : null;
 
@@ -5681,7 +5721,7 @@
         }
 
         // === Section cut outline ===
-        if (state.viewSectionCutEffect.enabled && state.viewSectionCutOutlineEffect.enabled) {
+        if (state.viewSectionCutOutlineEffect.enabled) {
           const cutOutlineColor = state.viewSectionCutOutlineEffect.color || defaultViewSectionCutOutlineColor();
           const cutOutlineThickness = Math.max(1, Number(state.viewSectionCutOutlineEffect.thickness) || 1);
           const cutLoops = buildViewContoursFromGrid(renderGrid, (cell) => !!cell && !!cell.isCut);
@@ -6402,11 +6442,26 @@
         }
         state.viewPropertiesDraft = {
           viewId: view.id,
-          planElevation: snapViewElevationMeters(Number(view.planElevation)),
           sectionAxes: cloneSectionAxes(view.sectionAxes),
         };
         ui.viewPropertiesTitle.textContent = view.name || "View";
-        ui.viewPropertiesHeight.value = String(state.viewPropertiesDraft.planElevation);
+        // Compute read-only dimension info
+        const configuredForDims = orderedConfiguredLayersForView(view);
+        const validForDims = configuredForDims
+          .map(({ config }) => ({
+            baseCells: Math.round(snapViewElevationMeters(Number(config.baseElevation)) * CELLS_PER_METER),
+            heightCells: Math.max(0, Math.round(snapViewElevationMeters(Number(config.height), { allowNegative: false }) * CELLS_PER_METER)),
+          }))
+          .filter(e => e.heightCells > 0);
+        const maxTopCells = validForDims.length ? Math.max(...validForDims.map(e => e.baseCells + e.heightCells)) : 0;
+        const autoHeightM = maxTopCells / CELLS_PER_METER;
+        const cellBoundsForDims = viewCellBounds(view.bounds);
+        const lengthM = cellBoundsForDims ? (cellBoundsForDims.maxX - cellBoundsForDims.minX + 1) / CELLS_PER_METER : 0;
+        const widthM = cellBoundsForDims ? (cellBoundsForDims.maxY - cellBoundsForDims.minY + 1) / CELLS_PER_METER : 0;
+        const fmtDim = (v) => parseFloat(v.toFixed(2)) + "m";
+        ui.viewPropertiesDimH.textContent = fmtDim(autoHeightM);
+        ui.viewPropertiesDimL.textContent = fmtDim(lengthM);
+        ui.viewPropertiesDimW.textContent = fmtDim(widthM);
         renderViewPropertiesModalSections();
         openModal(ui.viewPropertiesModal);
         setStatus("View properties ready.");
@@ -6423,10 +6478,6 @@
           render({ ui: true });
           return false;
         }
-        const parsed = Number(ui.viewPropertiesHeight.value);
-        const nextElevation = snapViewElevationMeters(Number.isFinite(parsed) ? parsed : draft.planElevation);
-        view.planElevation = nextElevation;
-        draft.planElevation = nextElevation;
         view.sectionAxes = cloneSectionAxes(draft.sectionAxes);
         commitHistoryAction("views:properties", "Edit View Properties");
         requestPopoutSync({ viewId: view.id });
@@ -7759,7 +7810,6 @@
       }
 
       function createSettingsDraft() {
-        const sectionCutEnabled = !!state.viewSectionCutEffect.enabled;
         return {
           theme: state.theme,
           gridPosition: state.gridPosition,
@@ -7776,11 +7826,11 @@
             color: state.viewOutlineEffect.color,
           },
           viewSectionCutEffect: {
-            enabled: sectionCutEnabled,
+            enabled: true,
             color: state.viewSectionCutEffect.color,
           },
           viewSectionCutOutlineEffect: {
-            enabled: sectionCutEnabled && !!state.viewSectionCutOutlineEffect.enabled,
+            enabled: !!state.viewSectionCutOutlineEffect.enabled,
             thickness: state.viewSectionCutOutlineEffect.thickness,
             color: state.viewSectionCutOutlineEffect.color,
           },
@@ -7821,10 +7871,9 @@
         state.viewOutlineEffect.enabled = !!draft.viewOutlineEffect.enabled;
         state.viewOutlineEffect.thickness = draft.viewOutlineEffect.thickness;
         state.viewOutlineEffect.color = draft.viewOutlineEffect.color;
-        state.viewSectionCutEffect.enabled = !!draft.viewSectionCutEffect.enabled;
+        state.viewSectionCutEffect.enabled = true;
         state.viewSectionCutEffect.color = draft.viewSectionCutEffect.color;
-        state.viewSectionCutOutlineEffect.enabled =
-          !!draft.viewSectionCutEffect.enabled && !!draft.viewSectionCutOutlineEffect.enabled;
+        state.viewSectionCutOutlineEffect.enabled = !!draft.viewSectionCutOutlineEffect.enabled;
         state.viewSectionCutOutlineEffect.thickness = draft.viewSectionCutOutlineEffect.thickness;
         state.viewSectionCutOutlineEffect.color = draft.viewSectionCutOutlineEffect.color;
         state.viewEnvironment.skyEnabled = !!draft.viewEnvironment.skyEnabled;
@@ -8696,15 +8745,11 @@
         ui.viewColorOverrideButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewColorOverride === (settings.viewColorOverride ? "on" : "off"));
         });
-        ui.viewSectionCutButtons.forEach((button) => {
-          button.classList.toggle("active", button.dataset.viewSectionCut === (settings.viewSectionCutEffect.enabled ? "on" : "off"));
-        });
         ui.viewSectionCutOutlineButtons.forEach((button) => {
           button.classList.toggle(
             "active",
             button.dataset.viewSectionCutOutline === (settings.viewSectionCutOutlineEffect.enabled ? "on" : "off")
           );
-          button.disabled = !settings.viewSectionCutEffect.enabled;
         });
         ui.viewOutlineButtons.forEach((button) => {
           button.classList.toggle("active", button.dataset.viewOutline === (settings.viewOutlineEffect.enabled ? "on" : "off"));
@@ -8737,8 +8782,8 @@
         ui.viewSectionCutColor.value = settings.viewSectionCutEffect.color;
         ui.viewSectionCutOutlineColor.value = settings.viewSectionCutOutlineEffect.color;
         ui.viewSectionCutOutlineWidth.value = String(settings.viewSectionCutOutlineEffect.thickness);
-        ui.viewSectionCutOutlineColor.disabled = !settings.viewSectionCutEffect.enabled;
-        ui.viewSectionCutOutlineWidth.disabled = !settings.viewSectionCutEffect.enabled;
+        ui.viewSectionCutOutlineColor.disabled = false;
+        ui.viewSectionCutOutlineWidth.disabled = false;
         ui.viewOutlineColor.value = settings.viewOutlineEffect.color;
         ui.viewOutlineWidth.value = String(settings.viewOutlineEffect.thickness);
         ui.viewSkyColor.value = settings.viewEnvironment.skyColor;
@@ -14118,11 +14163,6 @@
         render({ ui: true });
       });
       ui.viewPropertiesApplyButton.addEventListener("click", applyViewPropertiesDraft);
-      ui.viewPropertiesHeight.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter") return;
-        event.preventDefault();
-        applyViewPropertiesDraft();
-      });
       ui.sceneScaleMeters.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
           event.preventDefault();
@@ -14226,18 +14266,6 @@
           if (!state.settingsDraft) return;
           state.settingsDraft.viewColorOverride = button.dataset.viewColorOverride === "on";
           setStatus(state.settingsDraft.viewColorOverride ? "Override colors enabled." : "Override colors disabled.");
-          updateThemeButtons();
-        });
-      });
-
-      ui.viewSectionCutButtons.forEach((button) => {
-        button.addEventListener("click", () => {
-          if (!state.settingsDraft) return;
-          state.settingsDraft.viewSectionCutEffect.enabled = button.dataset.viewSectionCut === "on";
-          if (!state.settingsDraft.viewSectionCutEffect.enabled) {
-            state.settingsDraft.viewSectionCutOutlineEffect.enabled = false;
-          }
-          setStatus(state.settingsDraft.viewSectionCutEffect.enabled ? "Section cut enabled." : "Section cut disabled.");
           updateThemeButtons();
         });
       });

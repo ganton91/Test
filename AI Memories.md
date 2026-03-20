@@ -88,11 +88,11 @@
 1. Background fill (sky για sides, `planGroundColor` για plan)
 2. Vector fills — painted non-cut κελιά (`buildViewVectorFillGroups`)
 3. Per-layer outlines — **pass 1**: μόνο layers που ΔΕΝ είναι `excludedFromSectionCut`
-4. Section cut fills (`isCut` κελιά)
+4. Section cut fills (`isCut` κελιά) — **πάντα ενεργό**, χωρίς On/Off toggle
 5. **Ground overlay** (sides) ή **Underground overlay** (plan < 0)
 6. Horizon line
 7. **Global outline** — με visibility filter (`isCellVisibleAfterGround`): μόνο για ορατά κελιά
-8. Section cut outline
+8. Section cut outline — **μόνο αυτό έχει On/Off toggle**
 9. Per-layer outlines — **pass 2**: μόνο `excludedFromSectionCut` layers, με visibility filter
 
 **Visibility helper `isCellVisibleAfterGround(r, c)`:** κελί θεωρείται ορατό αν είναι πάνω από το ground (side views: `r < undergroundStartRow`) ή μέσα στο hole mask (`groundHoleMask` / `planHoleMask`). Αν το ground overlay είναι ανενεργό, όλα τα κελιά θεωρούνται ορατά. Χρησιμοποιείται από Global Outline και pass 2.
@@ -189,6 +189,8 @@ isCutGeometry: planeCells >= baseCells && planeCells < topCells
 
 **Κανόνας:** `excludeFromSectionCut` επηρεάζει μόνο το section cut fill color — δεν επηρεάζει την ορατότητα, τα outlines, ή τους υπολογισμούς ground/underground.
 
+**Section Cut On/Off:** Το Section Cut fill είναι **πάντα On** (`sectionCutEnabled = true` hardcoded). Δεν υπάρχει UI toggle γι' αυτό. Μόνο το **Section Cut Outline** έχει On/Off. *(Σημείωση: αν χρειαστεί να επαναφερθεί το On/Off για το fill, η διόρθωση είναι να αντικαταστήσεις `if (!cell || cell.isCut) continue;` στο `buildViewVectorFillGroups` με `if (!cell || (sectionCutEnabled && cell.isCut)) continue;` — έτσι τα isCut cells ζωγραφίζονται με το layer χρώμα τους όταν το section cut είναι Off.)*
+
 ---
 
 ## View Properties
@@ -196,9 +198,14 @@ isCutGeometry: planeCells >= baseCells && planeCells < topCells
 Ανοίγει με "View Properties" button σε κάθε View card → `openViewPropertiesModal(viewId)`.
 
 **Πεδία:**
-- `planElevation` (meters, snapped) — ύψος horizontal section για τον `Plan` pane
-  - Χρησιμοποιείται από `buildPlanOcclusionGrid`: `planeCells = Math.round(planElevation * CELLS_PER_METER)`
 - `sectionAxes` — custom section planes μέσα στο view box (βλ. παρακάτω)
+
+**Read-only dimensions (modal, για reference):**
+- **H** — auto-computed plan elevation: `(max(baseCells + heightCells) + 1) / CELLS_PER_METER` από τα configured layers του view
+- **L** — view box X dimension σε μέτρα: `(cellBounds.maxX - cellBounds.minX + 1) / CELLS_PER_METER`
+- **W** — view box Y dimension σε μέτρα: `(cellBounds.maxY - cellBounds.minY + 1) / CELLS_PER_METER`
+
+**`planElevation`** — αφαιρέθηκε από το UI και από το render pipeline. Το `view.planElevation` field παραμένει στο data model για backwards compat με παλιά projects αλλά **αγνοείται**. Το `buildPlanOcclusionGrid` υπολογίζει το `planeCells` αυτόματα (max layer top + 1 cell) εκτός αν δοθεί `planElevationOverride` (για Z section axes). Επιστρέφει `planeElevation` στο return object — χρησιμοποιείται από `renderDirectionalViewOutput` για το ground overlay.
 
 Αλλαγή trigger: `render({ ui: true, content: true, overlay: true })`
 
