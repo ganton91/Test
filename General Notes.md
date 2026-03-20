@@ -48,3 +48,9 @@
 - **Space + drag:** pan / **Mouse wheel:** zoom
 - Μόνο ένα active target family κάθε φορά (Scene, Layer, Measurement, View)
 - **Modals:** global behavior — κλείνουν με Escape ή με πρώτο click έξω (χωρίς passthrough)
+
+---
+
+## Πιθανά Μελλοντικά Features
+
+- **Section Cut On/Off toggle:** Το section cut fill είναι πάντα ενεργό. Αν χρειαστεί toggle στο μέλλον, βλ. σημείωση στο `AI Memories.md` (Layer Properties section).

@@ -189,7 +189,7 @@ isCutGeometry: planeCells >= baseCells && planeCells < topCells
 
 **Κανόνας:** `excludeFromSectionCut` επηρεάζει μόνο το section cut fill color — δεν επηρεάζει την ορατότητα, τα outlines, ή τους υπολογισμούς ground/underground.
 
-**Section Cut On/Off:** Το Section Cut fill είναι **πάντα On** (`sectionCutEnabled = true` hardcoded). Δεν υπάρχει UI toggle γι' αυτό. Μόνο το **Section Cut Outline** έχει On/Off. *(Σημείωση: αν χρειαστεί να επαναφερθεί το On/Off για το fill, η διόρθωση είναι να αντικαταστήσεις `if (!cell || cell.isCut) continue;` στο `buildViewVectorFillGroups` με `if (!cell || (sectionCutEnabled && cell.isCut)) continue;` — έτσι τα isCut cells ζωγραφίζονται με το layer χρώμα τους όταν το section cut είναι Off.)*
+**Section Cut On/Off:** Το Section Cut fill είναι **πάντα On** (`sectionCutEnabled = true` hardcoded). Δεν υπάρχει UI toggle γι' αυτό. Μόνο το **Section Cut Outline** έχει On/Off.
 
 ---
 
