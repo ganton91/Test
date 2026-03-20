@@ -248,6 +248,98 @@ function queryDrawingAtWorldPoint(layer, drawing, worldX, worldY, worldZ)
 
 ---
 
+## View Annotations & Drawing Overlay
+
+Δυνατότητα annotation και 2D drawing απευθείας πάνω στα view outputs — για documentation, λεπτομέρειες (κουφώματα κ.λπ.), διορθώσεις staircase, τίτλους, στάθμες.
+
+**Ακόμα ανοιχτό:** δύο εναλλακτικές αρχιτεκτονικές, δεν έχει αποφασιστεί ποια πάμε.
+
+---
+
+### Εργαλεία overlay (κοινά και στις δύο επιλογές)
+
+Toolbar που εμφανίζεται floating πάνω στο active panel/sheet:
+
+| Tool | Περιγραφή |
+|---|---|
+| **Select** | default — move/edit/delete υπάρχοντα annotations. Escape επιστρέφει εδώ. |
+| **Pencil** | vector polyline, click-by-click (όχι freehand). Επιλογή line width. |
+| **Length** | dimension line με βέλη + αυτόματο μήκος |
+| **Elevation** | σύμβολο στάθμης — διαφορετικό ανά view type (βλ. παρακάτω) |
+| **Text** | text box |
+| **Area** | polygonal area + m² |
+
+**Interaction:** Left click = draw, Right click = erase, Scroll = zoom, Space+drag = pan. Shift = axis lock (κλείδωμα σε οριζόντιο/κατακόρυφο άξονα).
+
+**Snap:** Geometry snap μόνο — snap σε endpoints/midpoints/intersections των rendered vector contours. Grid snap δεν υπάρχει. Free-floating σε κενές περιοχές χωρίς γεωμετρία.
+
+**Grid:** Visual reference κάναβος show/hide toggle — δεν επηρεάζει snap.
+
+**Elevation tool — συμπεριφορά ανά view type:**
+- **Side view:** κλικ → διαβάζει Y position στο view (= ύψος σε μέτρα) → κλασικό σύμβολο στάθμης (οριζόντια γραμμή + τιμή, π.χ. `+3.00`)
+- **Plan, elevation ≥ 0:** κλικ σε γεωμετρία → διαβάζει top elevation του cell → σύμβολο κύκλος+σταυρός + τιμή. Κλικ σε κενό → `0.00`
+- **Plan, elevation < 0:** κλικ σε γεωμετρία → top elevation. Κλικ σε κενό → elevation του section cut plane
+
+**Segment deletion:** με το Select tool → κλικ σε outline segment → delete. Το segment αφαιρείται από το frozen/stored vector set. Λύνει το staircase πρόβλημα manually: διαγράφεις τα "σκαλόπατα" ακμές + ζωγραφίζεις τη σωστή διαγώνια με Pencil.
+
+---
+
+### Επιλογή Α — Direct annotation πάνω στα live panels
+
+Annotations ζουν απευθείας στο υπάρχον view panel, per view+direction (`view.annotations[direction][]`).
+
+**Πώς δουλεύει:**
+- Annotations αποθηκεύονται σε view content space (meters) — ξεχωριστά από το raster
+- Μετά από κάθε re-render: annotations ξανα-draw-άρονται on top
+- Snap: vector contours cached μετά το render (δεν πετιούνται αμέσως)
+- Zoom/pan: annotations σε ξεχωριστό overlay canvas, CSS-transformed μαζί με το raster — aligned σε οποιοδήποτε zoom
+
+**Trade-offs:**
+- ✓ Άμεσο — δεν υπάρχει ξεχωριστός χώρος εργασίας, βλέπεις annotations δίπλα στο live model
+- ✓ Λιγότερη πολυπλοκότητα
+- ✗ Stale risk: αν αλλάξει η γεωμετρία, τα annotations μένουν στις absolute positions τους — μπορεί να είναι misaligned
+- ✗ Δεν υπάρχει explicit "finalize" βήμα — δουλεύεις ταυτόχρονα model + annotations
+
+---
+
+### Επιλογή Β — View Editor (ξεχωριστός χώρος, frozen sheets)
+
+Νέο tab δίπλα στο Main View / View 1 / View 2: **View Editor**.
+
+**Πώς δουλεύει:**
+- Από live view → "Send to Editor" → δημιουργείται frozen sheet
+- Frozen sheet = stored vector contours (όχι raster) + annotations
+- Frozen = permanent: δεν ανανεώνεται αυτόματα αν αλλάξει το model. Αν θες νέο, φτιάχνεις νέο sheet από την αρχή.
+- Πολλά sheets — επιλογή από buttons στο top του editor (όπως τωρινός pane direction selector)
+
+**UI:**
+```
+[ Main View ]  [ View 1 ]  [ View 2 ]  [ View Editor ]
+                                              ↓
+                    [ Ground Floor | North Elev | Section A | + ]
+                    (κάθε κουμπί = ένα frozen sheet, deletable)
+
+                    ← full-screen editable sheet
+```
+
+**Trade-offs:**
+- ✓ Μηδενικό stale risk — frozen render δεν αλλάζει ποτέ
+- ✓ Καθαρός διαχωρισμός model editing / documentation
+- ✓ Ταιριάζει με επαγγελματικό CAD workflow (Revit sheets, AutoCAD paper space)
+- ✗ Extra βήμα: πρέπει να κάνεις explicit freeze
+- ✗ Αν αλλάξεις το model και θες ενημερωμένο sheet, ξεκινάς από μηδέν
+- ✗ Μεγαλύτερη πολυπλοκότητα υλοποίησης
+
+---
+
+### Κοινή αρχιτεκτονική (ανεξάρτητα από επιλογή)
+
+- Frozen/stored render = **vectors** (cached contours από `buildViewContoursFromGrid`) — όχι raster. Λόγος: snap σε geometry points είναι trivial, re-render σε οποιοδήποτε size sharp, segment deletion = αφαίρεση element από λίστα.
+- Annotations stored ως structured objects (όχι pixels): `{ type, points[], width, text, ... }`
+- Export (PNG/PDF/DXF): annotations included στο output
+
+---
+
 ## Export / Import
 
 - **Export Styles:** ξεχωριστή action από full project export
