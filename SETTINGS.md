@@ -22,6 +22,14 @@
 
 Τα panels ζωγραφίζονται μία φορά σε `offscreenScale × CSS size` pixels (όχι περισσότερο από 2048px). Το zoom/pan είναι pure CSS transform χωρίς re-render. Το max zoom είναι πάντα **4×** (sharp ποιότητα μέχρι `offscreenScale ×`, ελαφρά blur μετά). Αύξηση `MAX_OFFSCREEN_PX` → καλύτερη ποιότητα σε μεγαλύτερα panels, βαρύτερος render. Αλλαγή `maxZoom: 4` → αλλαγή max zoom.
 
+### Target Resolution του export (PNG / PDF)
+**Αρχείο:** `index.html`
+**Μεταβλητή:** `targetResolution` μέσα στη `renderDirectionalViewOutput`
+**Τρέχουσα τιμή:** `4000` (px στη μεγαλύτερη διάσταση)
+**Αναζήτηση:** `const targetRes =`
+
+Ορίζει τη βασική ανάλυση του εξαγόμενου PNG/PDF. Το export scaling προσαρμόζεται ώστε το content να χωράει σε αυτή την ανάλυση (με αναλογία aspect ratio). Αύξηση → μεγαλύτερο αρχείο, καλύτερη ποιότητα.
+
 ### Padding γύρω από το export (PNG / PDF)
 **Αρχείο:** `index.html`
 **Μεταβλητή:** `exportPaddingPx` μέσα στη `renderDirectionalViewOutput`

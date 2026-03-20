@@ -72,6 +72,14 @@
 
 **Visibility helper `isCellVisibleAfterGround(r, c)`:** κελί θεωρείται ορατό αν είναι πάνω από το ground (side views: `r < undergroundStartRow`) ή μέσα στο hole mask (`groundHoleMask` / `planHoleMask`). Αν το ground overlay είναι ανενεργό, όλα τα κελιά θεωρούνται ορατά. Χρησιμοποιείται από Global Outline και pass 2.
 
+**`planeElevation` + `planHoleMask` στο outer scope:** Και τα δύο υπολογίζονται πριν το `// === Ground ===` block, ώστε να είναι διαθέσιμα σε όλα τα επόμενα render steps (Global Outline, pass 2). Για side views έχουν τιμή `null`.
+
+**`buildViewContoursFromGrid(renderGrid, predicate)`:** Το predicate δέχεται `(cell, rowIndex, columnIndex)` — όχι μόνο `(cell)`. Το `r` και `c` είναι απαραίτητα για visibility checks που εξαρτώνται από θέση (π.χ. `groundHoleMask[r][c]`).
+
+**Global Outline — depth-awareness:** Το Global Outline δεν είναι απλό silhouette. Ζωγραφίζει δύο πράγματα:
+- **Mass boundary**: εξωτερικό περίγραμμα όλων των non-cut κελιών (σχήμα)
+- **Depth transitions**: γραμμές εκεί όπου γειτονικά non-cut κελιά έχουν διαφορετικό `depth` value — δηλ. φανερώνει τα "βάθη" της προβολής σαν ανάγλυφο
+
 ### Side Views — Ground
 
 - Το ground ζωγραφίζεται **μετά** τα content fills, καλύπτοντας όλη την underground ζώνη (`undergroundStartRow` και κάτω)
