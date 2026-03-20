@@ -83,9 +83,9 @@
 
 ---
 
-## Renderer — Pull Model / View Box as Reference Frame
+## Renderer — Pull Model / World Space Architecture
 
-Αυτό είναι το μακροπρόθεσμο architectural direction για τον view renderer — δεν είναι immediate task αλλά η βάση για οποιαδήποτε μελλοντική δουλειά γύρω από rotated layers ή smooth output.
+Αυτό είναι το μακροπρόθεσμο architectural direction για τον view renderer και το data model των layers — δεν είναι immediate task αλλά η βάση για οποιαδήποτε μελλοντική δουλειά γύρω από rotated layers ή smooth output.
 
 ---
 
@@ -100,75 +100,131 @@
 
 ---
 
-### Η νέα αρχιτεκτονική — Pull Model
+### Η νέα αρχιτεκτονική — World Space ως κοινός παρονομαστής
 
-Αντί τα layers να ωθούν δεδομένα, το **View Box ρωτά** κάθε layer.
+Τα **Layers**, τα **Drawings** (sub-layers) και τα **View Boxes** είναι όλα coordinate systems που επιπλέουν στον world space. Ο world space είναι ο κοινός παρονομαστής — ο μεταφραστής μεταξύ τους.
 
-**Η βασική μεταφορά:** Το View Box είναι ένας "τρίτος κύβος" — ο διαμεσολαβητής. Ο ίδιος ορίζει ένα πλέγμα δειγματοληψίας σε world-space συντεταγμένες. Για κάθε σημείο αυτού του πλέγματος, ρωτά κάθε layer: *"τι χρώμα / opacity έχεις εδώ;"* Κάθε layer απαντά χρησιμοποιώντας inverse rotation transform για να βρει το αντίστοιχο κελί στον δικό του rotated grid.
+```
+World Space
+├── Layer A  (rotation 30°, anchor Ax,Ay)
+│   ├── Drawing 1  (local offset dx,dy)
+│   └── Drawing 2  (local offset dx,dy)
+├── Layer B  (rotation 0°)
+│   └── Drawing 3
+└── View Box  (rotation 45°, position Vx,Vy)
+    └── sample grid → queries all layers
+```
 
 **Ορολογία:**
 - **Push model** (τρέχον): layers → view grid
-- **Pull model** (νέο): view grid → queries → layers
+- **Pull model** (νέο): view grid queries → world space → layers
 
 ---
 
-### Πώς λύνει το rotated layer πρόβλημα
+### Data model — Layer ως container, Drawing ως sub-layer
 
-Με pull model, το view grid δουλεύει αποκλειστικά σε **world space**. Κάθε sample point είναι world (x, y, z). Κάθε layer ξέρει τη δική του `rotation` και μετατρέπει τo world point σε local cell coordinates με **inverse rotation**:
+Τα **τωρινά layers** γίνονται **containers**. Το drawing content μετακινείται μέσα σε **Drawings**.
+
+| | Rotation | Local offset | Ανήκει σε |
+|---|---|---|---|
+| **Layer** (container) | ✓ γύρω από anchor | — | canvas (world) |
+| **Drawing** | ✗ | ✓ translation μόνο, μέσα στο layer grid | ένα Layer |
+| **View Box** | ✓ γύρω από anchor | — | canvas (world) |
+
+**Layer:**
+- `layer.rotation` — degrees, default `0`
+- `layer.anchor` — world coords, auto-computed ως κέντρο bounding box των ζωγραφισμένων cells. Fallback σε `(0, 0)` αν κενό.
+- `layer.children[]` — ordered list, mixed: Drawings και Measurements
+
+**Drawing** (αντικαθιστά το σημερινό layer content):
+- `drawing.offset` — `{ dx, dy }` σε local layer cells (translation μόνο, χωρίς rotation)
+- `drawing.tiles` — tile-based painted data (ίδια δομή με το σημερινό layer)
+- Όλα τα υπόλοιπα properties που έχει σήμερα το layer ανά view (`baseElevation`, `height`, `color`, `opacity`, `outline`, `excludeFromSectionCut` κ.λπ.) → ανήκουν στο **Drawing**, όχι στο Layer container
+
+**Measurement** (per-layer):
+- Measurements ζουν μέσα σε ένα Layer — στο local coordinate system του layer
+- Snap γίνεται στο layer's rotated grid (όχι στο world grid)
+- Όταν το layer περιστρέφεται, τα measurements περιστρέφονται μαζί του
+- Cross-layer measurement: γίνεται σε layer με `rotation=0` (= world space de facto) — δεν υπάρχει ξεχωριστή "world measurement" κατηγορία
+- Τα σημερινά global measurements migrate → ένα default layer με `rotation=0`
+
+**View Box:**
+- `view.rotation` — degrees, default `0`
+- `view.anchor` — world coords (pivot για rotation)
+
+---
+
+### Pull model — πώς δουλεύει το query
+
+Για κάθε sample point του View Box:
 
 ```
-localPoint = inverseRotate(worldPoint - layerOrigin, layer.rotation)
-cell = floor(localPoint / CELL_SIZE)
+1. viewLocalPoint → world:
+   worldPoint = rotate(viewLocalPoint, view.rotation) + view.anchor
+
+2. world → layer local (για κάθε layer):
+   layerLocalPoint = inverseRotate(worldPoint - layer.anchor, layer.rotation)
+
+3. layer local → drawing local (για κάθε drawing):
+   drawingLocalPoint = layerLocalPoint - drawing.offset
+
+4. Lookup: drawingLocalPoint → cell coords → tile data
+   → returns { color, opacity, baseElevation, height, ... } | null
 ```
 
-Αν το cell υπάρχει και είναι ζωγραφισμένο → η τιμή επιστρέφεται. Αν όχι → null (transparent).
+Cross-layer occlusion γίνεται φυσικά στο world space: για κάθε sample column, τα drawings ταξινομούνται κατά world-space depth → occlusion → wins.
 
-Το cross-layer occlusion γίνεται φυσικά στο view grid: για κάθε sample column, τα layers ταξινομούνται κατά depth σε world space — ανεξάρτητα από γωνίες.
+---
+
+### Τι σημαίνει ένα rotated View Box
+
+Ένα rotated View Box δημιουργεί section cut υπό γωνία — slice ενός κτιρίου διαγώνια, σαν να κόβεις με μαχαίρι σε custom angle. Αρχιτεκτονικά πολύ χρήσιμο (π.χ. δύο πτέρυγες υπό γωνία, curved plan).
 
 ---
 
 ### Technical implementation plan
 
-**1. Layer data model**
-- Προσθήκη `layer.rotation` (degrees, default `0`)
-- UI: rotation input στο layer card ή Layer Properties
-- Serialization/restore
+**1. Drawing data model**
+- Εισαγωγή `drawing` object: `{ id, offset: {dx,dy}, tiles, ... }` (ίδια tile structure με σήμερα)
+- Migration: κάθε τωρινό layer → Layer container με ένα Drawing μέσα (offset `{0,0}`)
+- Serialization/restore με backwards compat
 
-**2. Per-layer query function**
+**2. Layer container data model**
+- `layer.rotation` (degrees, default `0`)
+- `layer.anchor` (world coords) — computed lazily από painted bounding box, cached, invalidated όταν αλλάζουν τα tiles
+- `layer.drawings[]` — ordered, εμφανίζονται ως sub-items στο sidebar
+
+**3. View Box rotation**
+- `view.rotation` (degrees, default `0`)
+- `view.anchor` — pivot point (default: κέντρο view box)
+- UI: rotation input στο View Properties modal
+
+**4. Per-drawing query function**
 ```js
-function queryLayerAtWorldPoint(layer, worldX, worldY, worldZ)
-// → { color, opacity } | null
+function queryDrawingAtWorldPoint(layer, drawing, worldX, worldY, worldZ)
+// → { color, opacity, baseElevation, height, isCut, ... } | null
 ```
-- Inverse-rotates worldX/Y γύρω από το `layer.origin` (ή canvas origin αν δεν υπάρχει per-layer origin)
-- Υπολογίζει cell coords → lookup στο layer's tile data
-- Returns null αν εκτός bounds ή unset
+- Inverse-rotates worldX/Y γύρω από `layer.anchor`
+- Αφαιρεί `drawing.offset`
+- Lookup στο tile data
 
-**3. View renderer rewrite**
-Αντικατάσταση `collectLayerProjectedColumns` + `buildDirectionalOcclusionGrid` με:
-```js
-function buildPullOcclusionGrid(view, direction)
-```
-- Iterates view grid positions (view-space columns × rows)
-- Κάθε (col, row) → μετατρέπεται σε world (x, y, z) με βάση το view box geometry και direction
-- Για κάθε world position: queries όλα τα layers → depth sort → occlusion → wins
-- Output: ίδιο render grid format με το τρέχον (για να μείνουν ίδια τα downstream render steps)
+**5. View renderer rewrite — `buildPullOcclusionGrid`**
+Αντικατάσταση `collectLayerProjectedColumns` + `buildDirectionalOcclusionGrid`:
+- Iterates view grid positions → inverse-rotate view rotation → world (x, y, z)
+- Για κάθε world position: queries όλα τα drawings (όλων των layers) → depth sort → occlusion → wins
+- Output: ίδιο render grid format (downstream pipeline αμετάβλητο)
 
-**4. View grid resolution (tunable)**
-- Τρέχον: 1 sample ανά 5cm cell (δεμένο με `CELLS_PER_METER`)
-- Pull model: η `viewGridResolution` μπορεί να είναι ανεξάρτητη — π.χ. 1cm ή 2.5cm → smoother output
-- Trade-off: υψηλότερη ανάλυση = πιο αργό compute. Tunable per-view ή global setting.
-
-**5. Occlusion + isCut flags**
-- `isCut`: query point βρίσκεται ακριβώς στο section plane (world depth == frontBoundary)
-- `isCutGeometry`: ανεξάρτητο από `excludeFromSectionCut` — ίδια λογική με τώρα
-- `excludedFromSectionCut`: flag από layer config, εφαρμόζεται στο query result
+**6. View grid resolution (tunable)**
+- Τρέχον: 1 sample / 5cm cell
+- Pull model: `viewGridResolution` ανεξάρτητο — π.χ. 1cm → smoother output για rotated geometry
+- Tunable per-view ή global setting. Trade-off: υψηλότερη ανάλυση = πιο αργό compute.
 
 ---
 
 ### Τι ΔΕΝ αλλάζει
 
-- Downstream render pipeline: `renderDirectionalViewOutput`, `buildViewContoursFromGrid`, `buildViewVectorFillGroups`, outlines, ground/underground overlay — **παραμένουν ακριβώς ίδια**
-- DXF export: `buildViewPaneDxfContent` — ίδιο, γιατί διαβάζει από το τελικό render grid
+- Downstream render pipeline: `renderDirectionalViewOutput`, `buildViewContoursFromGrid`, `buildViewVectorFillGroups`, outlines, ground/underground overlay — παραμένουν ακριβώς ίδια
+- DXF export: `buildViewPaneDxfContent` — ίδιο, διαβάζει από το τελικό render grid
 - Section axes: ίδια λογική `frontBoundaryOverride` / `planElevationOverride`
 - Export format, PDF, PNG: αμετάβλητα
 
@@ -176,12 +232,19 @@ function buildPullOcclusionGrid(view, direction)
 
 ### Σειρά υλοποίησης
 
-1. `queryLayerAtWorldPoint` — standalone, testable χωρίς view integration
-2. `buildPullOcclusionGrid` — νέα συνάρτηση παράλληλα με την παλιά (δεν αντικαθιστά αμέσως)
-3. Feature flag: εναλλαγή μεταξύ push/pull model per-view ή globally
-4. Validation: visual diff push vs pull (χωρίς rotation) → must be identical για 0° layers
-5. Layer `rotation` UI — αφού το pull model είναι stable
-6. Remove push model code
+1. Data model migration:
+   - Layer → Layer container (`children[]`, `rotation`, `anchor`)
+   - Drawing object (tile data + per-view properties)
+   - Measurements migrate into layer `children[]` (existing global measurements → default `rotation=0` layer)
+   - Serialization/restore με backwards compat
+2. `queryDrawingAtWorldPoint` — standalone, testable χωρίς view integration
+3. `buildPullOcclusionGrid` — νέα συνάρτηση παράλληλα με την παλιά
+4. Feature flag: εναλλαγή push/pull per-view ή globally
+5. Validation: visual diff push vs pull για `rotation=0` → must be identical
+6. Layer rotation UI + View Box rotation UI
+7. Drawing offset UI (move drawing within layer)
+8. Measurement authoring/editing με snap στο layer's local grid
+9. Remove push model code
 
 ---
 
