@@ -10,6 +10,31 @@
 
 **Κανόνας SETTINGS.md (ΥΠΟΧΡΕΩΤΙΚΟ):** Όταν εντοπίζω στοιχεία του κώδικα που αποτελούν ρυθμίσιμες παραμέτρους (τιμές, όρια, constants που ελέγχουν συμπεριφορά του προγράμματος), τα καταχωρίζω στο `SETTINGS.md` με αρχείο, μεταβλητή, τρέχουσα τιμή και τρόπο αναζήτησης — ώστε να βρίσκεται γρήγορα όταν χρειαστεί να αλλαχτεί.
 
+**Κανόνας αναφοράς PROJECT_MEMORY.md:** Αν δυσκολεύομαι να βρω κάτι — συμπεριφορά subsystem, παλιά απόφαση, feature spec, invariant — τσεκάρω πρώτα το `PROJECT_MEMORY.md`. Είναι το ιστορικό αρχείο καταγραφής του project με λεπτομερή τεκμηρίωση όλων των subsystems.
+
+**Αρχεία αναφοράς:** `TODO.md` = εκκρεμή features/migrations, `General Notes.md` = γενική φιλοσοφία και UX direction, `SETTINGS.md` = tunable parameters.
+
+---
+
+## Collaboration Rules
+
+**Pre-Edit Confirmation Rule (ΥΨΗΛΗ ΠΡΟΤΕΡΑΙΟΤΗΤΑ):** Πριν από κάθε αλλαγή αρχείου:
+1. Συνοπτική επανάληψη του τι κατάλαβα
+2. Ο χρήστης επιβεβαιώνει
+3. Μόνο τότε η αλλαγή
+
+Εξαίρεση: αν ο χρήστης πει ρητά να προχωρήσω χωρίς επιβεβαίωση.
+
+**Protected subsystems — προειδοποίηση πριν αλλαγή:**
+- canvas event flow, renderer pipeline, tile/chunk logic
+- dirty-flag scheduling, zoom math, pan math, ruler math
+- brush-to-cell mapping, selection hit logic
+- sharpness-related draw behavior, performance-related renderer architecture
+
+Αν αγγίξω protected subsystem: πρώτα εξηγώ ποιο subsystem αφορά και ποιος είναι ο κίνδυνος (performance / sharpness / coordinate consistency / interaction regressions), μετά προχωράω.
+
+**Safe changes (χωρίς προειδοποίηση):** naming, typography, labels, panel layout, spacing, iconography, cosmetic styling, static non-renderer UI structure. Αν ένα "UI" request αγγίζει renderer behavior, ανακατατάσσεται ως protected.
+
 ---
 
 ## Main View Rendering
