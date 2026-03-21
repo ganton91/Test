@@ -16,6 +16,70 @@
 
 ---
 
+## Drawing Cards — Sidebar UI
+
+### Δομή DOM
+
+```
+drawing-card [display:grid, 16px | 1fr]   ← click handler → toggleDrawingActivation
+  drag-handle [col 1]                      ← click: stopPropagation, pointerdown: beginLeftPanelPointerDrag
+  drawing-main [col 2]                     ← περιέχει header + children
+    card-header
+      card-header-title (layer-name-label ή input)
+      inline-controls (duplicate + visibility + delete) [κάθε button: stopPropagation]
+    drawing-children                        ← click: stopPropagation (ώστε clicks σε layers/measurements να μην bubble στο drawing)
+      drawing-subsection (Layers)
+      drawing-subsection (Measurements)
+```
+
+**CSS collapse:** `.drawing-card.inactive-drawing .drawing-children { display: none }` — κρύβει layers/measurements όταν το drawing είναι inactive.
+
+### Activation — state.activeDrawingId
+
+Τα Drawings έχουν **ανεξάρτητο** activation state: `state.activeDrawingId` (string | null).
+
+**Κανόνας:** `isActiveDrawing = state.activeDrawingId === drawing.id` — ΔΕΝ εξαρτάται από `activeLayerId`/`activeMeasurementId`.
+
+**`setActiveLayerById(layerId)`** → θέτει επίσης `state.activeDrawingId = findDrawingForLayer(layerId)?.id` (drawing ανοίγει αυτόματα όταν ενεργοποιείται layer).
+
+**`setActiveMeasurementById(measurementId)`** → ίδιο για measurements.
+
+**`toggleDrawingActivation(drawingId)`:**
+- Αν `activeDrawingId === drawingId` → `clearActiveTarget()` + `state.activeDrawingId = null` (κλείνει drawing + κάνει deactivate ό,τι είναι μέσα)
+- Αν `activeDrawingId !== drawingId` → `state.activeDrawingId = drawingId` (ανοίγει drawing, layers παραμένουν ως έχουν)
+
+**`toggleLayerActivation` / `toggleMeasurementActivation` — deactivate path:**
+Αποθηκεύουν `savedDrawingId = state.activeDrawingId` πριν `clearActiveTarget()` και το επαναφέρουν αμέσως μετά — ώστε deactivating ένα layer/measurement να μην κλείνει το drawing.
+
+### Escape hierarchy
+
+```
+layer/measurement active → Escape → deactivate layer/measurement, drawing παραμένει active
+μόνο drawing active     → Escape → state.activeDrawingId = null
+τίποτα active           → Escape → clearActiveTarget() (scenes, views, κ.λπ.)
+```
+
+### Drag & drop μεταξύ Drawings
+
+- `cardSelectorByKind("drawing")` → `".drawing-card"` (ξεχωριστός selector από `.layer-card`)
+- `leftPanelListByKind("drawing")` → `ui.layerList`
+- `leftPanelItemsByKind("drawing")` → `state.drawings`
+- Commit: `commitHistoryAction("drawings:reorder", "Reorder Drawings")`
+
+### Drawing visibility
+
+`drawing.visible = false` → hide σε 6 σημεία του render/hit-test pipeline (drawContentScene, marquee selection layers+measurements, measurementHitAt, drawOverlayScene, topPaintedLayerAt). Pattern: `if (findDrawingForLayer(layer.id)?.visible === false) return/continue`.
+
+### Duplicate Drawing — νέα IDs
+
+Το duplicate χρησιμοποιεί `createLayer()` + `createTile()` + `createMeasurement()` (όχι `cloneLayerForSnapshot`/`restoreLayerFromSnapshot` που διατηρούν τα ίδια IDs και προκαλούν linking μεταξύ original και clone).
+
+### Rename Drawing
+
+Ίδιος μηχανισμός με layers: `beginRenameDrawing(id)` / `endRenameDrawing()` — trigger: click στο label όταν drawing είναι active ΚΑΙ κανένα layer/measurement δεν είναι active.
+
+---
+
 ## Collaboration Rules
 
 **Pre-Edit Confirmation Rule (ΥΨΗΛΗ ΠΡΟΤΕΡΑΙΟΤΗΤΑ):** Πριν από κάθε αλλαγή αρχείου:
