@@ -328,16 +328,23 @@
         display: grid;
         grid-template-columns: 16px minmax(0, 1fr);
         align-items: start;
-        gap: 0;
+        gap: 8px;
         padding: 10px;
         border-radius: 14px;
-        border: 1px solid var(--line-strong);
+        border: 1px solid var(--line);
         background: var(--surface);
         position: relative;
       }
 
+      .drawing-card.inactive-drawing {
+        align-items: center;
+        padding-top: 8px;
+        padding-bottom: 8px;
+      }
+
       .drawing-card.active-drawing {
         background: var(--accent-soft);
+        border-color: var(--line-strong);
       }
 
       .drawing-card.inactive-drawing .drawing-children {
