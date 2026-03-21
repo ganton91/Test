@@ -7089,7 +7089,7 @@
         const index = drawing.layers.findIndex((entry) => entry.id === layerId);
         if (index === -1) return false;
         const source = drawing.layers[index];
-        const duplicate = createLayer(source.name);
+        const duplicate = createLayer(source.name + " copy");
         duplicate.visible = source.visible;
         duplicate.opacity = source.opacity;
         duplicate.rotationQuarterTurns = normalizedQuarterTurns(source.rotationQuarterTurns || 0);
@@ -7113,7 +7113,7 @@
         const index = drawing.measurements.findIndex((entry) => entry.id === measurementId);
         if (index === -1) return false;
         const source = drawing.measurements[index];
-        const duplicate = createMeasurement(source.name);
+        const duplicate = createMeasurement(source.name + " copy");
         duplicate.visible = source.visible;
         duplicate.opacity = source.opacity;
         duplicate.width = source.width;
@@ -7143,7 +7143,7 @@
         const index = state.views.findIndex((entry) => entry.id === viewId);
         if (index === -1) return false;
         const source = state.views[index];
-        const duplicate = createView(source.name);
+        const duplicate = createView(source.name + " copy");
         duplicate.visible = source.visible;
         duplicate.opacity = source.opacity;
         duplicate.pending = !!source.pending;
@@ -7170,6 +7170,7 @@
         const duplicate = {
           ...source,
           id: "scene-" + Math.random().toString(36).slice(2, 10),
+          name: source.name + " copy",
         };
         state.scenes.splice(index, 0, duplicate);
         setActiveSceneById(duplicate.id);
@@ -10011,6 +10012,11 @@
             });
             const index = state.drawings.indexOf(drawing);
             state.drawings.splice(index, 0, clone);
+            if (clone.layers.length) {
+              setActiveLayerById(clone.layers[0].id, { tool: "select" });
+            } else {
+              state.activeDrawingId = clone.id;
+            }
             commitHistoryAction("drawings:duplicate", "Duplicate Drawing");
             render({ ui: true, content: true, overlay: true });
           });
