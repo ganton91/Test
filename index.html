@@ -2984,6 +2984,7 @@
 
       const _initialDrawing = createDrawing("Drawing 1");
       state.drawings = [_initialDrawing];
+      state.activeDrawingId = _initialDrawing.id;
       state.activeLayerId = _initialDrawing.layers[0].id;
 
       function createLayer(name) {
