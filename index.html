@@ -325,17 +325,53 @@
       }
 
       .drawing-card {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
+        display: grid;
+        grid-template-columns: 16px minmax(0, 1fr);
+        align-items: start;
+        gap: 0;
         padding: 10px;
         border-radius: 14px;
         border: 1px solid var(--line-strong);
         background: var(--surface);
+        position: relative;
       }
 
       .drawing-card.active-drawing {
         background: var(--accent-soft);
+      }
+
+      .drawing-card.inactive-drawing .drawing-children {
+        display: none;
+      }
+
+      .drawing-card.dragging {
+        opacity: 0.55;
+      }
+
+      .drawing-main {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .drawing-card.drag-insert-before::before,
+      .drawing-card.drag-insert-after::after {
+        content: "";
+        position: absolute;
+        left: 8px;
+        right: 8px;
+        height: 2px;
+        background: color-mix(in srgb, var(--text) 8%, transparent);
+        pointer-events: none;
+      }
+
+      .drawing-card.drag-insert-before::before {
+        top: -6px;
+      }
+
+      .drawing-card.drag-insert-after::after {
+        bottom: -3px;
       }
 
       .drawing-children {
@@ -2920,7 +2956,9 @@
         },
         activeLayerId: null,
         editingLayerId: null,
+        editingDrawingId: null,
         dragLayerId: null,
+        dragDrawingId: null,
         layerSectionCollapsed: false,
         interaction: null,
         shapeDraft: null,
@@ -3880,6 +3918,7 @@
       function activeDrawing() {
         if (state.activeLayerId) return findDrawingForLayer(state.activeLayerId);
         if (state.activeMeasurementId) return findDrawingForMeasurement(state.activeMeasurementId);
+        if (state.activeDrawingId) return state.drawings.find((d) => d.id === state.activeDrawingId) || null;
         return state.drawings[0] || null;
       }
 
@@ -6859,6 +6898,7 @@
         cancelSceneCalibration();
         cancelMeasurementDraft();
         state.activeLayerId = layer.id;
+        state.activeDrawingId = findDrawingForLayer(layerId)?.id ?? state.activeDrawingId;
         state.activeSceneId = null;
         state.activeMeasurementId = null;
         state.activeMeasurementItem = null;
@@ -6890,6 +6930,7 @@
         cancelSceneCalibration();
         if (state.activeMeasurementId !== measurementId) cancelMeasurementDraft();
         state.activeMeasurementId = measurement.id;
+        state.activeDrawingId = findDrawingForMeasurement(measurementId)?.id ?? state.activeDrawingId;
         state.activeLayerId = null;
         state.activeSceneId = null;
         state.activeViewId = null;
@@ -6924,11 +6965,13 @@
         cancelSceneCalibration();
         cancelMeasurementDraft();
         state.activeLayerId = null;
+        state.activeDrawingId = null;
         state.activeSceneId = null;
         state.activeMeasurementId = null;
         state.activeMeasurementItem = null;
         state.activeViewId = null;
         state.editingLayerId = null;
+        state.editingDrawingId = null;
         state.editingSceneId = null;
         state.editingMeasurementId = null;
         state.editingViewId = null;
@@ -7138,7 +7181,9 @@
           state.editingSceneId = null;
           state.editingMeasurementId = null;
           state.editingViewId = null;
+          const savedDrawingId = state.activeDrawingId;
           clearActiveTarget();
+          state.activeDrawingId = savedDrawingId;
           pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus("Selection tool active.");
           render({ ui: true, overlay: true });
@@ -7788,6 +7833,9 @@
         if (session.kind === "view") {
           return state.views.find((entry) => entry.id === session.id) || null;
         }
+        if (session.kind === "drawing") {
+          return state.drawings.find((entry) => entry.id === session.id) || null;
+        }
         return null;
       }
 
@@ -7805,6 +7853,7 @@
           scene: "Rename Scene",
           measurement: "Rename Measurement",
           view: "Rename View",
+          drawing: "Rename Drawing",
         };
         const changed = commitHistoryAction(actionKey, labelByKind[session.kind] || "Rename");
         state.renameSession = null;
@@ -7850,7 +7899,9 @@
           state.editingLayerId = null;
           state.editingSceneId = null;
           state.editingViewId = null;
+          const savedDrawingId = state.activeDrawingId;
           clearActiveTarget();
+          state.activeDrawingId = savedDrawingId;
           pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus("Selection tool active.");
           render({ ui: true, overlay: true });
@@ -7918,6 +7969,44 @@
       function endRenameMeasurement() {
         state.editingMeasurementId = null;
         commitRenameSessionIfChanged();
+        render({ ui: true });
+      }
+
+      function beginRenameDrawing(drawingId) {
+        const drawing = state.drawings.find((entry) => entry.id === drawingId);
+        state.renameSession = drawing
+          ? {
+              kind: "drawing",
+              id: drawing.id,
+              initialName: drawing.name,
+            }
+          : null;
+        state.editingDrawingId = drawingId;
+        state.editingLayerId = null;
+        state.editingSceneId = null;
+        state.editingMeasurementId = null;
+        render({ ui: true });
+      }
+
+      function endRenameDrawing() {
+        state.editingDrawingId = null;
+        commitRenameSessionIfChanged();
+        render({ ui: true });
+      }
+
+      function toggleDrawingActivation(drawingId) {
+        const previousContextSignature = snapshotActiveContextSignature(state);
+        if (state.activeDrawingId === drawingId && !state.activeLayerId && !state.activeMeasurementId) {
+          state.activeDrawingId = null;
+          state.editingDrawingId = null;
+          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
+          setStatus("Selection tool active.");
+          render({ ui: true });
+          return;
+        }
+        state.activeDrawingId = drawingId;
+        state.editingDrawingId = null;
+        pushHistoryContextBaseline(previousContextSignature, "Selection Change");
         render({ ui: true });
       }
 
@@ -8707,6 +8796,10 @@
         updateViewEditDropIndicator(layerId, drop.rawIndex, drop.toIndex, drop.fromIndex);
       }
 
+      function cardSelectorByKind(kind) {
+        return kind === "drawing" ? ".drawing-card" : ".layer-card";
+      }
+
       function leftPanelItemsByKind(kind) {
         switch (kind) {
           case "scene":
@@ -8721,6 +8814,8 @@
             const drawing = dragId ? findDrawingForMeasurement(dragId) : null;
             return drawing ? drawing.measurements : (state.drawings[0] ? state.drawings[0].measurements : []);
           }
+          case "drawing":
+            return state.drawings;
           case "view":
             return state.views;
           default:
@@ -8735,6 +8830,8 @@
           case "layer":
           case "measurement":
             return state.leftPanelPointerDrag ? state.leftPanelPointerDrag.dragListEl : null;
+          case "drawing":
+            return ui.layerList;
           case "view":
             return ui.viewList;
           default:
@@ -8746,6 +8843,7 @@
         state.dragSceneId = kind === "scene" ? id : null;
         state.dragLayerId = kind === "layer" ? id : null;
         state.dragMeasurementId = kind === "measurement" ? id : null;
+        state.dragDrawingId = kind === "drawing" ? id : null;
         state.dragViewId = kind === "view" ? id : null;
       }
 
@@ -8755,7 +8853,7 @@
         if (!items || !list || !items.length) return { rawIndex: -1, toIndex: -1, fromIndex: -1 };
         const fromIndex = items.findIndex((entry) => entry.id === sourceId);
         if (fromIndex === -1) return { rawIndex: -1, toIndex: -1, fromIndex: -1 };
-        const cards = Array.from(list.querySelectorAll(".layer-card"));
+        const cards = Array.from(list.querySelectorAll(cardSelectorByKind(kind)));
         if (!cards.length) return { rawIndex: fromIndex, toIndex: fromIndex, fromIndex };
         let rawIndex = cards.length;
         for (let index = 0; index < cards.length; index += 1) {
@@ -8776,10 +8874,11 @@
 
       function updateLeftPanelDropIndicator(kind, rawIndex, toIndex, fromIndex) {
         const list = leftPanelListByKind(kind);
-        clearDropIndicatorClasses(list, ".layer-card");
+        const cardSelector = cardSelectorByKind(kind);
+        clearDropIndicatorClasses(list, cardSelector);
         if (!state.leftPanelPointerDrag) return;
         if (!list || toIndex === -1 || fromIndex === -1 || toIndex === fromIndex) return;
-        const cards = Array.from(list.querySelectorAll(".layer-card"));
+        const cards = Array.from(list.querySelectorAll(cardSelector));
         if (!cards.length) return;
         if (rawIndex >= cards.length) {
           cards[cards.length - 1].classList.add("drag-insert-after");
@@ -8794,7 +8893,7 @@
         const items = leftPanelItemsByKind(drag.kind);
         if (drag.preview && drag.preview.parentNode) drag.preview.remove();
         if (drag.sourceCard) drag.sourceCard.classList.remove("dragging");
-        clearDropIndicatorClasses(leftPanelListByKind(drag.kind), ".layer-card");
+        clearDropIndicatorClasses(leftPanelListByKind(drag.kind), cardSelectorByKind(drag.kind));
         ui.layersPanel.classList.remove("drag-reordering");
         setLeftPanelDragId("", null);
         state.leftPanelPointerDrag = null;
@@ -8814,6 +8913,9 @@
             } else if (drag.kind === "measurement") {
               commitHistoryAction("measurements:reorder", "Reorder Measurements");
               render({ ui: true, overlay: true });
+            } else if (drag.kind === "drawing") {
+              commitHistoryAction("drawings:reorder", "Reorder Drawings");
+              render({ ui: true, content: true, overlay: true });
             } else if (drag.kind === "view") {
               commitHistoryAction("views:reorder", "Reorder Views");
               render({ ui: true, overlay: true });
@@ -9796,11 +9898,31 @@
         ui.layerList.innerHTML = "";
 
         state.drawings.forEach((drawing) => {
-          const isActiveDrawing = drawing.layers.some((l) => l.id === state.activeLayerId) ||
-            drawing.measurements.some((m) => m.id === state.activeMeasurementId);
+          const isActiveDrawing = state.activeDrawingId === drawing.id;
 
           const drawingCard = document.createElement("div");
-          drawingCard.className = "drawing-card" + (isActiveDrawing ? " active-drawing" : "");
+          drawingCard.className = "drawing-card" +
+            (isActiveDrawing ? " active-drawing" : " inactive-drawing") +
+            (drawing.id === state.dragDrawingId ? " dragging" : "");
+
+          // Drag handle
+          const drawingGrip = document.createElement("div");
+          drawingGrip.className = "drag-handle";
+          drawingGrip.textContent = "⋮⋮";
+          drawingGrip.draggable = false;
+          drawingGrip.addEventListener("click", (event) => event.stopPropagation());
+          drawingGrip.addEventListener("pointerdown", (event) => {
+            beginLeftPanelPointerDrag(event, drawingCard, "drawing", drawing.id);
+          });
+          drawingCard.appendChild(drawingGrip);
+
+          drawingCard.addEventListener("click", () => {
+            toggleDrawingActivation(drawing.id);
+          });
+
+          // Main column (header + children)
+          const drawingMain = document.createElement("div");
+          drawingMain.className = "drawing-main";
 
           // Drawing header
           const drawingHeader = document.createElement("div");
@@ -9808,25 +9930,42 @@
 
           const drawingTitleWrap = document.createElement("div");
           drawingTitleWrap.className = "card-header-title";
-          const drawingLabel = document.createElement("div");
-          drawingLabel.className = "layer-name-label";
-          drawingLabel.textContent = drawing.name;
-          drawingTitleWrap.appendChild(drawingLabel);
+
+          let drawingNameField;
+          if (state.editingDrawingId === drawing.id) {
+            const input = document.createElement("input");
+            input.className = "layer-name";
+            input.value = drawing.name;
+            input.size = Math.max(1, drawing.name.length);
+            input.addEventListener("click", (event) => event.stopPropagation());
+            input.addEventListener("pointerdown", (event) => event.stopPropagation());
+            input.addEventListener("input", () => {
+              drawing.name = input.value || drawing.name;
+              input.size = Math.max(1, input.value.length);
+            });
+            input.addEventListener("blur", endRenameDrawing);
+            input.addEventListener("keydown", (event) => {
+              if (event.key === "Enter" || event.key === "Escape") input.blur();
+            });
+            queueMicrotask(() => { input.focus(); input.select(); });
+            drawingNameField = input;
+          } else {
+            const label = document.createElement("div");
+            label.className = "layer-name-label";
+            label.textContent = drawing.name;
+            label.addEventListener("click", (event) => {
+              if (!isActiveDrawing) return;
+              event.stopPropagation();
+              if (!state.activeLayerId && !state.activeMeasurementId) {
+                beginRenameDrawing(drawing.id);
+              }
+            });
+            drawingNameField = label;
+          }
+          drawingTitleWrap.appendChild(drawingNameField);
 
           const drawingControls = document.createElement("div");
           drawingControls.className = "inline-controls";
-
-          const drawingVisibility = document.createElement("button");
-          drawingVisibility.className = "inline-icon visibility-dot";
-          drawingVisibility.appendChild(createInlineIcon("visibility", { filled: drawing.visible }));
-          drawingVisibility.title = drawing.visible ? "Hide drawing" : "Show drawing";
-          drawingVisibility.addEventListener("click", (event) => {
-            event.stopPropagation();
-            drawing.visible = !drawing.visible;
-            commitHistoryAction("drawings:visibility", drawing.visible ? "Show Drawing" : "Hide Drawing");
-            render({ ui: true, content: true, overlay: true });
-          });
-          drawingControls.appendChild(drawingVisibility);
 
           const drawingDuplicate = document.createElement("button");
           drawingDuplicate.className = "inline-icon";
@@ -9839,13 +9978,30 @@
             clone.rotation = drawing.rotation;
             clone.anchor = { ...drawing.anchor };
             clone.layers = drawing.layers.map((l) => {
-              const snap = cloneLayerForSnapshot(l);
-              const restored = restoreLayerFromSnapshot(snap);
-              return restored;
+              const dup = createLayer(l.name);
+              dup.visible = l.visible;
+              dup.opacity = l.opacity;
+              dup.rotationQuarterTurns = l.rotationQuarterTurns || 0;
+              dup.cellCount = l.cellCount;
+              Object.values(l.tiles).forEach((tile) => {
+                const nextTile = createTile(dup, tile.tileX, tile.tileY);
+                nextTile.pixels = new Map(tile.pixels);
+                nextTile.dirty = true;
+              });
+              return dup;
             });
             clone.measurements = drawing.measurements.map((m) => {
-              const snap = cloneMeasurementForSnapshot(m);
-              return restoreMeasurementFromSnapshot(snap);
+              const dup = createMeasurement(m.name);
+              dup.visible = m.visible;
+              dup.opacity = m.opacity;
+              dup.width = m.width;
+              dup.defaultColor = m.defaultColor;
+              dup.mode = m.mode;
+              dup.rotationQuarterTurns = m.rotationQuarterTurns || 0;
+              dup.points = m.points.map((p) => ({ ...p }));
+              dup.lengths = m.lengths.map((ln) => ({ ...ln, start: { ...ln.start }, end: { ...ln.end } }));
+              dup.areas = m.areas.map((a) => ({ ...a, points: a.points.map((p) => ({ ...p })) }));
+              return dup;
             });
             const index = state.drawings.indexOf(drawing);
             state.drawings.splice(index, 0, clone);
@@ -9853,6 +10009,18 @@
             render({ ui: true, content: true, overlay: true });
           });
           drawingControls.appendChild(drawingDuplicate);
+
+          const drawingVisibility = document.createElement("button");
+          drawingVisibility.className = "inline-icon visibility-dot";
+          drawingVisibility.appendChild(createInlineIcon("visibility", { filled: drawing.visible }));
+          drawingVisibility.title = drawing.visible ? "Hide drawing" : "Show drawing";
+          drawingVisibility.addEventListener("click", (event) => {
+            event.stopPropagation();
+            drawing.visible = !drawing.visible;
+            commitHistoryAction("drawings:visibility", drawing.visible ? "Show Drawing" : "Hide Drawing");
+            render({ ui: true, content: true, overlay: true });
+          });
+          drawingControls.appendChild(drawingVisibility);
 
           const drawingDelete = document.createElement("button");
           drawingDelete.className = "inline-icon delete-mark";
@@ -9874,11 +10042,12 @@
 
           drawingHeader.appendChild(drawingTitleWrap);
           drawingHeader.appendChild(drawingControls);
-          drawingCard.appendChild(drawingHeader);
+          drawingMain.appendChild(drawingHeader);
 
           // Children container
           const children = document.createElement("div");
           children.className = "drawing-children";
+          children.addEventListener("click", (event) => event.stopPropagation());
 
           const layersList = document.createElement("div");
           layersList.className = "drawing-subsection-list";
@@ -10321,7 +10490,8 @@
           measurementsSection.appendChild(measurementsList);
           children.appendChild(measurementsSection);
 
-          drawingCard.appendChild(children);
+          drawingMain.appendChild(children);
+          drawingCard.appendChild(drawingMain);
           ui.layerList.appendChild(drawingCard);
         });
       }
@@ -10639,6 +10809,7 @@
 
         [...getAllLayers()].reverse().forEach((layer) => {
           if (!layer.visible) return;
+          if (findDrawingForLayer(layer.id)?.visible === false) return;
           contentCtx.save();
           contentCtx.globalAlpha = layer.opacity;
           for (let tileY = bounds.minTileY; tileY <= bounds.maxTileY; tileY += 1) {
@@ -10995,6 +11166,7 @@
 
         getAllMeasurements().forEach((measurement) => {
           if (!measurement.visible || measurement.opacity <= 0) return;
+          if (findDrawingForMeasurement(measurement.id)?.visible === false) return;
           if (!measurementMatchesRect(measurement, rect, containment)) return;
           candidates.push({
             kind: "measurement",
@@ -11006,6 +11178,7 @@
 
         getAllLayers().forEach((layer) => {
           if (!layer.visible) return;
+          if (findDrawingForLayer(layer.id)?.visible === false) return;
           if (!layerMatchesRect(layer, rect, containment)) return;
           candidates.push({
             kind: "layer",
@@ -11156,6 +11329,7 @@
       function measurementHitAt(worldX, worldY) {
         for (const measurement of getAllMeasurements()) {
           if (!measurement.visible || measurement.opacity <= 0) continue;
+          if (findDrawingForMeasurement(measurement.id)?.visible === false) continue;
           const tolerance = CELL_SIZE * 0.12;
 
           const pointHit = measurement.points.some((point) => {
@@ -11506,6 +11680,7 @@
           .reverse()
           .forEach((measurement) => {
             if (!measurement.visible || measurement.opacity <= 0) return;
+            if (findDrawingForMeasurement(measurement.id)?.visible === false) return;
             measurement.points.forEach((point) => {
               const worldPoint = measurementPointWorld(point);
               const screenPoint = worldToScreen(worldPoint.x, worldPoint.y);
@@ -12768,6 +12943,7 @@
         const cell = cellFromWorld(worldX, worldY);
         for (const layer of getAllLayers()) {
           if (!layer.visible) continue;
+          if (findDrawingForLayer(layer.id)?.visible === false) continue;
           if (getCellColor(layer, cell.x, cell.y)) return layer;
         }
         return null;
@@ -15422,10 +15598,31 @@
         }
         if (event.key === "Escape") {
           const previousContextSignature = snapshotActiveContextSignature(state);
-          clearActiveTarget();
-          pushHistoryContextBaseline(previousContextSignature, "Selection Change");
-          setStatus("Selection tool active.");
-          render({ ui: true, overlay: true });
+          if (state.activeLayerId || state.activeMeasurementId) {
+            state.activeLayerId = null;
+            state.activeMeasurementId = null;
+            state.activeMeasurementItem = null;
+            state.editingLayerId = null;
+            state.editingMeasurementId = null;
+            state.renameSession = null;
+            state.color.eyedropper = false;
+            state.measurementSelectClickMemory = null;
+            state.activeTool = "select";
+            pushHistoryContextBaseline(previousContextSignature, "Selection Change");
+            setStatus("Selection tool active.");
+            render({ ui: true, overlay: true });
+          } else if (state.activeDrawingId) {
+            state.activeDrawingId = null;
+            state.editingDrawingId = null;
+            pushHistoryContextBaseline(previousContextSignature, "Selection Change");
+            setStatus("Selection tool active.");
+            render({ ui: true });
+          } else {
+            clearActiveTarget();
+            pushHistoryContextBaseline(previousContextSignature, "Selection Change");
+            setStatus("Selection tool active.");
+            render({ ui: true, overlay: true });
+          }
         }
       });
       window.addEventListener("keyup", (event) => {
