@@ -4,8 +4,8 @@
 
 ## Views
 
-- **Per-layout pane direction memory:** κάθε preset (1 Side / 2 Sides / 4 Sides) να θυμάται ανεξάρτητα τα `viewPaneDirections` — σήμερα μοιράζονται το ίδιο array και αλληλοεπικαλύπτονται
-  - Implementation: store `viewPaneDirections` per layout key (`"1"`, `"2"`, `"4"`) in state, apply on layout switch
+- ~~**Per-layout pane direction memory:** κάθε preset (1 Side / 2 Sides / 4 Sides) να θυμάται ανεξάρτητα τα `viewPaneDirections` — σήμερα μοιράζονται το ίδιο array και αλληλοεπικαλύπτονται~~
+  - ~~Implementation: store `viewPaneDirections` per layout key (`"1"`, `"2"`, `"4"`) in state, apply on layout switch~~
 
 - ~~**Multi-section axes μέσα σε View Box**~~
 
