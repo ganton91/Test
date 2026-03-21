@@ -320,6 +320,118 @@
         gap: 8px;
       }
 
+      .panel-section[hidden] {
+        display: none !important;
+      }
+
+      .drawing-card {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 10px;
+        border-radius: 14px;
+        border: 1px solid var(--line-strong);
+        background: var(--surface);
+      }
+
+      .drawing-card.active-drawing {
+        background: var(--accent-soft);
+      }
+
+      .drawing-children {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .drawing-subsection {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .drawing-subsection-header {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 0 2px;
+      }
+
+      .drawing-subsection-toggle {
+        flex: 1 1 auto;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        background: none;
+        border: none;
+        padding: 2px 0;
+        cursor: pointer;
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        text-align: left;
+      }
+
+      .drawing-subsection-toggle:hover {
+        color: var(--fg);
+      }
+
+      .drawing-subsection-toggle-arrow {
+        font-size: 8px;
+        transition: transform 0.15s;
+        display: inline-block;
+      }
+
+      .drawing-subsection.collapsed .drawing-subsection-toggle-arrow {
+        transform: rotate(-90deg);
+      }
+
+      .drawing-subsection.collapsed .drawing-subsection-list {
+        display: none;
+      }
+
+      .drawing-subsection-add {
+        background: none;
+        border: none;
+        padding: 2px 4px;
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+        color: var(--muted);
+        border-radius: 4px;
+      }
+
+      .drawing-subsection-add:hover {
+        color: var(--fg);
+        background: var(--surface-hover, var(--line));
+      }
+
+      .drawing-subsection-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding-left: 16px;
+      }
+
+      .children-add-button {
+        font-size: 11px;
+        color: var(--muted);
+        background: transparent;
+        border: 1px dashed var(--line);
+        border-radius: 8px;
+        padding: 4px 8px;
+        cursor: pointer;
+        text-align: left;
+        width: 100%;
+      }
+
+      .children-add-button:hover {
+        color: var(--fg);
+        border-color: var(--line-strong);
+      }
+
       .panel-section.compact-empty {
         gap: 0;
       }
@@ -1934,14 +2046,14 @@
                 <div class="section-header-left">
                   <button class="section-toggle" id="layerSectionToggle" type="button" aria-expanded="true">
                     <span class="section-toggle-arrow" aria-hidden="true"></span>
-                    <span class="section-header-title">Layers</span>
+                    <span class="section-header-title">Drawings</span>
                   </button>
                 </div>
-                <button class="section-header-action" id="addLayerButton" aria-label="Add layer"></button>
+                <button class="section-header-action" id="addLayerButton" aria-label="Add drawing"></button>
               </div>
               <div class="layer-list" id="layerList"></div>
             </div>
-            <div class="panel-section" id="measurementSection">
+            <div class="panel-section" id="measurementSection" hidden>
               <div class="section-header">
                 <div class="section-header-left">
                   <button class="section-toggle" id="measurementSectionToggle" type="button" aria-expanded="true">
@@ -2714,7 +2826,8 @@
         sceneSectionCollapsed: true,
         sceneCalibration: null,
         nextMeasurementNumber: 1,
-        measurements: [],
+        drawings: [],
+        activeDrawingId: null,
         activeMeasurementId: null,
         activeMeasurementItem: null,
         lastMeasurementMode: "points",
@@ -2805,7 +2918,6 @@
           planUndergroundEnabled: true,
           planUndergroundColor: "#c8c3ba",
         },
-        layers: [createLayer("Layer 1")],
         activeLayerId: null,
         editingLayerId: null,
         dragLayerId: null,
@@ -2832,7 +2944,9 @@
         renameSession: null,
       };
 
-      state.activeLayerId = state.layers[0].id;
+      const _initialDrawing = createDrawing("Drawing 1");
+      state.drawings = [_initialDrawing];
+      state.activeLayerId = _initialDrawing.layers[0].id;
 
       function createLayer(name) {
         return {
@@ -2843,6 +2957,20 @@
           rotationQuarterTurns: 0,
           tiles: {},
           cellCount: 0,
+        };
+      }
+
+      function createDrawing(name) {
+        return {
+          id: "drawing-" + Math.random().toString(36).slice(2, 10),
+          name,
+          visible: true,
+          rotation: 0,
+          anchor: { x: 0, y: 0 },
+          layers: [createLayer("Layer 1")],
+          measurements: [],
+          layersSectionCollapsed: false,
+          measurementsSectionCollapsed: false,
         };
       }
 
@@ -3105,9 +3233,16 @@
           nextMeasurementNumber: state.nextMeasurementNumber,
           nextViewNumber: state.nextViewNumber,
           scenes: state.scenes.map(cloneSceneForSnapshot),
-          measurements: state.measurements.map(cloneMeasurementForSnapshot),
+          drawings: state.drawings.map((d) => ({
+            id: d.id,
+            name: d.name,
+            visible: d.visible,
+            rotation: d.rotation,
+            anchor: d.anchor,
+            layers: d.layers.map(cloneLayerForSnapshot),
+            measurements: d.measurements.map(cloneMeasurementForSnapshot),
+          })),
           views: state.views.map(cloneViewForSnapshot),
-          layers: state.layers.map(cloneLayerForSnapshot),
           activeSceneId: state.activeSceneId,
           activeMeasurementId: state.activeMeasurementId,
           activeMeasurementItem: state.activeMeasurementItem ? { ...state.activeMeasurementItem } : null,
@@ -3143,9 +3278,12 @@
             ...scene,
             image: undefined,
           })),
-          measurements: snapshot.measurements.map((measurement) => ({ ...measurement })),
+          drawings: (snapshot.drawings || []).map((d) => ({
+            ...d,
+            layers: (d.layers || []).map((layer) => ({ ...layer })),
+            measurements: (d.measurements || []).map((measurement) => ({ ...measurement })),
+          })),
           views: snapshot.views.map((view) => ({ ...view })),
-          layers: snapshot.layers.map((layer) => ({ ...layer })),
         });
       }
 
@@ -3272,18 +3410,28 @@
         state.nextMeasurementNumber = snapshot.nextMeasurementNumber;
         state.nextViewNumber = snapshot.nextViewNumber;
         state.scenes = snapshot.scenes.map((scene) => ({ ...scene }));
-        state.measurements = snapshot.measurements.map((measurementSnapshot) => restoreMeasurementFromSnapshot(measurementSnapshot));
+        state.drawings = (snapshot.drawings || []).map((d) => ({
+          id: d.id,
+          name: d.name,
+          visible: d.visible !== false,
+          rotation: d.rotation || 0,
+          anchor: d.anchor || { x: 0, y: 0 },
+          layers: (d.layers || []).map(restoreLayerFromSnapshot),
+          measurements: (d.measurements || []).map(restoreMeasurementFromSnapshot),
+        }));
+        if (!state.drawings.length) state.drawings = [createDrawing("Drawing 1")];
         state.views = snapshot.views.map((viewSnapshot) => restoreViewFromSnapshot(viewSnapshot));
-        state.layers = snapshot.layers.map((layerSnapshot) => restoreLayerFromSnapshot(layerSnapshot));
         state.activeSceneId = state.scenes.some((scene) => scene.id === snapshot.activeSceneId) ? snapshot.activeSceneId : null;
-        state.activeMeasurementId = state.measurements.some((measurement) => measurement.id === snapshot.activeMeasurementId)
+        state.activeMeasurementId = getAllMeasurements().some((m) => m.id === snapshot.activeMeasurementId)
           ? snapshot.activeMeasurementId
           : null;
         state.activeMeasurementItem = state.activeMeasurementId && snapshot.activeMeasurementItem
           ? { ...snapshot.activeMeasurementItem }
           : null;
         state.activeViewId = state.views.some((view) => view.id === snapshot.activeViewId) ? snapshot.activeViewId : null;
-        state.activeLayerId = state.layers.some((layer) => layer.id === snapshot.activeLayerId) ? snapshot.activeLayerId : null;
+        state.activeLayerId = getAllLayers().some((l) => l.id === snapshot.activeLayerId)
+          ? snapshot.activeLayerId
+          : null;
         state.activeTool = snapshot.activeTool;
         state.history.isRestoring = false;
         render({ ui: true, static: true, scenes: true, content: true, overlay: true, rulers: true });
@@ -3444,9 +3592,16 @@
             type: state.shape.type,
           },
           scenes: await Promise.all(state.scenes.map(serializeSceneForProject)),
-          measurements: state.measurements.map(cloneMeasurementForSnapshot),
+          drawings: state.drawings.map((d) => ({
+            id: d.id,
+            name: d.name,
+            visible: d.visible,
+            rotation: d.rotation,
+            anchor: d.anchor,
+            layers: d.layers.map(cloneLayerForSnapshot),
+            measurements: d.measurements.map(cloneMeasurementForSnapshot),
+          })),
           views: state.views.map(cloneViewForSnapshot),
-          layers: state.layers.map(cloneLayerForSnapshot),
         };
       }
 
@@ -3573,9 +3728,27 @@
           state.nextMeasurementNumber = Number.isFinite(project.nextMeasurementNumber) ? project.nextMeasurementNumber : 1;
           state.nextViewNumber = Number.isFinite(project.nextViewNumber) ? project.nextViewNumber : 1;
           state.scenes = restoredScenes;
-          state.measurements = (project.measurements || []).map(restoreMeasurementFromSnapshot);
+          if (project.drawings) {
+            state.drawings = project.drawings.map((d) => ({
+              id: d.id,
+              name: d.name,
+              visible: d.visible !== false,
+              rotation: d.rotation || 0,
+              anchor: d.anchor || { x: 0, y: 0 },
+              layers: (d.layers || []).map(restoreLayerFromSnapshot),
+              measurements: (d.measurements || []).map(restoreMeasurementFromSnapshot),
+            }));
+          } else {
+            // Backwards compat: old project format
+            const layers = (project.layers || []).map(restoreLayerFromSnapshot);
+            const measurements = (project.measurements || []).map(restoreMeasurementFromSnapshot);
+            const legacyDrawing = createDrawing("Drawing 1");
+            legacyDrawing.layers = layers.length ? layers : legacyDrawing.layers;
+            legacyDrawing.measurements = measurements;
+            state.drawings = [legacyDrawing];
+          }
+          if (!state.drawings.length) state.drawings = [createDrawing("Drawing 1")];
           state.views = (project.views || []).map(restoreViewFromSnapshot);
-          state.layers = (project.layers || []).map(restoreLayerFromSnapshot);
 
           state.color.active = project.color?.active || DEFAULT_COLOR;
           state.color.hsv = project.color?.hsv ? { ...project.color.hsv } : hexToHsv(state.color.active);
@@ -3621,8 +3794,8 @@
             : "rect";
 
           state.activeSceneId = state.scenes.some((scene) => scene.id === project.activeSceneId) ? project.activeSceneId : null;
-          state.activeLayerId = state.layers.some((layer) => layer.id === project.activeLayerId) ? project.activeLayerId : null;
-          state.activeMeasurementId = state.measurements.some((measurement) => measurement.id === project.activeMeasurementId)
+          state.activeLayerId = getAllLayers().some((l) => l.id === project.activeLayerId) ? project.activeLayerId : null;
+          state.activeMeasurementId = getAllMeasurements().some((m) => m.id === project.activeMeasurementId)
             ? project.activeMeasurementId
             : null;
           state.activeMeasurementItem = state.activeMeasurementId && project.activeMeasurementItem
@@ -3677,7 +3850,7 @@
       }
 
       function activeLayer() {
-        return state.layers.find((layer) => layer.id === state.activeLayerId) || null;
+        return getAllLayers().find((layer) => layer.id === state.activeLayerId) || null;
       }
 
       function activeScene() {
@@ -3685,7 +3858,29 @@
       }
 
       function activeMeasurement() {
-        return state.measurements.find((measurement) => measurement.id === state.activeMeasurementId) || null;
+        return getAllMeasurements().find((measurement) => measurement.id === state.activeMeasurementId) || null;
+      }
+
+      function getAllLayers() {
+        return state.drawings.flatMap((d) => d.layers);
+      }
+
+      function getAllMeasurements() {
+        return state.drawings.flatMap((d) => d.measurements);
+      }
+
+      function findDrawingForLayer(layerId) {
+        return state.drawings.find((d) => d.layers.some((l) => l.id === layerId)) || null;
+      }
+
+      function findDrawingForMeasurement(measurementId) {
+        return state.drawings.find((d) => d.measurements.some((m) => m.id === measurementId)) || null;
+      }
+
+      function activeDrawing() {
+        if (state.activeLayerId) return findDrawingForLayer(state.activeLayerId);
+        if (state.activeMeasurementId) return findDrawingForMeasurement(state.activeMeasurementId);
+        return state.drawings[0] || null;
       }
 
       function activeView() {
@@ -3790,7 +3985,15 @@
             planUndergroundColor: state.viewEnvironment.planUndergroundColor,
           },
           views: state.views.map(cloneViewForSnapshot),
-          layers: state.layers.map(cloneLayerForSnapshot),
+          drawings: state.drawings.map((d) => ({
+            id: d.id,
+            name: d.name,
+            visible: d.visible,
+            rotation: d.rotation,
+            anchor: d.anchor,
+            layers: d.layers.map(cloneLayerForSnapshot),
+            measurements: d.measurements.map(cloneMeasurementForSnapshot),
+          })),
         };
       }
 
@@ -3863,8 +4066,17 @@
                 ? snapshot.viewEnvironment.planUndergroundColor
                 : state.viewEnvironment.planUndergroundColor;
           }
-          if (Array.isArray(snapshot.layers)) {
-            state.layers = snapshot.layers.map(restoreLayerFromSnapshot);
+          if (Array.isArray(snapshot.drawings)) {
+            state.drawings = snapshot.drawings.map((d) => ({
+              id: d.id,
+              name: d.name,
+              visible: d.visible !== false,
+              rotation: d.rotation || 0,
+              anchor: d.anchor || { x: 0, y: 0 },
+              layers: (d.layers || []).map(restoreLayerFromSnapshot),
+              measurements: (d.measurements || []).map(restoreMeasurementFromSnapshot),
+            }));
+            if (!state.drawings.length) state.drawings = [createDrawing("Drawing 1")];
           }
           if (Array.isArray(snapshot.views)) {
             state.views = snapshot.views.map(restoreViewFromSnapshot);
@@ -4321,7 +4533,7 @@
 
       function intersectingLayersForView(view) {
         if (!view || !view.bounds) return [];
-        return state.layers.filter((layer) => layerIntersectsView(layer, view));
+        return getAllLayers().filter((layer) => layerIntersectsView(layer, view));
       }
 
       function orderedConfiguredLayersForView(view) {
@@ -4335,7 +4547,7 @@
         ];
         return orderedLayerIds
           .map((layerId) => {
-            const layer = state.layers.find((entry) => entry.id === layerId);
+            const layer = getAllLayers().find((entry) => entry.id === layerId);
             if (!layer) return null;
             const config = defaultViewLayerConfig(view.layerConfigs && view.layerConfigs[layerId]);
             return {
@@ -6264,7 +6476,7 @@
           viewId,
           dragLayerId: null,
           items: orderedLayerIds.map((layerId) => {
-            const layer = state.layers.find((entry) => entry.id === layerId);
+            const layer = getAllLayers().find((entry) => entry.id === layerId);
             const config = defaultViewLayerConfig(view.layerConfigs && view.layerConfigs[layerId]);
             return {
               layerId,
@@ -6642,7 +6854,7 @@
       }
 
       function setActiveLayerById(layerId, options = {}) {
-        const layer = state.layers.find((entry) => entry.id === layerId);
+        const layer = getAllLayers().find((entry) => entry.id === layerId);
         if (!layer) return false;
         cancelSceneCalibration();
         cancelMeasurementDraft();
@@ -6672,7 +6884,7 @@
       }
 
       function setActiveMeasurementById(measurementId, options = {}) {
-        const measurement = state.measurements.find((entry) => entry.id === measurementId);
+        const measurement = getAllMeasurements().find((entry) => entry.id === measurementId);
         if (!measurement) return false;
         const previousMeasurementId = state.activeMeasurementId;
         cancelSceneCalibration();
@@ -6738,10 +6950,12 @@
           return true;
         }
         if (state.activeLayerId) {
-          const index = state.layers.findIndex((entry) => entry.id === state.activeLayerId);
+          const drawing = findDrawingForLayer(state.activeLayerId);
+          if (!drawing) return false;
+          const index = drawing.layers.findIndex((entry) => entry.id === state.activeLayerId);
           if (index === -1) return false;
-          const deletedLayerId = state.layers[index].id;
-          state.layers.splice(index, 1);
+          const deletedLayerId = drawing.layers[index].id;
+          drawing.layers.splice(index, 1);
           clearActiveTarget();
           commitHistory("Delete Layer");
           requestPopoutSync({ layerId: deletedLayerId });
@@ -6774,9 +6988,11 @@
           return true;
         }
         if (state.activeMeasurementId) {
-          const index = state.measurements.findIndex((entry) => entry.id === state.activeMeasurementId);
+          const drawing = findDrawingForMeasurement(state.activeMeasurementId);
+          if (!drawing) return false;
+          const index = drawing.measurements.findIndex((entry) => entry.id === state.activeMeasurementId);
           if (index === -1) return false;
-          state.measurements.splice(index, 1);
+          drawing.measurements.splice(index, 1);
           clearActiveTarget();
           commitHistory("Delete Measurement");
           render({ ui: true, overlay: true });
@@ -6820,9 +7036,11 @@
       }
 
       function duplicateLayer(layerId) {
-        const index = state.layers.findIndex((entry) => entry.id === layerId);
+        const drawing = findDrawingForLayer(layerId);
+        if (!drawing) return false;
+        const index = drawing.layers.findIndex((entry) => entry.id === layerId);
         if (index === -1) return false;
-        const source = state.layers[index];
+        const source = drawing.layers[index];
         const duplicate = createLayer(source.name);
         duplicate.visible = source.visible;
         duplicate.opacity = source.opacity;
@@ -6833,7 +7051,7 @@
           nextTile.pixels = new Map(tile.pixels);
           nextTile.dirty = true;
         });
-        state.layers.splice(index, 0, duplicate);
+        drawing.layers.splice(index, 0, duplicate);
         setActiveLayerById(duplicate.id, { tool: "select" });
         commitHistory("Duplicate Layer");
         requestPopoutSync({ layerId });
@@ -6842,9 +7060,11 @@
       }
 
       function duplicateMeasurement(measurementId) {
-        const index = state.measurements.findIndex((entry) => entry.id === measurementId);
+        const drawing = findDrawingForMeasurement(measurementId);
+        if (!drawing) return false;
+        const index = drawing.measurements.findIndex((entry) => entry.id === measurementId);
         if (index === -1) return false;
-        const source = state.measurements[index];
+        const source = drawing.measurements[index];
         const duplicate = createMeasurement(source.name);
         duplicate.visible = source.visible;
         duplicate.opacity = source.opacity;
@@ -6864,7 +7084,7 @@
           id: "area-" + Math.random().toString(36).slice(2, 9),
           points: area.points.map((point) => ({ ...point })),
         }));
-        state.measurements.splice(index, 0, duplicate);
+        drawing.measurements.splice(index, 0, duplicate);
         setActiveMeasurementById(duplicate.id, { tool: "select" });
         commitHistory("Duplicate Measurement");
         render({ ui: true, overlay: true });
@@ -7541,7 +7761,7 @@
       }
 
       function beginRenameLayer(layerId) {
-        const layer = state.layers.find((entry) => entry.id === layerId);
+        const layer = getAllLayers().find((entry) => entry.id === layerId);
         state.renameSession = layer
           ? {
               kind: "layer",
@@ -7557,13 +7777,13 @@
       function renameEntityBySession(session) {
         if (!session || !session.id) return null;
         if (session.kind === "layer") {
-          return state.layers.find((entry) => entry.id === session.id) || null;
+          return getAllLayers().find((entry) => entry.id === session.id) || null;
         }
         if (session.kind === "scene") {
           return state.scenes.find((entry) => entry.id === session.id) || null;
         }
         if (session.kind === "measurement") {
-          return state.measurements.find((entry) => entry.id === session.id) || null;
+          return getAllMeasurements().find((entry) => entry.id === session.id) || null;
         }
         if (session.kind === "view") {
           return state.views.find((entry) => entry.id === session.id) || null;
@@ -7637,7 +7857,7 @@
           return;
         }
         const nextMode = ["points", "length", "area"].includes(state.lastMeasurementMode) ? state.lastMeasurementMode : "points";
-        const measurement = state.measurements.find((entry) => entry.id === measurementId);
+        const measurement = getAllMeasurements().find((entry) => entry.id === measurementId);
         if (measurement) {
           measurement.mode = nextMode;
         }
@@ -7680,7 +7900,7 @@
       }
 
       function beginRenameMeasurement(measurementId) {
-        const measurement = state.measurements.find((entry) => entry.id === measurementId);
+        const measurement = getAllMeasurements().find((entry) => entry.id === measurementId);
         state.renameSession = measurement
           ? {
               kind: "measurement",
@@ -8491,10 +8711,16 @@
         switch (kind) {
           case "scene":
             return state.scenes;
-          case "layer":
-            return state.layers;
-          case "measurement":
-            return state.measurements;
+          case "layer": {
+            const dragId = state.dragLayerId;
+            const drawing = dragId ? findDrawingForLayer(dragId) : null;
+            return drawing ? drawing.layers : (state.drawings[0] ? state.drawings[0].layers : []);
+          }
+          case "measurement": {
+            const dragId = state.dragMeasurementId;
+            const drawing = dragId ? findDrawingForMeasurement(dragId) : null;
+            return drawing ? drawing.measurements : (state.drawings[0] ? state.drawings[0].measurements : []);
+          }
           case "view":
             return state.views;
           default:
@@ -8507,9 +8733,8 @@
           case "scene":
             return ui.sceneList;
           case "layer":
-            return ui.layerList;
           case "measurement":
-            return ui.measurementList;
+            return state.leftPanelPointerDrag ? state.leftPanelPointerDrag.dragListEl : null;
           case "view":
             return ui.viewList;
           default:
@@ -8624,7 +8849,8 @@
         card.classList.add("dragging");
         ui.layersPanel.classList.add("drag-reordering");
         setLeftPanelDragId(kind, id);
-        const drop = leftPanelDropPositionFromClientY(kind, event.clientY, id);
+        // For nested kinds (layer/measurement), store the card's parent as the scoped list element
+        const dragListEl = (kind === "layer" || kind === "measurement") ? card.parentElement : null;
         state.leftPanelPointerDrag = {
           pointerId: event.pointerId,
           kind,
@@ -8633,10 +8859,15 @@
           preview,
           offsetX,
           offsetY,
-          dropIndex: drop.toIndex,
-          rawIndex: drop.rawIndex,
-          fromIndex: drop.fromIndex,
+          dragListEl,
+          dropIndex: -1,
+          rawIndex: -1,
+          fromIndex: -1,
         };
+        const drop = leftPanelDropPositionFromClientY(kind, event.clientY, id);
+        state.leftPanelPointerDrag.dropIndex = drop.toIndex;
+        state.leftPanelPointerDrag.rawIndex = drop.rawIndex;
+        state.leftPanelPointerDrag.fromIndex = drop.fromIndex;
         updateLeftPanelDropIndicator(kind, drop.rawIndex, drop.toIndex, drop.fromIndex);
       }
 
@@ -8744,7 +8975,6 @@
           renderSelectionPicker();
           renderViewEditModal();
           renderScenes();
-          renderMeasurements();
           renderViews();
           renderLayers();
           ui.staticCanvas.style.zIndex = state.gridPosition === "above" ? "3" : "0";
@@ -9370,7 +9600,7 @@
 
       function renderMeasurements() {
         ui.measurementList.innerHTML = "";
-        state.measurements.forEach((measurement) => {
+        getAllMeasurements().forEach((measurement) => {
           const card = document.createElement("div");
           card.className = "layer-card measurement-card" + (measurement.id === state.activeMeasurementId ? " active" : "");
           if (measurement.id !== state.activeMeasurementId) card.classList.add("inactive-collapsed");
@@ -9462,9 +9692,10 @@
           removeInline.title = "Delete measurement";
           removeInline.addEventListener("click", (event) => {
             event.stopPropagation();
-            const index = state.measurements.findIndex((entry) => entry.id === measurement.id);
-            if (index === -1) return;
-            state.measurements.splice(index, 1);
+            const drawing = findDrawingForMeasurement(measurement.id);
+            if (!drawing) return;
+            const mIndex = drawing.measurements.findIndex((entry) => entry.id === measurement.id);
+            if (mIndex !== -1) drawing.measurements.splice(mIndex, 1);
             if (state.activeMeasurementId === measurement.id) clearActiveTarget();
             commitHistoryAction("measurements:delete", "Delete Measurement");
             render({ ui: true, overlay: true });
@@ -9563,163 +9794,535 @@
 
       function renderLayers() {
         ui.layerList.innerHTML = "";
-        state.layers.forEach((layer) => {
-          const card = document.createElement("div");
-          card.className = "layer-card layer-stack-card" + (layer.id === state.activeLayerId ? " active" : "");
-          if (layer.id !== state.activeLayerId) card.classList.add("inactive-collapsed");
-          if (layer.id === state.dragLayerId) card.classList.add("dragging");
 
-          const grip = document.createElement("div");
-          grip.className = "drag-handle";
-          grip.textContent = "⋮⋮";
-          grip.draggable = false;
-          grip.addEventListener("pointerdown", (event) => {
-            beginLeftPanelPointerDrag(event, card, "layer", layer.id);
-          });
+        state.drawings.forEach((drawing) => {
+          const isActiveDrawing = drawing.layers.some((l) => l.id === state.activeLayerId) ||
+            drawing.measurements.some((m) => m.id === state.activeMeasurementId);
 
-          const main = document.createElement("div");
-          main.className = "layer-main";
-          main.addEventListener("click", () => {
-            toggleLayerActivation(layer.id);
-          });
+          const drawingCard = document.createElement("div");
+          drawingCard.className = "drawing-card" + (isActiveDrawing ? " active-drawing" : "");
 
-          let nameField;
-          if (state.editingLayerId === layer.id) {
-            const input = document.createElement("input");
-            input.className = "layer-name";
-            input.value = layer.name;
-            input.size = Math.max(1, layer.name.length);
-            input.addEventListener("click", (event) => event.stopPropagation());
-            input.addEventListener("pointerdown", (event) => event.stopPropagation());
-            input.addEventListener("input", () => {
-              layer.name = input.value || layer.name;
-              input.size = Math.max(1, input.value.length);
-            });
-            input.addEventListener("blur", endRenameLayer);
-            input.addEventListener("keydown", (event) => {
-              if (event.key === "Enter" || event.key === "Escape") {
-                input.blur();
-              }
-            });
-            queueMicrotask(() => {
-              input.focus();
-              input.select();
-            });
-            nameField = input;
-          } else {
-            const label = document.createElement("div");
-            label.className = "layer-name-label";
-            label.textContent = layer.name;
-            label.addEventListener("click", (event) => {
-              if (state.activeLayerId !== layer.id || state.activeSceneId) return;
-              event.stopPropagation();
-              beginRenameLayer(layer.id);
-            });
-            nameField = label;
-          }
+          // Drawing header
+          const drawingHeader = document.createElement("div");
+          drawingHeader.className = "card-header";
 
-          const header = document.createElement("div");
-          header.className = "card-header";
+          const drawingTitleWrap = document.createElement("div");
+          drawingTitleWrap.className = "card-header-title";
+          const drawingLabel = document.createElement("div");
+          drawingLabel.className = "layer-name-label";
+          drawingLabel.textContent = drawing.name;
+          drawingTitleWrap.appendChild(drawingLabel);
 
-          const titleWrap = document.createElement("div");
-          titleWrap.className = "card-header-title";
-          titleWrap.appendChild(nameField);
+          const drawingControls = document.createElement("div");
+          drawingControls.className = "inline-controls";
 
-          const inlineControls = document.createElement("div");
-          inlineControls.className = "inline-controls";
-
-          const duplicateInline = document.createElement("button");
-          duplicateInline.className = "inline-icon";
-          duplicateInline.appendChild(createInlineIcon("duplicate"));
-          duplicateInline.title = "Duplicate layer";
-          duplicateInline.addEventListener("click", (event) => {
+          const drawingVisibility = document.createElement("button");
+          drawingVisibility.className = "inline-icon visibility-dot";
+          drawingVisibility.appendChild(createInlineIcon("visibility", { filled: drawing.visible }));
+          drawingVisibility.title = drawing.visible ? "Hide drawing" : "Show drawing";
+          drawingVisibility.addEventListener("click", (event) => {
             event.stopPropagation();
-            if (!duplicateLayer(layer.id)) return;
-            setStatus("Layer duplicated.");
-          });
-          inlineControls.appendChild(duplicateInline);
-
-          const visibilityInline = document.createElement("button");
-          visibilityInline.className = "inline-icon visibility-dot";
-          visibilityInline.appendChild(createInlineIcon("visibility", { filled: layer.visible }));
-          visibilityInline.title = layer.visible ? "Hide layer" : "Show layer";
-          visibilityInline.addEventListener("click", (event) => {
-            event.stopPropagation();
-            layer.visible = !layer.visible;
-            commitHistoryAction("layers:visibility", layer.visible ? "Show Layer" : "Hide Layer");
+            drawing.visible = !drawing.visible;
+            commitHistoryAction("drawings:visibility", drawing.visible ? "Show Drawing" : "Hide Drawing");
             render({ ui: true, content: true, overlay: true });
           });
-          inlineControls.appendChild(visibilityInline);
+          drawingControls.appendChild(drawingVisibility);
 
-          const removeInline = document.createElement("button");
-          removeInline.className = "inline-icon delete-mark";
-          removeInline.appendChild(createInlineIcon("delete"));
-          removeInline.title = "Delete layer";
-          removeInline.addEventListener("click", (event) => {
+          const drawingDuplicate = document.createElement("button");
+          drawingDuplicate.className = "inline-icon";
+          drawingDuplicate.appendChild(createInlineIcon("duplicate"));
+          drawingDuplicate.title = "Duplicate drawing";
+          drawingDuplicate.addEventListener("click", (event) => {
             event.stopPropagation();
-            const deletedLayerId = layer.id;
-            const index = state.layers.findIndex((entry) => entry.id === layer.id);
+            const clone = createDrawing(drawing.name + " copy");
+            clone.visible = drawing.visible;
+            clone.rotation = drawing.rotation;
+            clone.anchor = { ...drawing.anchor };
+            clone.layers = drawing.layers.map((l) => {
+              const snap = cloneLayerForSnapshot(l);
+              const restored = restoreLayerFromSnapshot(snap);
+              return restored;
+            });
+            clone.measurements = drawing.measurements.map((m) => {
+              const snap = cloneMeasurementForSnapshot(m);
+              return restoreMeasurementFromSnapshot(snap);
+            });
+            const index = state.drawings.indexOf(drawing);
+            state.drawings.splice(index, 0, clone);
+            commitHistoryAction("drawings:duplicate", "Duplicate Drawing");
+            render({ ui: true, content: true, overlay: true });
+          });
+          drawingControls.appendChild(drawingDuplicate);
+
+          const drawingDelete = document.createElement("button");
+          drawingDelete.className = "inline-icon delete-mark";
+          drawingDelete.appendChild(createInlineIcon("delete"));
+          drawingDelete.title = "Delete drawing";
+          drawingDelete.addEventListener("click", (event) => {
+            event.stopPropagation();
+            const index = state.drawings.indexOf(drawing);
             if (index === -1) return;
-            state.layers.splice(index, 1);
-            if (state.activeLayerId === layer.id) {
-              clearActiveTarget();
-            }
-            commitHistoryAction("layers:delete", "Delete Layer");
-            requestPopoutSync({ layerId: deletedLayerId });
+            state.drawings.splice(index, 1);
+            if (!state.drawings.length) state.drawings.push(createDrawing("Drawing 1"));
+            const wasActiveLayer = drawing.layers.some((l) => l.id === state.activeLayerId);
+            const wasActiveMeasurement = drawing.measurements.some((m) => m.id === state.activeMeasurementId);
+            if (wasActiveLayer || wasActiveMeasurement) clearActiveTarget();
+            commitHistoryAction("drawings:delete", "Delete Drawing");
             render({ ui: true, content: true, overlay: true });
           });
-          inlineControls.appendChild(removeInline);
+          drawingControls.appendChild(drawingDelete);
 
-          header.appendChild(titleWrap);
-          header.appendChild(inlineControls);
+          drawingHeader.appendChild(drawingTitleWrap);
+          drawingHeader.appendChild(drawingControls);
+          drawingCard.appendChild(drawingHeader);
 
-          const meta = document.createElement("div");
-          meta.className = "layer-meta";
-          meta.textContent = layer.cellCount + " cells";
+          // Children container
+          const children = document.createElement("div");
+          children.className = "drawing-children";
 
-          const areaMeta = document.createElement("div");
-          areaMeta.className = "layer-meta-secondary";
-          areaMeta.textContent = (layer.cellCount * 0.0025).toFixed(2) + " m²";
+          const layersList = document.createElement("div");
+          layersList.className = "drawing-subsection-list";
+          const measurementsList = document.createElement("div");
+          measurementsList.className = "drawing-subsection-list";
 
-          main.appendChild(header);
+          // Layer sub-cards
+          drawing.layers.forEach((layer) => {
+            const card = document.createElement("div");
+            card.className = "layer-card layer-stack-card" + (layer.id === state.activeLayerId ? " active" : "");
+            if (layer.id !== state.activeLayerId) card.classList.add("inactive-collapsed");
+            if (layer.id === state.dragLayerId) card.classList.add("dragging");
 
-          const opacityField = document.createElement("div");
-          opacityField.className = "field";
-          opacityField.addEventListener("pointerdown", (event) => event.stopPropagation());
-          opacityField.addEventListener("mousedown", (event) => event.stopPropagation());
+            const grip = document.createElement("div");
+            grip.className = "drag-handle";
+            grip.textContent = "⋮⋮";
+            grip.draggable = false;
+            grip.addEventListener("pointerdown", (event) => {
+              beginLeftPanelPointerDrag(event, card, "layer", layer.id);
+            });
 
-          const opacityLabel = document.createElement("label");
-          opacityLabel.textContent = "Opacity";
+            const main = document.createElement("div");
+            main.className = "layer-main";
+            main.addEventListener("click", () => {
+              toggleLayerActivation(layer.id);
+            });
 
-          const opacitySlider = document.createElement("input");
-          opacitySlider.type = "range";
-          opacitySlider.min = "0";
-          opacitySlider.max = "100";
-          opacitySlider.step = "1";
-          opacitySlider.value = String(Math.round(layer.opacity * 100));
-          opacitySlider.addEventListener("pointerdown", (event) => event.stopPropagation());
-          opacitySlider.addEventListener("mousedown", (event) => event.stopPropagation());
-          opacitySlider.addEventListener("click", (event) => event.stopPropagation());
-          opacitySlider.addEventListener("input", (event) => {
-            layer.opacity = Math.max(0, Math.min(1, Number(event.target.value) / 100));
-            render({ content: true });
+            let nameField;
+            if (state.editingLayerId === layer.id) {
+              const input = document.createElement("input");
+              input.className = "layer-name";
+              input.value = layer.name;
+              input.size = Math.max(1, layer.name.length);
+              input.addEventListener("click", (event) => event.stopPropagation());
+              input.addEventListener("pointerdown", (event) => event.stopPropagation());
+              input.addEventListener("input", () => {
+                layer.name = input.value || layer.name;
+                input.size = Math.max(1, input.value.length);
+              });
+              input.addEventListener("blur", endRenameLayer);
+              input.addEventListener("keydown", (event) => {
+                if (event.key === "Enter" || event.key === "Escape") {
+                  input.blur();
+                }
+              });
+              queueMicrotask(() => {
+                input.focus();
+                input.select();
+              });
+              nameField = input;
+            } else {
+              const label = document.createElement("div");
+              label.className = "layer-name-label";
+              label.textContent = layer.name;
+              label.addEventListener("click", (event) => {
+                if (state.activeLayerId !== layer.id || state.activeSceneId) return;
+                event.stopPropagation();
+                beginRenameLayer(layer.id);
+              });
+              nameField = label;
+            }
+
+            const header = document.createElement("div");
+            header.className = "card-header";
+
+            const titleWrap = document.createElement("div");
+            titleWrap.className = "card-header-title";
+            titleWrap.appendChild(nameField);
+
+            const inlineControls = document.createElement("div");
+            inlineControls.className = "inline-controls";
+
+            const duplicateInline = document.createElement("button");
+            duplicateInline.className = "inline-icon";
+            duplicateInline.appendChild(createInlineIcon("duplicate"));
+            duplicateInline.title = "Duplicate layer";
+            duplicateInline.addEventListener("click", (event) => {
+              event.stopPropagation();
+              if (!duplicateLayer(layer.id)) return;
+              setStatus("Layer duplicated.");
+            });
+            inlineControls.appendChild(duplicateInline);
+
+            const visibilityInline = document.createElement("button");
+            visibilityInline.className = "inline-icon visibility-dot";
+            visibilityInline.appendChild(createInlineIcon("visibility", { filled: layer.visible }));
+            visibilityInline.title = layer.visible ? "Hide layer" : "Show layer";
+            visibilityInline.addEventListener("click", (event) => {
+              event.stopPropagation();
+              layer.visible = !layer.visible;
+              commitHistoryAction("layers:visibility", layer.visible ? "Show Layer" : "Hide Layer");
+              render({ ui: true, content: true, overlay: true });
+            });
+            inlineControls.appendChild(visibilityInline);
+
+            const removeInline = document.createElement("button");
+            removeInline.className = "inline-icon delete-mark";
+            removeInline.appendChild(createInlineIcon("delete"));
+            removeInline.title = "Delete layer";
+            removeInline.addEventListener("click", (event) => {
+              event.stopPropagation();
+              const deletedLayerId = layer.id;
+              const d = findDrawingForLayer(layer.id);
+              if (!d) return;
+              const index = d.layers.findIndex((entry) => entry.id === layer.id);
+              if (index === -1) return;
+              d.layers.splice(index, 1);
+              if (state.activeLayerId === layer.id) {
+                clearActiveTarget();
+              }
+              commitHistoryAction("layers:delete", "Delete Layer");
+              requestPopoutSync({ layerId: deletedLayerId });
+              render({ ui: true, content: true, overlay: true });
+            });
+            inlineControls.appendChild(removeInline);
+
+            header.appendChild(titleWrap);
+            header.appendChild(inlineControls);
+
+            const meta = document.createElement("div");
+            meta.className = "layer-meta";
+            meta.textContent = layer.cellCount + " cells";
+
+            const areaMeta = document.createElement("div");
+            areaMeta.className = "layer-meta-secondary";
+            areaMeta.textContent = (layer.cellCount * 0.0025).toFixed(2) + " m²";
+
+            main.appendChild(header);
+
+            const opacityField = document.createElement("div");
+            opacityField.className = "field";
+            opacityField.addEventListener("pointerdown", (event) => event.stopPropagation());
+            opacityField.addEventListener("mousedown", (event) => event.stopPropagation());
+
+            const opacityLabel = document.createElement("label");
+            opacityLabel.textContent = "Opacity";
+
+            const opacitySlider = document.createElement("input");
+            opacitySlider.type = "range";
+            opacitySlider.min = "0";
+            opacitySlider.max = "100";
+            opacitySlider.step = "1";
+            opacitySlider.value = String(Math.round(layer.opacity * 100));
+            opacitySlider.addEventListener("pointerdown", (event) => event.stopPropagation());
+            opacitySlider.addEventListener("mousedown", (event) => event.stopPropagation());
+            opacitySlider.addEventListener("click", (event) => event.stopPropagation());
+            opacitySlider.addEventListener("input", (event) => {
+              layer.opacity = Math.max(0, Math.min(1, Number(event.target.value) / 100));
+              render({ content: true });
+            });
+            bindRangeHistoryStep(opacitySlider, {
+              actionKey: "layers:opacity",
+              label: "Layer Opacity",
+              getValue: () => layer.opacity,
+              equal: (a, b) => Math.abs(a - b) < 1e-9,
+            });
+
+            opacityField.appendChild(opacityLabel);
+            opacityField.appendChild(opacitySlider);
+
+            card.appendChild(grip);
+            main.appendChild(meta);
+            main.appendChild(areaMeta);
+            main.appendChild(opacityField);
+            card.appendChild(main);
+            layersList.appendChild(card);
           });
-          bindRangeHistoryStep(opacitySlider, {
-            actionKey: "layers:opacity",
-            label: "Layer Opacity",
-            getValue: () => layer.opacity,
-            equal: (a, b) => Math.abs(a - b) < 1e-9,
+
+          // Measurement sub-cards
+          drawing.measurements.forEach((measurement) => {
+            const card = document.createElement("div");
+            card.className = "layer-card measurement-card" + (measurement.id === state.activeMeasurementId ? " active" : "");
+            if (measurement.id !== state.activeMeasurementId) card.classList.add("inactive-collapsed");
+            if (measurement.id === state.dragMeasurementId) card.classList.add("dragging");
+
+            const grip = document.createElement("div");
+            grip.className = "drag-handle";
+            grip.textContent = "⋮⋮";
+            grip.draggable = false;
+            grip.addEventListener("pointerdown", (event) => {
+              beginLeftPanelPointerDrag(event, card, "measurement", measurement.id);
+            });
+
+            const main = document.createElement("div");
+            main.className = "layer-main";
+            main.addEventListener("click", () => {
+              toggleMeasurementActivation(measurement.id);
+            });
+
+            let nameField;
+            if (state.editingMeasurementId === measurement.id) {
+              const input = document.createElement("input");
+              input.className = "layer-name";
+              input.value = measurement.name;
+              input.size = Math.max(1, measurement.name.length);
+              input.addEventListener("click", (event) => event.stopPropagation());
+              input.addEventListener("pointerdown", (event) => event.stopPropagation());
+              input.addEventListener("input", () => {
+                measurement.name = input.value || measurement.name;
+                input.size = Math.max(1, input.value.length);
+              });
+              input.addEventListener("blur", endRenameMeasurement);
+              input.addEventListener("keydown", (event) => {
+                if (event.key === "Enter" || event.key === "Escape") input.blur();
+              });
+              queueMicrotask(() => {
+                input.focus();
+                input.select();
+              });
+              nameField = input;
+            } else {
+              const label = document.createElement("div");
+              label.className = "layer-name-label";
+              label.textContent = measurement.name;
+              label.addEventListener("click", (event) => {
+                if (state.activeMeasurementId !== measurement.id || state.activeLayerId || state.activeSceneId) return;
+                event.stopPropagation();
+                beginRenameMeasurement(measurement.id);
+              });
+              nameField = label;
+            }
+
+            const header = document.createElement("div");
+            header.className = "card-header";
+
+            const titleWrap = document.createElement("div");
+            titleWrap.className = "card-header-title";
+            titleWrap.appendChild(nameField);
+
+            const inlineControls = document.createElement("div");
+            inlineControls.className = "inline-controls";
+
+            const duplicateInline = document.createElement("button");
+            duplicateInline.className = "inline-icon";
+            duplicateInline.appendChild(createInlineIcon("duplicate"));
+            duplicateInline.title = "Duplicate measurement";
+            duplicateInline.addEventListener("click", (event) => {
+              event.stopPropagation();
+              if (!duplicateMeasurement(measurement.id)) return;
+              setStatus("Measurement duplicated.");
+            });
+            inlineControls.appendChild(duplicateInline);
+
+            const visibilityInline = document.createElement("button");
+            visibilityInline.className = "inline-icon visibility-dot";
+            visibilityInline.appendChild(createInlineIcon("visibility", { filled: measurement.visible }));
+            visibilityInline.title = measurement.visible ? "Hide measurement" : "Show measurement";
+            visibilityInline.addEventListener("click", (event) => {
+              event.stopPropagation();
+              measurement.visible = !measurement.visible;
+              commitHistoryAction("measurements:visibility", measurement.visible ? "Show Measurement" : "Hide Measurement");
+              render({ ui: true, overlay: true });
+            });
+            inlineControls.appendChild(visibilityInline);
+
+            const removeInline = document.createElement("button");
+            removeInline.className = "inline-icon delete-mark";
+            removeInline.appendChild(createInlineIcon("delete"));
+            removeInline.title = "Delete measurement";
+            removeInline.addEventListener("click", (event) => {
+              event.stopPropagation();
+              const d = findDrawingForMeasurement(measurement.id);
+              if (!d) return;
+              const mIndex = d.measurements.findIndex((entry) => entry.id === measurement.id);
+              if (mIndex !== -1) d.measurements.splice(mIndex, 1);
+              if (state.activeMeasurementId === measurement.id) clearActiveTarget();
+              commitHistoryAction("measurements:delete", "Delete Measurement");
+              render({ ui: true, overlay: true });
+            });
+            inlineControls.appendChild(removeInline);
+
+            header.appendChild(titleWrap);
+            header.appendChild(inlineControls);
+            main.appendChild(header);
+
+            const itemCount = measurement.points.length + measurement.lengths.length + measurement.areas.length;
+            const totalLength = measurement.lengths.reduce((sum, entry) => sum + entry.meters, 0);
+            const totalArea = measurement.areas.reduce((sum, entry) => sum + entry.squareMeters, 0);
+
+            const meta = document.createElement("div");
+            meta.className = "layer-meta";
+            meta.textContent = itemCount + " items";
+
+            const lengthMeta = document.createElement("div");
+            lengthMeta.className = "layer-meta-secondary";
+            lengthMeta.textContent = totalLength.toFixed(2) + " m";
+
+            const areaMeta = document.createElement("div");
+            areaMeta.className = "layer-meta-secondary";
+            areaMeta.textContent = totalArea.toFixed(2) + " m²";
+
+            const widthField = document.createElement("div");
+            widthField.className = "field";
+            widthField.addEventListener("pointerdown", (event) => event.stopPropagation());
+            widthField.addEventListener("mousedown", (event) => event.stopPropagation());
+
+            const widthLabel = document.createElement("label");
+            widthLabel.textContent = "Width";
+
+            const widthSlider = document.createElement("input");
+            widthSlider.type = "range";
+            widthSlider.min = "1";
+            widthSlider.max = "12";
+            widthSlider.step = "1";
+            widthSlider.value = String(measurement.width);
+            widthSlider.addEventListener("pointerdown", (event) => event.stopPropagation());
+            widthSlider.addEventListener("mousedown", (event) => event.stopPropagation());
+            widthSlider.addEventListener("click", (event) => event.stopPropagation());
+            widthSlider.addEventListener("input", (event) => {
+              measurement.width = Math.max(1, Math.min(12, Number(event.target.value)));
+              render({ overlay: true });
+            });
+            bindRangeHistoryStep(widthSlider, {
+              actionKey: "measurements:width",
+              label: "Measurement Width",
+              getValue: () => measurement.width,
+            });
+            widthField.appendChild(widthLabel);
+            widthField.appendChild(widthSlider);
+
+            const opacityField = document.createElement("div");
+            opacityField.className = "field";
+            opacityField.addEventListener("pointerdown", (event) => event.stopPropagation());
+            opacityField.addEventListener("mousedown", (event) => event.stopPropagation());
+
+            const opacityLabel = document.createElement("label");
+            opacityLabel.textContent = "Opacity";
+
+            const opacitySlider = document.createElement("input");
+            opacitySlider.type = "range";
+            opacitySlider.min = "0";
+            opacitySlider.max = "100";
+            opacitySlider.step = "1";
+            opacitySlider.value = String(Math.round(measurement.opacity * 100));
+            opacitySlider.addEventListener("pointerdown", (event) => event.stopPropagation());
+            opacitySlider.addEventListener("mousedown", (event) => event.stopPropagation());
+            opacitySlider.addEventListener("click", (event) => event.stopPropagation());
+            opacitySlider.addEventListener("input", (event) => {
+              measurement.opacity = Math.max(0, Math.min(1, Number(event.target.value) / 100));
+              render({ overlay: true });
+            });
+            bindRangeHistoryStep(opacitySlider, {
+              actionKey: "measurements:opacity",
+              label: "Measurement Opacity",
+              getValue: () => measurement.opacity,
+              equal: (a, b) => Math.abs(a - b) < 1e-9,
+            });
+            opacityField.appendChild(opacityLabel);
+            opacityField.appendChild(opacitySlider);
+
+            card.appendChild(grip);
+            main.appendChild(meta);
+            main.appendChild(lengthMeta);
+            main.appendChild(areaMeta);
+            main.appendChild(widthField);
+            main.appendChild(opacityField);
+            card.appendChild(main);
+            measurementsList.appendChild(card);
           });
 
-          opacityField.appendChild(opacityLabel);
-          opacityField.appendChild(opacitySlider);
+          // Layers sub-section
+          const layersSection = document.createElement("div");
+          layersSection.className = "drawing-subsection" + (drawing.layersSectionCollapsed ? " collapsed" : "");
 
-          card.appendChild(grip);
-          main.appendChild(meta);
-          main.appendChild(areaMeta);
-          main.appendChild(opacityField);
-          card.appendChild(main);
-          ui.layerList.appendChild(card);
+          const layersSubHeader = document.createElement("div");
+          layersSubHeader.className = "drawing-subsection-header";
+
+          const layersToggle = document.createElement("button");
+          layersToggle.className = "drawing-subsection-toggle";
+          layersToggle.addEventListener("click", (event) => {
+            event.stopPropagation();
+            drawing.layersSectionCollapsed = !drawing.layersSectionCollapsed;
+            render({ ui: true });
+          });
+          const layersArrow = document.createElement("span");
+          layersArrow.className = "drawing-subsection-toggle-arrow";
+          layersArrow.textContent = "▾";
+          const layersTitle = document.createElement("span");
+          layersTitle.textContent = "Layers";
+          layersToggle.appendChild(layersArrow);
+          layersToggle.appendChild(layersTitle);
+
+          const layersAddBtn = document.createElement("button");
+          layersAddBtn.className = "drawing-subsection-add";
+          layersAddBtn.textContent = "+";
+          layersAddBtn.title = "Add layer";
+          layersAddBtn.addEventListener("click", (event) => {
+            event.stopPropagation();
+            drawing.layersSectionCollapsed = false;
+            addLayer(drawing);
+          });
+
+          layersSubHeader.appendChild(layersToggle);
+          layersSubHeader.appendChild(layersAddBtn);
+          layersSection.appendChild(layersSubHeader);
+
+          layersSection.appendChild(layersList);
+          children.appendChild(layersSection);
+
+          // Measurements sub-section
+          const measurementsSection = document.createElement("div");
+          measurementsSection.className = "drawing-subsection" + (drawing.measurementsSectionCollapsed ? " collapsed" : "");
+
+          const measurementsSubHeader = document.createElement("div");
+          measurementsSubHeader.className = "drawing-subsection-header";
+
+          const measurementsToggle = document.createElement("button");
+          measurementsToggle.className = "drawing-subsection-toggle";
+          measurementsToggle.addEventListener("click", (event) => {
+            event.stopPropagation();
+            drawing.measurementsSectionCollapsed = !drawing.measurementsSectionCollapsed;
+            render({ ui: true });
+          });
+          const measurementsArrow = document.createElement("span");
+          measurementsArrow.className = "drawing-subsection-toggle-arrow";
+          measurementsArrow.textContent = "▾";
+          const measurementsTitle = document.createElement("span");
+          measurementsTitle.textContent = "Measurements";
+          measurementsToggle.appendChild(measurementsArrow);
+          measurementsToggle.appendChild(measurementsTitle);
+
+          const measurementsAddBtn = document.createElement("button");
+          measurementsAddBtn.className = "drawing-subsection-add";
+          measurementsAddBtn.textContent = "+";
+          measurementsAddBtn.title = "Add measurement";
+          measurementsAddBtn.addEventListener("click", (event) => {
+            event.stopPropagation();
+            drawing.measurementsSectionCollapsed = false;
+            const measurement = createMeasurement("Measurement " + state.nextMeasurementNumber++);
+            measurement.mode = ["points", "length", "area"].includes(state.lastMeasurementMode) ? state.lastMeasurementMode : "points";
+            drawing.measurements.unshift(measurement);
+            setActiveMeasurementById(measurement.id, { tool: "measure" });
+            commitHistory("Create Measurement");
+            render({ ui: true, overlay: true });
+          });
+
+          measurementsSubHeader.appendChild(measurementsToggle);
+          measurementsSubHeader.appendChild(measurementsAddBtn);
+          measurementsSection.appendChild(measurementsSubHeader);
+          measurementsSection.appendChild(measurementsList);
+          children.appendChild(measurementsSection);
+
+          drawingCard.appendChild(children);
+          ui.layerList.appendChild(drawingCard);
         });
       }
 
@@ -10034,7 +10637,7 @@
         const bounds = visibleTileBounds();
         contentCtx.clearRect(0, 0, width, height);
 
-        [...state.layers].reverse().forEach((layer) => {
+        [...getAllLayers()].reverse().forEach((layer) => {
           if (!layer.visible) return;
           contentCtx.save();
           contentCtx.globalAlpha = layer.opacity;
@@ -10390,7 +10993,7 @@
           });
         });
 
-        state.measurements.forEach((measurement) => {
+        getAllMeasurements().forEach((measurement) => {
           if (!measurement.visible || measurement.opacity <= 0) return;
           if (!measurementMatchesRect(measurement, rect, containment)) return;
           candidates.push({
@@ -10401,7 +11004,7 @@
           });
         });
 
-        state.layers.forEach((layer) => {
+        getAllLayers().forEach((layer) => {
           if (!layer.visible) return;
           if (!layerMatchesRect(layer, rect, containment)) return;
           candidates.push({
@@ -10551,7 +11154,7 @@
       }
 
       function measurementHitAt(worldX, worldY) {
-        for (const measurement of state.measurements) {
+        for (const measurement of getAllMeasurements()) {
           if (!measurement.visible || measurement.opacity <= 0) continue;
           const tolerance = CELL_SIZE * 0.12;
 
@@ -10898,7 +11501,7 @@
           }
         }
 
-        state.measurements
+        getAllMeasurements()
           .slice()
           .reverse()
           .forEach((measurement) => {
@@ -11017,7 +11620,7 @@
         }
 
         if (state.measurementDraft) {
-          const draftMeasurement = state.measurements.find((entry) => entry.id === state.measurementDraft.measurementId);
+          const draftMeasurement = getAllMeasurements().find((entry) => entry.id === state.measurementDraft.measurementId);
           if (draftMeasurement && draftMeasurement.visible && draftMeasurement.opacity > 0) {
             drawMeasurementDraft(overlayCtx, state.measurementDraft, draftMeasurement);
           }
@@ -11688,7 +12291,8 @@
         state.measurementSectionCollapsed = false;
         const measurement = createMeasurement("Measurement " + state.nextMeasurementNumber++);
         measurement.mode = ["points", "length", "area"].includes(state.lastMeasurementMode) ? state.lastMeasurementMode : "points";
-        state.measurements.unshift(measurement);
+        const targetDrawing = activeDrawing() || state.drawings[0] || (() => { const d = createDrawing("Drawing 1"); state.drawings.unshift(d); return d; })();
+        targetDrawing.measurements.unshift(measurement);
         setActiveMeasurementById(measurement.id, { tool: "measure" });
         commitHistory("Create Measurement");
         setStatus(
@@ -11717,13 +12321,25 @@
         render({ ui: true, overlay: true });
       }
 
-      function addLayer() {
-        state.layerSectionCollapsed = false;
-        const layer = createLayer("Layer " + (state.layers.length + 1));
-        state.layers.unshift(layer);
+      function addLayer(targetDrawing) {
+        const drawing = targetDrawing || activeDrawing() || state.drawings[0] || (() => { const d = createDrawing("Drawing 1"); state.drawings.unshift(d); return d; })();
+        drawing.layersSectionCollapsed = false;
+        const layer = createLayer("Layer " + (getAllLayers().length + 1));
+        drawing.layers.unshift(layer);
         const nextTool = state.lastLayerAuthoringTool === "shape" ? "shape" : "brush";
         setActiveLayerById(layer.id, { tool: nextTool });
         commitHistory("Create Layer");
+        setStatus(nextTool === "shape" ? "Shape tool active." : "Brush tool active.");
+        render({ ui: true, content: true, overlay: true });
+      }
+
+      function addDrawing() {
+        state.layerSectionCollapsed = false;
+        const drawing = createDrawing("Drawing " + (state.drawings.length + 1));
+        state.drawings.unshift(drawing);
+        const nextTool = state.lastLayerAuthoringTool === "shape" ? "shape" : "brush";
+        setActiveLayerById(drawing.layers[0].id, { tool: nextTool });
+        commitHistory("Create Drawing");
         setStatus(nextTool === "shape" ? "Shape tool active." : "Brush tool active.");
         render({ ui: true, content: true, overlay: true });
       }
@@ -12150,7 +12766,7 @@
 
       function topPaintedLayerAt(worldX, worldY) {
         const cell = cellFromWorld(worldX, worldY);
-        for (const layer of state.layers) {
+        for (const layer of getAllLayers()) {
           if (!layer.visible) continue;
           if (getCellColor(layer, cell.x, cell.y)) return layer;
         }
@@ -13188,7 +13804,7 @@
 
         if (state.interaction.type === "layer-move") {
           ui.overlayCanvas.style.cursor = "move";
-          const layer = state.layers.find((entry) => entry.id === state.interaction.layerId);
+          const layer = getAllLayers().find((entry) => entry.id === state.interaction.layerId);
           if (!layer) return;
           const pointer = worldFromClient(event.clientX, event.clientY);
           const cell = cellFromWorld(pointer.worldX, pointer.worldY);
@@ -13213,7 +13829,7 @@
         }
 
         if (state.interaction.type === "layer-rotate") {
-          const layer = state.layers.find((entry) => entry.id === state.interaction.layerId);
+          const layer = getAllLayers().find((entry) => entry.id === state.interaction.layerId);
           if (!layer) return;
           const pointer = worldFromClient(event.clientX, event.clientY);
           const currentAngle = Math.atan2(
@@ -13234,7 +13850,7 @@
 
         if (state.interaction.type === "measurement-move") {
           ui.overlayCanvas.style.cursor = "move";
-          const measurement = state.measurements.find((entry) => entry.id === state.interaction.measurementId);
+          const measurement = getAllMeasurements().find((entry) => entry.id === state.interaction.measurementId);
           if (!measurement) return;
           const pointer = worldFromClient(event.clientX, event.clientY);
           const cell = cellFromWorld(pointer.worldX, pointer.worldY);
@@ -13263,7 +13879,7 @@
 
         if (state.interaction.type === "measurement-item-move") {
           ui.overlayCanvas.style.cursor = "move";
-          const measurement = state.measurements.find((entry) => entry.id === state.interaction.measurementId);
+          const measurement = getAllMeasurements().find((entry) => entry.id === state.interaction.measurementId);
           if (!measurement) return;
           const target = state.interaction.target;
           const pointer = worldFromClient(event.clientX, event.clientY);
@@ -13405,7 +14021,7 @@
         }
 
         if (state.interaction.type === "measurement-rotate") {
-          const measurement = state.measurements.find((entry) => entry.id === state.interaction.measurementId);
+          const measurement = getAllMeasurements().find((entry) => entry.id === state.interaction.measurementId);
           if (!measurement) return;
           const pointer = worldFromClient(event.clientX, event.clientY);
           const currentAngle = Math.atan2(
@@ -13647,7 +14263,7 @@
           return;
         }
         if (state.interaction.type === "measurement-length-drag") {
-          const measurement = state.measurements.find((entry) => entry.id === state.interaction.measurementId);
+          const measurement = getAllMeasurements().find((entry) => entry.id === state.interaction.measurementId);
           if (measurement) {
             if (state.interaction.moved && state.measurementDraft && state.measurementDraft.type === "length-drag") {
               const committed = commitMeasurementLength(measurement, state.measurementDraft.start, state.measurementDraft.end);
@@ -13756,7 +14372,7 @@
           setStatus("Layer rotated.");
         }
         if (state.interaction.type === "measurement-move") {
-          const measurement = state.measurements.find((entry) => entry.id === state.interaction.measurementId);
+          const measurement = getAllMeasurements().find((entry) => entry.id === state.interaction.measurementId);
           if (!state.interaction.moved && measurement && event) {
             const pointer = worldFromClient(event.clientX, event.clientY);
             const groupHit = measurementTransformHit(measurement, pointer.worldX, pointer.worldY);
@@ -13847,10 +14463,10 @@
           state.outline.eyedropper = false;
         } else if (tool === "brush") {
           if (!activeLayer()) {
-            if (!state.layers.length) {
+            if (!getAllLayers().length) {
               addLayer();
-            } else if (state.layers[0]) {
-              setActiveLayerById(state.layers[0].id);
+            } else if (getAllLayers()[0]) {
+              setActiveLayerById(getAllLayers()[0].id);
             }
           } else {
             state.activeSceneId = null;
@@ -13860,10 +14476,10 @@
           }
         } else if (tool === "shape") {
           if (!activeLayer()) {
-            if (!state.layers.length) {
+            if (!getAllLayers().length) {
               addLayer();
-            } else if (state.layers[0]) {
-              setActiveLayerById(state.layers[0].id);
+            } else if (getAllLayers()[0]) {
+              setActiveLayerById(getAllLayers()[0].id);
             }
             if (activeLayer()) {
               state.activeSceneId = null;
@@ -13915,10 +14531,10 @@
         }
         cancelMeasurementDraft();
         state.lastMeasurementMode = mode;
-        if (!activeMeasurement() && !state.measurements.length) {
+        if (!activeMeasurement() && !getAllMeasurements().length) {
           addMeasurement();
         }
-        const measurement = activeMeasurement() || state.measurements[0];
+        const measurement = activeMeasurement() || getAllMeasurements()[0];
         if (!measurement) {
           setStatus("Add a measurement first.");
           render({ overlay: true });
@@ -14129,7 +14745,7 @@
       });
       ui.addMeasurementButton.addEventListener("click", addMeasurement);
       ui.addViewButton.addEventListener("click", addView);
-      ui.addLayerButton.addEventListener("click", addLayer);
+      ui.addLayerButton.addEventListener("click", addDrawing);
       ui.undoButton.addEventListener("click", () => {
         flushPendingRangeHistorySteps();
         if (!undoHistory()) return;

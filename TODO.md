@@ -232,11 +232,11 @@ function queryDrawingAtWorldPoint(layer, drawing, worldX, worldY, worldZ)
 
 ### Σειρά υλοποίησης
 
-1. Data model migration:
-   - Layer → Layer container (`children[]`, `rotation`, `anchor`)
-   - Drawing object (tile data + per-view properties)
-   - Measurements migrate into layer `children[]` (existing global measurements → default `rotation=0` layer)
-   - Serialization/restore με backwards compat
+~~1. Data model migration:~~
+   ~~- Drawing container (`layers[]`, `measurements[]`, `rotation`, `anchor`)~~
+   ~~- `state.drawings[]` αντικαθιστά `state.layers[]` + `state.measurements[]`~~
+   ~~- Layers/Measurements αμετάβλητα — μόνο ο container αλλάζει~~
+   ~~- Serialization/restore με backwards compat~~
 2. `queryDrawingAtWorldPoint` — standalone, testable χωρίς view integration
 3. `buildPullOcclusionGrid` — νέα συνάρτηση παράλληλα με την παλιά
 4. Feature flag: εναλλαγή push/pull per-view ή globally
