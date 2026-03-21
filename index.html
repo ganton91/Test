@@ -2734,7 +2734,11 @@
         popoutChannel: null,
         popoutSyncTimer: null,
         viewLayoutPreset: 4,
-        viewPaneDirections: ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"],
+        viewPaneDirectionsByLayout: {
+          "1": ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"],
+          "2": ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"],
+          "4": ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"],
+        },
         viewPaneRenderMeta: [null, null, null, null],
         viewPaneViewports: [
           { panX: 0, panY: 0, zoom: 1 },
@@ -3399,7 +3403,11 @@
           outlinePanelCollapsed: state.outlinePanelCollapsed,
           activeCanvasViewTab: state.activeCanvasViewTab,
           viewLayoutPreset: state.viewLayoutPreset,
-          viewPaneDirections: [...state.viewPaneDirections],
+          viewPaneDirectionsByLayout: {
+            "1": [...state.viewPaneDirectionsByLayout["1"]],
+            "2": [...state.viewPaneDirectionsByLayout["2"]],
+            "4": [...state.viewPaneDirectionsByLayout["4"]],
+          },
           activeTool: state.activeTool === "eyedropper" ? state.eyedropperSession?.previousTool || "select" : state.activeTool,
           activeSceneId: state.activeSceneId,
           activeLayerId: state.activeLayerId,
@@ -3541,13 +3549,22 @@
           state.shapePanelCollapsed = !!project.shapePanelCollapsed;
           state.outlinePanelCollapsed = !!project.outlinePanelCollapsed;
           state.viewLayoutPreset = [1, 2, 4].includes(project.viewLayoutPreset) ? project.viewLayoutPreset : 4;
-          state.viewPaneDirections = Array.isArray(project.viewPaneDirections) && project.viewPaneDirections.length === 4
-            ? project.viewPaneDirections.map((direction, index) =>
-                typeof direction === "string"
-                  ? direction
-                  : ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"][index]
-              )
-            : ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"];
+          {
+            const defaultDirs = ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"];
+            const restoreDirs = (arr) => Array.isArray(arr) && arr.length === 4
+              ? arr.map((d, i) => typeof d === "string" ? d : defaultDirs[i])
+              : [...defaultDirs];
+            if (project.viewPaneDirectionsByLayout && typeof project.viewPaneDirectionsByLayout === "object") {
+              state.viewPaneDirectionsByLayout = {
+                "1": restoreDirs(project.viewPaneDirectionsByLayout["1"]),
+                "2": restoreDirs(project.viewPaneDirectionsByLayout["2"]),
+                "4": restoreDirs(project.viewPaneDirectionsByLayout["4"]),
+              };
+            } else {
+              const dirs = restoreDirs(project.viewPaneDirections);
+              state.viewPaneDirectionsByLayout = { "1": [...dirs], "2": [...dirs], "4": [...dirs] };
+            }
+          }
           state.lastLayerAuthoringTool = project.lastLayerAuthoringTool === "shape" ? "shape" : "brush";
           state.lastMeasurementMode = ["points", "length", "area"].includes(project.lastMeasurementMode)
             ? project.lastMeasurementMode
@@ -3734,7 +3751,11 @@
         return {
           theme: state.theme,
           viewLayoutPreset: state.viewLayoutPreset,
-          viewPaneDirections: [...state.viewPaneDirections],
+          viewPaneDirectionsByLayout: {
+            "1": [...state.viewPaneDirectionsByLayout["1"]],
+            "2": [...state.viewPaneDirectionsByLayout["2"]],
+            "4": [...state.viewPaneDirectionsByLayout["4"]],
+          },
           viewColorOverride: !!state.viewColorOverride,
           viewDepthEffect: {
             enabled: !!state.viewDepthEffect.enabled,
@@ -3781,12 +3802,16 @@
             state.theme = snapshot.theme;
           }
           state.viewLayoutPreset = [1, 2, 4].includes(snapshot.viewLayoutPreset) ? snapshot.viewLayoutPreset : state.viewLayoutPreset;
-          if (Array.isArray(snapshot.viewPaneDirections) && snapshot.viewPaneDirections.length === 4) {
-            state.viewPaneDirections = snapshot.viewPaneDirections.map((direction, index) =>
-              typeof direction === "string"
-                ? direction
-                : ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"][index]
-            );
+          if (snapshot.viewPaneDirectionsByLayout && typeof snapshot.viewPaneDirectionsByLayout === "object") {
+            const defaultDirs = ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"];
+            const restoreDirs = (arr) => Array.isArray(arr) && arr.length === 4
+              ? arr.map((d, i) => typeof d === "string" ? d : defaultDirs[i])
+              : [...defaultDirs];
+            state.viewPaneDirectionsByLayout = {
+              "1": restoreDirs(snapshot.viewPaneDirectionsByLayout["1"]),
+              "2": restoreDirs(snapshot.viewPaneDirectionsByLayout["2"]),
+              "4": restoreDirs(snapshot.viewPaneDirectionsByLayout["4"]),
+            };
           }
           state.viewColorOverride = snapshot.viewColorOverride !== false;
           if (snapshot.viewDepthEffect) {
@@ -3887,12 +3912,16 @@
               if ([1, 2, 4].includes(payload.viewLayoutPreset)) {
                 state.viewLayoutPreset = payload.viewLayoutPreset;
               }
-              if (Array.isArray(payload.viewPaneDirections) && payload.viewPaneDirections.length === 4) {
-                state.viewPaneDirections = payload.viewPaneDirections.map((direction, index) =>
-                  typeof direction === "string"
-                    ? direction
-                    : ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"][index]
-                );
+              if (payload.viewPaneDirectionsByLayout && typeof payload.viewPaneDirectionsByLayout === "object") {
+                const defaultDirs = ["topToBottom", "bottomToTop", "leftToRight", "rightToLeft"];
+                ["1", "2", "4"].forEach((key) => {
+                  const arr = payload.viewPaneDirectionsByLayout[key];
+                  if (Array.isArray(arr) && arr.length === 4) {
+                    state.viewPaneDirectionsByLayout[key] = arr.map((d, i) =>
+                      typeof d === "string" ? d : defaultDirs[i]
+                    );
+                  }
+                });
               }
               render({ ui: true, content: true });
             }
@@ -3945,7 +3974,11 @@
             type: "view-ui-state",
             payload: {
               viewLayoutPreset: state.viewLayoutPreset,
-              viewPaneDirections: [...state.viewPaneDirections],
+              viewPaneDirectionsByLayout: {
+                "1": [...state.viewPaneDirectionsByLayout["1"]],
+                "2": [...state.viewPaneDirectionsByLayout["2"]],
+                "4": [...state.viewPaneDirectionsByLayout["4"]],
+              },
             },
           });
           return true;
@@ -4136,12 +4169,12 @@
         ui.viewPaneSlots.forEach((pane, index) => {
           pane.classList.toggle("hidden", index >= visibleCount);
           const title = ui.viewPaneTitles[index];
-          if (title) title.textContent = viewDirectionLabel(state.viewPaneDirections[index]);
+          if (title) title.textContent = viewDirectionLabel(currentPaneDirections()[index]);
         });
 
         ui.viewPaneSelectorButtons.forEach((button) => {
           const slotIndex = Number(button.dataset.viewSlot);
-          button.classList.toggle("active", state.viewPaneDirections[slotIndex] === button.dataset.viewDirection);
+          button.classList.toggle("active", currentPaneDirections()[slotIndex] === button.dataset.viewDirection);
         });
 
         const activeView = activeCanvasView();
@@ -4162,9 +4195,9 @@
             btn.dataset.viewDirection = axis.id;
             btn.textContent = sectionAxisShortLabel(type, axis);
             btn.title = sectionAxisFullLabel(type, axis);
-            if (state.viewPaneDirections[slotIndex] === axis.id) btn.classList.add("active");
+            if (currentPaneDirections()[slotIndex] === axis.id) btn.classList.add("active");
             btn.addEventListener("click", () => {
-              state.viewPaneDirections[slotIndex] = axis.id;
+              currentPaneDirections()[slotIndex] = axis.id;
               broadcastPopoutViewUiState();
               requestPopoutSync({ viewId: activeCanvasView()?.id });
               setStatus(sectionAxisFullLabel(type, axis) + " shown in view slot.");
@@ -4248,6 +4281,10 @@
 
       function visibleViewPaneCount() {
         return state.viewLayoutPreset === 1 ? 1 : state.viewLayoutPreset === 2 ? 2 : 4;
+      }
+
+      function currentPaneDirections() {
+        return state.viewPaneDirectionsByLayout[String(state.viewLayoutPreset)];
       }
 
       function viewCellBounds(bounds) {
@@ -5119,7 +5156,7 @@
       function buildViewPaneDxfContent(slotIndex) {
         const view = activeCanvasView();
         if (!view) return { error: "no-view" };
-        const direction = state.viewPaneDirections[slotIndex];
+        const direction = currentPaneDirections()[slotIndex];
         const isPlanDirection = direction === "plan";
         const isSectionDir = isSectionAxisId(direction);
         let sectionInfo = null;
@@ -5922,8 +5959,8 @@
           renderDirectionalViewOutput(
             pane.canvas,
             pane.empty,
-            state.viewPaneDirections[index],
-            viewDirectionLabel(state.viewPaneDirections[index]) + " view placeholder",
+            currentPaneDirections()[index],
+            viewDirectionLabel(currentPaneDirections()[index]) + " view placeholder",
             index
           );
         });
@@ -5943,7 +5980,7 @@
           render({ ui: true });
           return;
         }
-        const direction = state.viewPaneDirections[slotIndex];
+        const direction = currentPaneDirections()[slotIndex];
         // Render to a high-res offscreen canvas (zoom=1, no pan)
         const offscreen = document.createElement("canvas");
         const dummy = document.createElement("div");
@@ -6087,7 +6124,7 @@
           render({ ui: true });
           return;
         }
-        const direction = state.viewPaneDirections[slotIndex];
+        const direction = currentPaneDirections()[slotIndex];
         const scale = Math.max(1, Number(scaleDenominator) || 1);
 
         if (!state.viewPaneRenderMeta[slotIndex]) {
@@ -14253,7 +14290,7 @@
         button.addEventListener("click", () => {
           const slotIndex = Number(button.dataset.viewSlot);
           if (!Number.isFinite(slotIndex)) return;
-          state.viewPaneDirections[slotIndex] = button.dataset.viewDirection;
+          currentPaneDirections()[slotIndex] = button.dataset.viewDirection;
           broadcastPopoutViewUiState();
           requestPopoutSync({ viewId: activeCanvasView()?.id });
           setStatus(viewDirectionLabel(button.dataset.viewDirection) + " shown in view slot.");
