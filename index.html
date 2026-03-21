@@ -9924,13 +9924,12 @@
           });
           drawingCard.appendChild(drawingGrip);
 
-          drawingCard.addEventListener("click", () => {
-            toggleDrawingActivation(drawing.id);
-          });
-
           // Main column (header + children)
           const drawingMain = document.createElement("div");
           drawingMain.className = "drawing-main";
+          drawingMain.addEventListener("click", () => {
+            toggleDrawingActivation(drawing.id);
+          });
 
           // Drawing header
           const drawingHeader = document.createElement("div");
@@ -9962,11 +9961,9 @@
             label.className = "layer-name-label";
             label.textContent = drawing.name;
             label.addEventListener("click", (event) => {
-              if (!isActiveDrawing) return;
+              if (state.activeDrawingId !== drawing.id) return;
               event.stopPropagation();
-              if (!state.activeLayerId && !state.activeMeasurementId) {
-                beginRenameDrawing(drawing.id);
-              }
+              beginRenameDrawing(drawing.id);
             });
             drawingNameField = label;
           }
