@@ -46,7 +46,13 @@ drawing-card [display:grid, 16px | 1fr]
 
 **`toggleDrawingActivation(drawingId)`:**
 - Αν `activeDrawingId === drawingId` → `clearActiveTarget()` + `state.activeDrawingId = null` (κλείνει drawing + κάνει deactivate ό,τι είναι μέσα)
-- Αν `activeDrawingId !== drawingId` → `state.activeDrawingId = drawingId` (ανοίγει drawing, layers παραμένουν ως έχουν)
+- Αν `activeDrawingId !== drawingId` → `state.activeDrawingId = drawingId` + `state.activeSceneId = null` + `state.activeViewId = null` (ανοίγει drawing, αποκλείει scene/view)
+
+**Αμοιβαία αποκλειστικότητα Drawing ↔ Scene/View:**
+- `setActiveSceneById` → θέτει `state.activeDrawingId = null`
+- `setActiveViewById` → θέτει `state.activeDrawingId = null`
+- `toggleDrawingActivation` (activate path) → θέτει `state.activeSceneId = null` + `state.activeViewId = null`
+- Ίδια λογική με `setActiveLayerById` / `setActiveMeasurementById` που μηδενίζουν scene/view.
 
 **`toggleLayerActivation` / `toggleMeasurementActivation` — deactivate path:**
 Αποθηκεύουν `savedDrawingId = state.activeDrawingId` πριν `clearActiveTarget()` και το επαναφέρουν αμέσως μετά — ώστε deactivating ένα layer/measurement να μην κλείνει το drawing.
@@ -77,9 +83,13 @@ layer/measurement active → Escape → deactivate layer/measurement, drawing π
 
 `drawing.visible = false` → hide σε 6 σημεία του render/hit-test pipeline (drawContentScene, marquee selection layers+measurements, measurementHitAt, drawOverlayScene, topPaintedLayerAt). Pattern: `if (findDrawingForLayer(layer.id)?.visible === false) return/continue`.
 
-### Duplicate Drawing — νέα IDs
+### Duplicate Drawing — νέα IDs + auto-activate
 
 Το duplicate χρησιμοποιεί `createLayer()` + `createTile()` + `createMeasurement()` (όχι `cloneLayerForSnapshot`/`restoreLayerFromSnapshot` που διατηρούν τα ίδια IDs και προκαλούν linking μεταξύ original και clone).
+
+Μετά το splice: `setActiveLayerById(clone.layers[0].id, { tool: "select" })` → ανοίγει αυτόματα το νέο drawing με το πρώτο του layer active (ίδιο pattern με `addDrawing()` και `duplicateLayer()`).
+
+**" copy" naming:** Όλα τα duplicates (Layer, Measurement, View, Scene, Drawing) προσθέτουν ` copy` στο τέλος του ονόματος.
 
 ### Rename Drawing
 
