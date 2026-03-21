@@ -6932,6 +6932,7 @@
         cancelMeasurementDraft();
         state.activeSceneId = scene.id;
         state.activeLayerId = null;
+        state.activeDrawingId = null;
         state.activeMeasurementId = null;
         state.activeMeasurementItem = null;
         state.activeViewId = null;
@@ -6970,6 +6971,7 @@
         cancelMeasurementDraft();
         state.activeViewId = view.id;
         state.activeLayerId = null;
+        state.activeDrawingId = null;
         state.activeSceneId = null;
         state.activeMeasurementId = null;
         state.activeMeasurementItem = null;
@@ -8028,6 +8030,8 @@
           return;
         }
         state.activeDrawingId = drawingId;
+        state.activeSceneId = null;
+        state.activeViewId = null;
         state.editingDrawingId = null;
         pushHistoryContextBaseline(previousContextSignature, "Selection Change");
         render({ ui: true });
@@ -12569,7 +12573,7 @@
 
         return {
           id: "scene-" + Math.random().toString(36).slice(2, 10),
-          name: "Default Scene " + state.nextSceneNumber++,
+          name: "Scene " + state.nextSceneNumber++,
           previewUrl,
           image,
           visible: true,
