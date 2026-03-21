@@ -233,17 +233,27 @@ function queryDrawingAtWorldPoint(layer, drawing, worldX, worldY, worldZ)
 ### Σειρά υλοποίησης
 
 ~~1. Data model migration:~~
-   ~~- Drawing container (`layers[]`, `measurements[]`, `rotation`, `anchor`)~~
-   ~~- `state.drawings[]` αντικαθιστά `state.layers[]` + `state.measurements[]`~~
-   ~~- Layers/Measurements αμετάβλητα — μόνο ο container αλλάζει~~
-   ~~- Serialization/restore με backwards compat~~
-2. `queryDrawingAtWorldPoint` — standalone, testable χωρίς view integration
-3. `buildPullOcclusionGrid` — νέα συνάρτηση παράλληλα με την παλιά
+   ~~- `state.drawings[]` — νέος container που αντικαθιστά το top-level `state.layers[]` + `state.measurements[]`~~
+   ~~- Drawing object: `{ id, name, visible, rotation, anchor, layers[], measurements[], layersSectionCollapsed, measurementsSectionCollapsed }`~~
+   ~~- Layer και Measurement objects: αμετάβλητα — μόνο ο Drawing container τα τυλίγει~~
+   ~~- Helpers: `getAllLayers()`, `getAllMeasurements()`, `findDrawingForLayer()`, `findDrawingForMeasurement()`, `activeDrawing()`~~
+   ~~- `activeLayer()` / `activeMeasurement()`: χρησιμοποιούν `getAllLayers()` / `getAllMeasurements()`~~
+   ~~- Serialization: `drawings[]` στο project file — backwards compat για παλιά αρχεία (`project.layers` + `project.measurements` → legacy Drawing)~~
+   ~~- Undo/redo (`captureDocumentState` / `restoreDocumentState` / `historySignature`): ενημερώθηκαν για `drawings[]`~~
+   ~~- Όλες οι αναφορές `state.layers.*` → `getAllLayers().*` (39 refs) και `state.measurements.*` → `getAllMeasurements().*` (32 refs)~~
+   ~~- Mutations (add/delete/duplicate layer & measurement): χρησιμοποιούν `findDrawingForLayer()` / `findDrawingForMeasurement()`~~
+   ~~- Drag reorder: `leftPanelListByKind` επιστρέφει `state.leftPanelPointerDrag.dragListEl` (scoped στο sub-list του Drawing)~~
+   ~~- `addDrawing()`: νέα συνάρτηση — δημιουργεί Drawing με ένα Layer, το προσθέτει στη λίστα~~
+   ~~- Sidebar: Drawing cards με collapsible "Layers" και "Measurements" sub-sections + "+" ανά sub-section~~
+   ~~- Drawing card controls: rename, visibility toggle, duplicate, delete~~
+   ~~- Section header: "Drawings" + "+" = `addDrawing()`~~
+2. `queryLayerAtWorldPoint(drawing, layer, worldX, worldY, worldZ)` — standalone, testable χωρίς view integration
+3. `buildPullOcclusionGrid` — νέα συνάρτηση που iterates world positions → queries layers όλων των drawings
 4. Feature flag: εναλλαγή push/pull per-view ή globally
 5. Validation: visual diff push vs pull για `rotation=0` → must be identical
 6. Layer rotation UI + View Box rotation UI
-7. Drawing offset UI (move drawing within layer)
-8. Measurement authoring/editing με snap στο layer's local grid
+7. Drawing anchor/offset UI (μετακίνηση Drawing μέσα στον κόσμο)
+8. Measurement authoring/editing με snap στο local grid του Drawing
 9. Remove push model code
 
 ---
