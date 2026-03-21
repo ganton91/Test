@@ -7996,12 +7996,12 @@
 
       function toggleDrawingActivation(drawingId) {
         const previousContextSignature = snapshotActiveContextSignature(state);
-        if (state.activeDrawingId === drawingId && !state.activeLayerId && !state.activeMeasurementId) {
+        if (state.activeDrawingId === drawingId) {
+          clearActiveTarget();
           state.activeDrawingId = null;
-          state.editingDrawingId = null;
           pushHistoryContextBaseline(previousContextSignature, "Selection Change");
           setStatus("Selection tool active.");
-          render({ ui: true });
+          render({ ui: true, overlay: true });
           return;
         }
         state.activeDrawingId = drawingId;
