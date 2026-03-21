@@ -6999,7 +6999,9 @@
           if (index === -1) return false;
           const deletedLayerId = drawing.layers[index].id;
           drawing.layers.splice(index, 1);
+          const savedDrawingId1 = state.activeDrawingId;
           clearActiveTarget();
+          state.activeDrawingId = savedDrawingId1;
           commitHistory("Delete Layer");
           requestPopoutSync({ layerId: deletedLayerId });
           render({ ui: true, content: true, overlay: true });
@@ -7036,7 +7038,9 @@
           const index = drawing.measurements.findIndex((entry) => entry.id === state.activeMeasurementId);
           if (index === -1) return false;
           drawing.measurements.splice(index, 1);
+          const savedDrawingId2 = state.activeDrawingId;
           clearActiveTarget();
+          state.activeDrawingId = savedDrawingId2;
           commitHistory("Delete Measurement");
           render({ ui: true, overlay: true });
           return true;
@@ -9798,7 +9802,11 @@
             if (!drawing) return;
             const mIndex = drawing.measurements.findIndex((entry) => entry.id === measurement.id);
             if (mIndex !== -1) drawing.measurements.splice(mIndex, 1);
-            if (state.activeMeasurementId === measurement.id) clearActiveTarget();
+            if (state.activeMeasurementId === measurement.id) {
+              const savedDrawingId = state.activeDrawingId;
+              clearActiveTarget();
+              state.activeDrawingId = savedDrawingId;
+            }
             commitHistoryAction("measurements:delete", "Delete Measurement");
             render({ ui: true, overlay: true });
           });
@@ -10156,7 +10164,9 @@
               if (index === -1) return;
               d.layers.splice(index, 1);
               if (state.activeLayerId === layer.id) {
+                const savedDrawingId = state.activeDrawingId;
                 clearActiveTarget();
+                state.activeDrawingId = savedDrawingId;
               }
               commitHistoryAction("layers:delete", "Delete Layer");
               requestPopoutSync({ layerId: deletedLayerId });
@@ -10313,7 +10323,11 @@
               if (!d) return;
               const mIndex = d.measurements.findIndex((entry) => entry.id === measurement.id);
               if (mIndex !== -1) d.measurements.splice(mIndex, 1);
-              if (state.activeMeasurementId === measurement.id) clearActiveTarget();
+              if (state.activeMeasurementId === measurement.id) {
+                const savedDrawingId = state.activeDrawingId;
+                clearActiveTarget();
+                state.activeDrawingId = savedDrawingId;
+              }
               commitHistoryAction("measurements:delete", "Delete Measurement");
               render({ ui: true, overlay: true });
             });
