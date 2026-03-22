@@ -1818,6 +1818,101 @@
         bottom: 0px;
       }
 
+      .view-edit-drawing-group {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+        overflow: hidden;
+        position: relative;
+      }
+
+      .view-edit-drawing-group.dragging {
+        opacity: 0.55;
+      }
+
+      .view-edit-drawing-group.drag-insert-before::before,
+      .view-edit-drawing-group.drag-insert-after::after {
+        content: "";
+        position: absolute;
+        left: 8px;
+        right: 8px;
+        height: 2px;
+        background: color-mix(in srgb, var(--text) 8%, transparent);
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      .view-edit-drawing-group.drag-insert-before::before {
+        top: -6px;
+      }
+
+      .view-edit-drawing-group.drag-insert-after::after {
+        bottom: -3px;
+      }
+
+      .view-edit-drawing-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        user-select: none;
+      }
+
+      .view-edit-drawing-group:not(.collapsed) .view-edit-drawing-header {
+        border-bottom: 1px solid var(--line);
+      }
+
+      .view-edit-drawing-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 10px;
+        transition: transform 0.15s;
+      }
+
+      .view-edit-drawing-group.collapsed .view-edit-drawing-toggle {
+        transform: rotate(-90deg);
+      }
+
+      .view-edit-drawing-name {
+        flex: 1;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text);
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .view-edit-drawing-layers {
+        display: flex;
+        flex-direction: column;
+        padding: 6px 8px;
+      }
+
+      .view-edit-drawing-group.collapsed .view-edit-drawing-layers {
+        display: none;
+      }
+
+      .view-edit-column-headings-inner {
+        padding: 4px 10px 2px;
+      }
+
+      .view-edit-drawing-layers {
+        gap: 8px;
+      }
+
       .view-edit-drag-preview {
         position: fixed;
         pointer-events: none;
@@ -2283,7 +2378,7 @@
           <div class="menu-title">Edit View</div>
           <div class="tool-heading" id="viewEditTitle">View</div>
           <div class="tool-fields">
-            <div class="menu-title view-edit-section-title">Layers In View</div>
+            <div class="menu-title view-edit-section-title">Drawings in View</div>
             <div class="view-edit-column-headings" id="viewEditColumnHeadings">
               <span></span>
               <span>Layer</span>
@@ -6522,30 +6617,60 @@
           return false;
         }
         const intersectingLayers = intersectingLayersForView(view);
-        const savedOrder = Array.isArray(view.layerOrder) ? view.layerOrder : [];
-        const savedOrderSet = new Set(savedOrder);
-        const orderedLayerIds = [
-          ...savedOrder.filter((layerId) => intersectingLayers.some((layer) => layer.id === layerId)),
-          ...intersectingLayers.filter((layer) => !savedOrderSet.has(layer.id)).map((layer) => layer.id),
+        const savedDrawingOrder = Array.isArray(view.drawingOrder) ? view.drawingOrder : [];
+        const savedLayerOrder = Array.isArray(view.layerOrder) ? view.layerOrder : [];
+
+        // Map each layer to its drawing
+        const layerToDrawing = new Map();
+        state.drawings.forEach((d) => d.layers.forEach((l) => layerToDrawing.set(l.id, d)));
+
+        // Group intersecting layers by drawing
+        const drawingLayerMap = new Map();
+        const drawingSet = new Set();
+        intersectingLayers.forEach((layer) => {
+          const d = layerToDrawing.get(layer.id);
+          if (!d) return;
+          if (!drawingLayerMap.has(d.id)) drawingLayerMap.set(d.id, []);
+          drawingLayerMap.get(d.id).push(layer);
+          drawingSet.add(d.id);
+        });
+
+        // Order drawings: savedDrawingOrder first, then remaining in state.drawings order
+        const drawingIds = [
+          ...savedDrawingOrder.filter((id) => drawingSet.has(id)),
+          ...state.drawings.filter((d) => drawingSet.has(d.id) && !savedDrawingOrder.includes(d.id)).map((d) => d.id),
         ];
 
         state.viewEditDraft = {
           viewId,
-          dragLayerId: null,
-          items: orderedLayerIds.map((layerId) => {
-            const layer = getAllLayers().find((entry) => entry.id === layerId);
-            const config = defaultViewLayerConfig(view.layerConfigs && view.layerConfigs[layerId]);
+          drawingGroups: drawingIds.map((drawingId) => {
+            const drawing = state.drawings.find((d) => d.id === drawingId);
+            const layers = drawingLayerMap.get(drawingId) || [];
+            const layerIds = new Set(layers.map((l) => l.id));
+            const orderedLayerIds = [
+              ...savedLayerOrder.filter((id) => layerIds.has(id)),
+              ...layers.filter((l) => !savedLayerOrder.includes(l.id)).map((l) => l.id),
+            ];
             return {
-              layerId,
-              baseElevation: snapViewElevationMeters(config.baseElevation),
-              height: snapViewElevationMeters(config.height, { allowNegative: false }),
-              color: config.color || (layer ? layerRepresentativeColor(layer) : DEFAULT_COLOR),
-              opacity: config.opacity,
-              outline: config.outline,
-              outlineColor: config.outlineColor || state.viewOutlineEffect.color,
-              outlineWidth: config.outlineWidth,
-              excludeFromSectionCut: config.excludeFromSectionCut,
-              name: layer ? layer.name : "Layer",
+              drawingId,
+              name: drawing ? drawing.name : "Drawing",
+              collapsed: false,
+              items: orderedLayerIds.map((layerId) => {
+                const layer = getAllLayers().find((l) => l.id === layerId);
+                const config = defaultViewLayerConfig(view.layerConfigs && view.layerConfigs[layerId]);
+                return {
+                  layerId,
+                  baseElevation: snapViewElevationMeters(config.baseElevation),
+                  height: snapViewElevationMeters(config.height, { allowNegative: false }),
+                  color: config.color || (layer ? layerRepresentativeColor(layer) : DEFAULT_COLOR),
+                  opacity: config.opacity,
+                  outline: config.outline,
+                  outlineColor: config.outlineColor || state.viewOutlineEffect.color,
+                  outlineWidth: config.outlineWidth,
+                  excludeFromSectionCut: config.excludeFromSectionCut,
+                  name: layer ? layer.name : "Layer",
+                };
+              }),
             };
           }),
         };
@@ -6565,8 +6690,8 @@
           return false;
         }
         const nextLayerConfigs = { ...(view.layerConfigs || {}) };
-        const currentLayerOrder = Array.isArray(view.layerOrder) ? view.layerOrder : [];
-        draft.items.forEach((item) => {
+        const flatItems = draft.drawingGroups.flatMap((group) => group.items);
+        flatItems.forEach((item) => {
           nextLayerConfigs[item.layerId] = {
             baseElevation: snapViewElevationMeters(Number.isFinite(item.baseElevation) ? item.baseElevation : 0),
             height: snapViewElevationMeters(Number.isFinite(item.height) ? item.height : 0, { allowNegative: false }),
@@ -6579,9 +6704,11 @@
           };
         });
         view.layerConfigs = nextLayerConfigs;
+        view.drawingOrder = draft.drawingGroups.map((group) => group.drawingId);
+        const currentLayerOrder = Array.isArray(view.layerOrder) ? view.layerOrder : [];
         view.layerOrder = [
-          ...draft.items.map((item) => item.layerId),
-          ...currentLayerOrder.filter((layerId) => !draft.items.some((item) => item.layerId === layerId)),
+          ...flatItems.map((item) => item.layerId),
+          ...currentLayerOrder.filter((layerId) => !flatItems.some((item) => item.layerId === layerId)),
         ];
         commitHistory("Edit View Layers");
         requestPopoutSync({ viewId: view.id });
@@ -8724,69 +8851,95 @@
         });
       }
 
-      function viewEditDropPositionFromClientY(clientY, layerId) {
+      function viewEditDrawingDropPosition(clientY, drawingId) {
         const draft = state.viewEditDraft;
-        if (!draft || !Array.isArray(draft.items) || !draft.items.length) return { rawIndex: -1, toIndex: -1, fromIndex: -1 };
-        const fromIndex = draft.items.findIndex((entry) => entry.layerId === layerId);
+        if (!draft || !draft.drawingGroups.length) return { rawIndex: -1, toIndex: -1, fromIndex: -1 };
+        const fromIndex = draft.drawingGroups.findIndex((g) => g.drawingId === drawingId);
         if (fromIndex === -1) return { rawIndex: -1, toIndex: -1, fromIndex: -1 };
-        const rows = Array.from(ui.viewEditLayerList.querySelectorAll(".view-edit-layer-row"));
+        const rows = Array.from(ui.viewEditLayerList.querySelectorAll(".view-edit-drawing-group"));
         if (!rows.length) return { rawIndex: fromIndex, toIndex: fromIndex, fromIndex };
         let rawIndex = rows.length;
-        for (let index = 0; index < rows.length; index += 1) {
-          const rect = rows[index].getBoundingClientRect();
-          if (clientY < rect.top + rect.height * 0.5) {
-            rawIndex = index;
-            break;
-          }
+        for (let i = 0; i < rows.length; i++) {
+          const rect = rows[i].getBoundingClientRect();
+          if (clientY < rect.top + rect.height * 0.5) { rawIndex = i; break; }
         }
         let toIndex = rawIndex;
         if (toIndex > fromIndex) toIndex -= 1;
-        return {
-          rawIndex,
-          toIndex: Math.max(0, Math.min(draft.items.length - 1, toIndex)),
-          fromIndex,
-        };
+        return { rawIndex, toIndex: Math.max(0, Math.min(draft.drawingGroups.length - 1, toIndex)), fromIndex };
       }
 
-      function updateViewEditDropIndicator(layerId, rawIndex, toIndex, fromIndex) {
-        clearDropIndicatorClasses(ui.viewEditLayerList, ".view-edit-layer-row");
-        if (!state.viewEditPointerDrag) return;
-        if (toIndex === -1 || fromIndex === -1 || toIndex === fromIndex) return;
-        const rows = Array.from(ui.viewEditLayerList.querySelectorAll(".view-edit-layer-row"));
-        if (!rows.length) return;
-        if (rawIndex >= rows.length) {
-          rows[rows.length - 1].classList.add("drag-insert-after");
-          return;
+      function viewEditLayerDropPosition(clientY, layerId, drawingId) {
+        const draft = state.viewEditDraft;
+        if (!draft) return { rawIndex: -1, toIndex: -1, fromIndex: -1 };
+        const group = draft.drawingGroups.find((g) => g.drawingId === drawingId);
+        if (!group) return { rawIndex: -1, toIndex: -1, fromIndex: -1 };
+        const fromIndex = group.items.findIndex((entry) => entry.layerId === layerId);
+        if (fromIndex === -1) return { rawIndex: -1, toIndex: -1, fromIndex: -1 };
+        const groupEl = ui.viewEditLayerList.querySelector(`.view-edit-drawing-group[data-drawing-id="${drawingId}"]`);
+        const rows = groupEl ? Array.from(groupEl.querySelectorAll(".view-edit-layer-row")) : [];
+        if (!rows.length) return { rawIndex: fromIndex, toIndex: fromIndex, fromIndex };
+        let rawIndex = rows.length;
+        for (let i = 0; i < rows.length; i++) {
+          const rect = rows[i].getBoundingClientRect();
+          if (clientY < rect.top + rect.height * 0.5) { rawIndex = i; break; }
         }
-        rows[Math.max(0, rawIndex)].classList.add("drag-insert-before");
+        let toIndex = rawIndex;
+        if (toIndex > fromIndex) toIndex -= 1;
+        return { rawIndex, toIndex: Math.max(0, Math.min(group.items.length - 1, toIndex)), fromIndex };
+      }
+
+      function updateViewEditDropIndicator() {
+        const drag = state.viewEditPointerDrag;
+        clearDropIndicatorClasses(ui.viewEditLayerList, ".view-edit-drawing-group");
+        clearDropIndicatorClasses(ui.viewEditLayerList, ".view-edit-layer-row");
+        if (!drag) return;
+        const { rawIndex, toIndex, fromIndex } = drag;
+        if (toIndex === -1 || fromIndex === -1 || toIndex === fromIndex) return;
+        if (drag.type === "drawing") {
+          const rows = Array.from(ui.viewEditLayerList.querySelectorAll(".view-edit-drawing-group"));
+          if (!rows.length) return;
+          if (rawIndex >= rows.length) { rows[rows.length - 1].classList.add("drag-insert-after"); return; }
+          rows[Math.max(0, rawIndex)].classList.add("drag-insert-before");
+        } else {
+          const groupEl = ui.viewEditLayerList.querySelector(`.view-edit-drawing-group[data-drawing-id="${drag.drawingId}"]`);
+          const rows = groupEl ? Array.from(groupEl.querySelectorAll(".view-edit-layer-row")) : [];
+          if (!rows.length) return;
+          if (rawIndex >= rows.length) { rows[rows.length - 1].classList.add("drag-insert-after"); return; }
+          rows[Math.max(0, rawIndex)].classList.add("drag-insert-before");
+        }
       }
 
       function clearViewEditPointerDrag(commit = true) {
         const drag = state.viewEditPointerDrag;
         if (!drag) return;
         const draft = state.viewEditDraft;
-        if (commit && draft && Array.isArray(draft.items)) {
-          const fromIndex = draft.items.findIndex((entry) => entry.layerId === drag.layerId);
+        if (commit && draft) {
+          const fromIndex = drag.fromIndex;
           const toIndex = Number.isInteger(drag.dropIndex) ? drag.dropIndex : fromIndex;
           if (fromIndex !== -1 && toIndex !== -1 && fromIndex !== toIndex) {
-            const [moved] = draft.items.splice(fromIndex, 1);
-            if (moved) draft.items.splice(toIndex, 0, moved);
+            if (drag.type === "drawing") {
+              const [moved] = draft.drawingGroups.splice(fromIndex, 1);
+              if (moved) draft.drawingGroups.splice(toIndex, 0, moved);
+            } else {
+              const group = draft.drawingGroups.find((g) => g.drawingId === drag.drawingId);
+              if (group) {
+                const [moved] = group.items.splice(fromIndex, 1);
+                if (moved) group.items.splice(toIndex, 0, moved);
+              }
+            }
             render({ ui: true });
           }
         }
-        if (drag.preview && drag.preview.parentNode) {
-          drag.preview.remove();
-        }
-        if (drag.sourceRow) {
-          drag.sourceRow.classList.remove("dragging");
-        }
+        if (drag.preview && drag.preview.parentNode) drag.preview.remove();
+        if (drag.draggingEl) drag.draggingEl.classList.remove("dragging");
+        clearDropIndicatorClasses(ui.viewEditLayerList, ".view-edit-drawing-group");
         clearDropIndicatorClasses(ui.viewEditLayerList, ".view-edit-layer-row");
         ui.viewEditModal.classList.remove("drag-reordering");
         state.viewEditPointerDrag = null;
       }
 
-      function beginViewEditPointerDrag(event, row, layerId) {
-        if (!state.viewEditDraft || !row || !layerId) return;
+      function beginViewEditPointerDrag(event, row, dragInfo) {
+        if (!state.viewEditDraft || !row || !dragInfo) return;
         if (event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
@@ -8805,14 +8958,22 @@
         preview.style.left = event.clientX - offsetX + "px";
         preview.style.top = event.clientY - offsetY + "px";
 
-        row.classList.add("dragging");
+        const draggingEl = dragInfo.type === "drawing" ? (row.closest(".view-edit-drawing-group") || row) : row;
+        draggingEl.classList.add("dragging");
         ui.viewEditModal.classList.add("drag-reordering");
 
-        const drop = viewEditDropPositionFromClientY(event.clientY, layerId);
+        let drop;
+        if (dragInfo.type === "drawing") {
+          drop = viewEditDrawingDropPosition(event.clientY, dragInfo.drawingId);
+        } else {
+          drop = viewEditLayerDropPosition(event.clientY, dragInfo.layerId, dragInfo.drawingId);
+        }
         state.viewEditPointerDrag = {
           pointerId: event.pointerId,
-          layerId,
-          sourceRow: row,
+          type: dragInfo.type,
+          drawingId: dragInfo.drawingId,
+          layerId: dragInfo.layerId,
+          draggingEl,
           preview,
           offsetX,
           offsetY,
@@ -8820,7 +8981,7 @@
           rawIndex: drop.rawIndex,
           fromIndex: drop.fromIndex,
         };
-        updateViewEditDropIndicator(layerId, drop.rawIndex, drop.toIndex, drop.fromIndex);
+        updateViewEditDropIndicator();
       }
 
       function cardSelectorByKind(kind) {
@@ -9358,6 +9519,200 @@
         ui.selectionPicker.style.top = top + "px";
       }
 
+      function buildViewEditLayerRow(item, group) {
+        const row = document.createElement("div");
+        row.className = "view-edit-layer-row";
+        const drag = state.viewEditPointerDrag;
+        if (drag && drag.type === "layer" && drag.layerId === item.layerId) row.classList.add("dragging");
+
+        const grip = document.createElement("div");
+        grip.className = "drag-handle";
+        grip.textContent = "⋮⋮";
+        grip.draggable = false;
+        grip.addEventListener("pointerdown", (event) => {
+          beginViewEditPointerDrag(event, row, { type: "layer", layerId: item.layerId, drawingId: group.drawingId });
+        });
+        row.appendChild(grip);
+
+        const name = document.createElement("div");
+        name.className = "view-edit-layer-name";
+        name.textContent = item.name;
+        row.appendChild(name);
+
+        const colorInput = document.createElement("input");
+        colorInput.className = "view-edit-color-input";
+        colorInput.type = "color";
+        colorInput.value = item.color || DEFAULT_COLOR;
+        colorInput.setAttribute("aria-label", item.name + " view color");
+        colorInput.addEventListener("click", (event) => event.stopPropagation());
+        colorInput.addEventListener("pointerdown", (event) => event.stopPropagation());
+        colorInput.addEventListener("input", () => { item.color = colorInput.value || DEFAULT_COLOR; });
+        row.appendChild(colorInput);
+
+        const opacityField = document.createElement("div");
+        opacityField.className = "view-edit-opacity";
+        const opacityInput = document.createElement("input");
+        opacityInput.type = "range";
+        opacityInput.min = "0";
+        opacityInput.max = "100";
+        opacityInput.step = "1";
+        opacityInput.value = String(Math.round((Number(item.opacity) || 0) * 100));
+        opacityInput.setAttribute("aria-label", item.name + " opacity override");
+        opacityInput.addEventListener("click", (event) => event.stopPropagation());
+        opacityInput.addEventListener("pointerdown", (event) => event.stopPropagation());
+        const opacityValue = document.createElement("div");
+        opacityValue.className = "view-edit-opacity-value";
+        const updateOpacityValue = () => {
+          opacityValue.textContent = String(Math.round((Number(item.opacity) || 0) * 100)) + "%";
+        };
+        opacityInput.addEventListener("input", () => {
+          item.opacity = Math.max(0, Math.min(1, Number(opacityInput.value) / 100));
+          updateOpacityValue();
+        });
+        opacityField.appendChild(opacityInput);
+        updateOpacityValue();
+        opacityField.appendChild(opacityValue);
+        row.appendChild(opacityField);
+
+        const outlineToggle = document.createElement("input");
+        outlineToggle.className = "view-edit-outline-toggle";
+        outlineToggle.type = "checkbox";
+        outlineToggle.checked = !!item.outline;
+        outlineToggle.setAttribute("aria-label", item.name + " keep outline");
+        outlineToggle.addEventListener("click", (event) => event.stopPropagation());
+        outlineToggle.addEventListener("pointerdown", (event) => event.stopPropagation());
+        outlineToggle.addEventListener("input", () => { item.outline = outlineToggle.checked; });
+        row.appendChild(outlineToggle);
+
+        const outlineColorInput = document.createElement("input");
+        outlineColorInput.className = "view-edit-color-input";
+        outlineColorInput.type = "color";
+        outlineColorInput.value = item.outlineColor || state.viewOutlineEffect.color;
+        outlineColorInput.setAttribute("aria-label", item.name + " outline color");
+        outlineColorInput.addEventListener("click", (event) => event.stopPropagation());
+        outlineColorInput.addEventListener("pointerdown", (event) => event.stopPropagation());
+        outlineColorInput.addEventListener("input", () => {
+          item.outlineColor = outlineColorInput.value || state.viewOutlineEffect.color;
+        });
+        row.appendChild(outlineColorInput);
+
+        const outlineWidthField = document.createElement("div");
+        outlineWidthField.className = "view-edit-opacity";
+        const outlineWidthInput = document.createElement("input");
+        outlineWidthInput.type = "range";
+        outlineWidthInput.min = "1";
+        outlineWidthInput.max = "12";
+        outlineWidthInput.step = "1";
+        outlineWidthInput.value = String(Math.max(1, Math.min(12, Math.round(Number(item.outlineWidth) || 1))));
+        outlineWidthInput.setAttribute("aria-label", item.name + " outline width");
+        outlineWidthInput.addEventListener("click", (event) => event.stopPropagation());
+        outlineWidthInput.addEventListener("pointerdown", (event) => event.stopPropagation());
+        const outlineWidthValue = document.createElement("div");
+        outlineWidthValue.className = "view-edit-outline-width-value";
+        const updateOutlineWidthValue = () => {
+          outlineWidthValue.textContent = String(Math.max(1, Math.min(12, Math.round(Number(item.outlineWidth) || 1))));
+        };
+        outlineWidthInput.addEventListener("input", () => {
+          item.outlineWidth = Math.max(1, Math.min(12, Math.round(Number(outlineWidthInput.value) || 1)));
+          updateOutlineWidthValue();
+        });
+        outlineWidthField.appendChild(outlineWidthInput);
+        updateOutlineWidthValue();
+        outlineWidthField.appendChild(outlineWidthValue);
+        row.appendChild(outlineWidthField);
+
+        const sectionCutToggle = document.createElement("input");
+        sectionCutToggle.className = "view-edit-outline-toggle";
+        sectionCutToggle.type = "checkbox";
+        sectionCutToggle.checked = !item.excludeFromSectionCut;
+        sectionCutToggle.setAttribute("aria-label", item.name + " include in section cut");
+        sectionCutToggle.addEventListener("click", (event) => event.stopPropagation());
+        sectionCutToggle.addEventListener("pointerdown", (event) => event.stopPropagation());
+        sectionCutToggle.addEventListener("input", () => { item.excludeFromSectionCut = !sectionCutToggle.checked; });
+        row.appendChild(sectionCutToggle);
+
+        const heightField = document.createElement("div");
+        heightField.className = "field view-edit-field";
+        const heightInput = document.createElement("input");
+        heightInput.type = "number";
+        heightInput.min = "0";
+        heightInput.step = "0.05";
+        heightInput.value = String(item.height);
+        heightInput.setAttribute("aria-label", item.name + " height");
+        heightInput.addEventListener("click", (event) => event.stopPropagation());
+        heightInput.addEventListener("pointerdown", (event) => event.stopPropagation());
+
+        const endingField = document.createElement("div");
+        endingField.className = "field view-edit-field";
+        const endInput = document.createElement("input");
+        endInput.type = "number";
+        endInput.step = "0.05";
+        endInput.setAttribute("aria-label", item.name + " end elevation");
+        endInput.addEventListener("click", (event) => event.stopPropagation());
+        endInput.addEventListener("pointerdown", (event) => event.stopPropagation());
+        const syncEndFromBase = () => {
+          endInput.value = String(snapViewElevationMeters((Number(item.baseElevation) || 0) + (Number(item.height) || 0)));
+        };
+        heightInput.addEventListener("input", () => {
+          const parsed = Number(heightInput.value);
+          item.height = Number.isFinite(parsed) ? parsed : 0;
+          syncEndFromBase();
+        });
+        const normalizeHeightValue = () => {
+          item.height = snapViewElevationMeters(Number(heightInput.value), { allowNegative: false });
+          heightInput.value = String(item.height);
+          syncEndFromBase();
+        };
+        heightInput.addEventListener("change", normalizeHeightValue);
+        heightInput.addEventListener("blur", normalizeHeightValue);
+        heightField.appendChild(heightInput);
+        row.appendChild(heightField);
+
+        const baseField = document.createElement("div");
+        baseField.className = "field view-edit-field";
+        const baseInput = document.createElement("input");
+        baseInput.type = "number";
+        baseInput.step = "0.05";
+        baseInput.value = String(item.baseElevation);
+        baseInput.setAttribute("aria-label", item.name + " start elevation");
+        baseInput.addEventListener("click", (event) => event.stopPropagation());
+        baseInput.addEventListener("pointerdown", (event) => event.stopPropagation());
+        baseInput.addEventListener("input", () => {
+          const parsed = Number(baseInput.value);
+          item.baseElevation = Number.isFinite(parsed) ? parsed : 0;
+          syncEndFromBase();
+        });
+        const normalizeBaseValue = () => {
+          item.baseElevation = snapViewElevationMeters(Number(baseInput.value));
+          baseInput.value = String(item.baseElevation);
+          syncEndFromBase();
+        };
+        baseInput.addEventListener("change", normalizeBaseValue);
+        baseInput.addEventListener("blur", normalizeBaseValue);
+        baseField.appendChild(baseInput);
+        row.appendChild(baseField);
+
+        endInput.addEventListener("input", () => {
+          const parsed = Number(endInput.value);
+          const endVal = Number.isFinite(parsed) ? parsed : 0;
+          item.baseElevation = snapViewElevationMeters(endVal - (Number(item.height) || 0));
+          baseInput.value = String(item.baseElevation);
+        });
+        const normalizeEndValue = () => {
+          const endVal = snapViewElevationMeters(Number(endInput.value));
+          item.baseElevation = snapViewElevationMeters(endVal - (Number(item.height) || 0));
+          endInput.value = String(endVal);
+          baseInput.value = String(item.baseElevation);
+        };
+        endInput.addEventListener("change", normalizeEndValue);
+        endInput.addEventListener("blur", normalizeEndValue);
+        syncEndFromBase();
+        endingField.appendChild(endInput);
+        row.appendChild(endingField);
+
+        return row;
+      }
+
       function renderViewEditModal() {
         const draft = state.viewEditDraft;
         ui.viewEditLayerList.innerHTML = "";
@@ -9370,206 +9725,72 @@
 
         const view = state.views.find((entry) => entry.id === draft.viewId);
         ui.viewEditTitle.textContent = view ? view.name : "View";
-        const hasItems = draft.items.length > 0;
-        ui.viewEditColumnHeadings.classList.toggle("hidden", !hasItems);
-        ui.viewEditEmptyState.classList.toggle("hidden", hasItems);
+        ui.viewEditColumnHeadings.classList.add("hidden");
+        const totalItems = draft.drawingGroups.reduce((sum, g) => sum + g.items.length, 0);
+        ui.viewEditEmptyState.classList.toggle("hidden", totalItems > 0);
 
-        draft.items.forEach((item) => {
-          const row = document.createElement("div");
-          row.className = "view-edit-layer-row";
-          if (state.viewEditPointerDrag && state.viewEditPointerDrag.layerId === item.layerId) row.classList.add("dragging");
+        draft.drawingGroups.forEach((group) => {
+          const groupEl = document.createElement("div");
+          groupEl.className = "view-edit-drawing-group";
+          groupEl.dataset.drawingId = group.drawingId;
+          if (group.collapsed) groupEl.classList.add("collapsed");
 
-          const grip = document.createElement("div");
-          grip.className = "drag-handle";
-          grip.textContent = "⋮⋮";
-          grip.draggable = false;
-          grip.addEventListener("pointerdown", (event) => {
-            beginViewEditPointerDrag(event, row, item.layerId);
+          const activeDrag = state.viewEditPointerDrag;
+          if (activeDrag && activeDrag.type === "drawing" && activeDrag.drawingId === group.drawingId) {
+            groupEl.classList.add("dragging");
+          }
+
+          // Drawing header
+          const header = document.createElement("div");
+          header.className = "view-edit-drawing-header";
+
+          const headerGrip = document.createElement("div");
+          headerGrip.className = "drag-handle";
+          headerGrip.textContent = "⋮⋮";
+          headerGrip.draggable = false;
+          headerGrip.addEventListener("pointerdown", (event) => {
+            beginViewEditPointerDrag(event, header, { type: "drawing", drawingId: group.drawingId });
           });
-          row.appendChild(grip);
+          header.appendChild(headerGrip);
 
-          const name = document.createElement("div");
-          name.className = "view-edit-layer-name";
-          name.textContent = item.name;
-          row.appendChild(name);
-
-          const colorInput = document.createElement("input");
-          colorInput.className = "view-edit-color-input";
-          colorInput.type = "color";
-          colorInput.value = item.color || DEFAULT_COLOR;
-          colorInput.setAttribute("aria-label", item.name + " view color");
-          colorInput.addEventListener("click", (event) => event.stopPropagation());
-          colorInput.addEventListener("pointerdown", (event) => event.stopPropagation());
-          colorInput.addEventListener("input", () => {
-            item.color = colorInput.value || DEFAULT_COLOR;
+          const toggleBtn = document.createElement("button");
+          toggleBtn.className = "view-edit-drawing-toggle";
+          toggleBtn.type = "button";
+          toggleBtn.textContent = "▼";
+          toggleBtn.addEventListener("click", (event) => {
+            event.stopPropagation();
+            group.collapsed = !group.collapsed;
+            groupEl.classList.toggle("collapsed", group.collapsed);
           });
-          row.appendChild(colorInput);
+          header.appendChild(toggleBtn);
 
-          const opacityField = document.createElement("div");
-          opacityField.className = "view-edit-opacity";
-          const opacityInput = document.createElement("input");
-          opacityInput.type = "range";
-          opacityInput.min = "0";
-          opacityInput.max = "100";
-          opacityInput.step = "1";
-          opacityInput.value = String(Math.round((Number(item.opacity) || 0) * 100));
-          opacityInput.setAttribute("aria-label", item.name + " opacity override");
-          opacityInput.addEventListener("click", (event) => event.stopPropagation());
-          opacityInput.addEventListener("pointerdown", (event) => event.stopPropagation());
-          const opacityValue = document.createElement("div");
-          opacityValue.className = "view-edit-opacity-value";
-          const updateOpacityValue = () => {
-            opacityValue.textContent = String(Math.round((Number(item.opacity) || 0) * 100)) + "%";
-          };
-          opacityInput.addEventListener("input", () => {
-            item.opacity = Math.max(0, Math.min(1, Number(opacityInput.value) / 100));
-            updateOpacityValue();
+          const nameEl = document.createElement("div");
+          nameEl.className = "view-edit-drawing-name";
+          nameEl.textContent = group.name;
+          header.appendChild(nameEl);
+
+          groupEl.appendChild(header);
+
+          // Layers container
+          const layersEl = document.createElement("div");
+          layersEl.className = "view-edit-drawing-layers";
+
+          // Column headings inside the card
+          const headings = document.createElement("div");
+          headings.className = "view-edit-column-headings view-edit-column-headings-inner";
+          ["", "Layer", "Color", "Opacity", "Outline", "Line", "Width", "Cut", "Height", "Start", "End"].forEach((label) => {
+            const span = document.createElement("span");
+            span.textContent = label;
+            headings.appendChild(span);
           });
-          opacityField.appendChild(opacityInput);
-          updateOpacityValue();
-          opacityField.appendChild(opacityValue);
-          row.appendChild(opacityField);
+          layersEl.appendChild(headings);
 
-          const outlineToggle = document.createElement("input");
-          outlineToggle.className = "view-edit-outline-toggle";
-          outlineToggle.type = "checkbox";
-          outlineToggle.checked = !!item.outline;
-          outlineToggle.setAttribute("aria-label", item.name + " keep outline");
-          outlineToggle.addEventListener("click", (event) => event.stopPropagation());
-          outlineToggle.addEventListener("pointerdown", (event) => event.stopPropagation());
-          outlineToggle.addEventListener("input", () => {
-            item.outline = outlineToggle.checked;
+          group.items.forEach((item) => {
+            layersEl.appendChild(buildViewEditLayerRow(item, group));
           });
-          row.appendChild(outlineToggle);
+          groupEl.appendChild(layersEl);
 
-          const outlineColorInput = document.createElement("input");
-          outlineColorInput.className = "view-edit-color-input";
-          outlineColorInput.type = "color";
-          outlineColorInput.value = item.outlineColor || state.viewOutlineEffect.color;
-          outlineColorInput.setAttribute("aria-label", item.name + " outline color");
-          outlineColorInput.addEventListener("click", (event) => event.stopPropagation());
-          outlineColorInput.addEventListener("pointerdown", (event) => event.stopPropagation());
-          outlineColorInput.addEventListener("input", () => {
-            item.outlineColor = outlineColorInput.value || state.viewOutlineEffect.color;
-          });
-          row.appendChild(outlineColorInput);
-
-          const outlineWidthField = document.createElement("div");
-          outlineWidthField.className = "view-edit-opacity";
-          const outlineWidthInput = document.createElement("input");
-          outlineWidthInput.type = "range";
-          outlineWidthInput.min = "1";
-          outlineWidthInput.max = "12";
-          outlineWidthInput.step = "1";
-          outlineWidthInput.value = String(Math.max(1, Math.min(12, Math.round(Number(item.outlineWidth) || 1))));
-          outlineWidthInput.setAttribute("aria-label", item.name + " outline width");
-          outlineWidthInput.addEventListener("click", (event) => event.stopPropagation());
-          outlineWidthInput.addEventListener("pointerdown", (event) => event.stopPropagation());
-          const outlineWidthValue = document.createElement("div");
-          outlineWidthValue.className = "view-edit-outline-width-value";
-          const updateOutlineWidthValue = () => {
-            outlineWidthValue.textContent = String(Math.max(1, Math.min(12, Math.round(Number(item.outlineWidth) || 1))));
-          };
-          outlineWidthInput.addEventListener("input", () => {
-            item.outlineWidth = Math.max(1, Math.min(12, Math.round(Number(outlineWidthInput.value) || 1)));
-            updateOutlineWidthValue();
-          });
-          outlineWidthField.appendChild(outlineWidthInput);
-          updateOutlineWidthValue();
-          outlineWidthField.appendChild(outlineWidthValue);
-          row.appendChild(outlineWidthField);
-
-          const sectionCutToggle = document.createElement("input");
-          sectionCutToggle.className = "view-edit-outline-toggle";
-          sectionCutToggle.type = "checkbox";
-          sectionCutToggle.checked = !item.excludeFromSectionCut;
-          sectionCutToggle.setAttribute("aria-label", item.name + " include in section cut");
-          sectionCutToggle.addEventListener("click", (event) => event.stopPropagation());
-          sectionCutToggle.addEventListener("pointerdown", (event) => event.stopPropagation());
-          sectionCutToggle.addEventListener("input", () => {
-            item.excludeFromSectionCut = !sectionCutToggle.checked;
-          });
-          row.appendChild(sectionCutToggle);
-
-          const heightField = document.createElement("div");
-          heightField.className = "field view-edit-field";
-          const heightInput = document.createElement("input");
-          heightInput.type = "number";
-          heightInput.min = "0";
-          heightInput.step = "0.05";
-          heightInput.value = String(item.height);
-          heightInput.setAttribute("aria-label", item.name + " height");
-          heightInput.addEventListener("click", (event) => event.stopPropagation());
-          heightInput.addEventListener("pointerdown", (event) => event.stopPropagation());
-          const endingField = document.createElement("div");
-          endingField.className = "field view-edit-field";
-          const endInput = document.createElement("input");
-          endInput.type = "number";
-          endInput.step = "0.05";
-          endInput.setAttribute("aria-label", item.name + " end elevation");
-          endInput.addEventListener("click", (event) => event.stopPropagation());
-          endInput.addEventListener("pointerdown", (event) => event.stopPropagation());
-          const syncEndFromBase = () => {
-            endInput.value = String(snapViewElevationMeters((Number(item.baseElevation) || 0) + (Number(item.height) || 0)));
-          };
-          heightInput.addEventListener("input", () => {
-            const parsed = Number(heightInput.value);
-            item.height = Number.isFinite(parsed) ? parsed : 0;
-            syncEndFromBase();
-          });
-          const normalizeHeightValue = () => {
-            item.height = snapViewElevationMeters(Number(heightInput.value), { allowNegative: false });
-            heightInput.value = String(item.height);
-            syncEndFromBase();
-          };
-          heightInput.addEventListener("change", normalizeHeightValue);
-          heightInput.addEventListener("blur", normalizeHeightValue);
-          heightField.appendChild(heightInput);
-          row.appendChild(heightField);
-
-          const baseField = document.createElement("div");
-          baseField.className = "field view-edit-field";
-          const baseInput = document.createElement("input");
-          baseInput.type = "number";
-          baseInput.step = "0.05";
-          baseInput.value = String(item.baseElevation);
-          baseInput.setAttribute("aria-label", item.name + " start elevation");
-          baseInput.addEventListener("click", (event) => event.stopPropagation());
-          baseInput.addEventListener("pointerdown", (event) => event.stopPropagation());
-          baseInput.addEventListener("input", () => {
-            const parsed = Number(baseInput.value);
-            item.baseElevation = Number.isFinite(parsed) ? parsed : 0;
-            syncEndFromBase();
-          });
-          const normalizeBaseValue = () => {
-            item.baseElevation = snapViewElevationMeters(Number(baseInput.value));
-            baseInput.value = String(item.baseElevation);
-            syncEndFromBase();
-          };
-          baseInput.addEventListener("change", normalizeBaseValue);
-          baseInput.addEventListener("blur", normalizeBaseValue);
-          baseField.appendChild(baseInput);
-          row.appendChild(baseField);
-
-          endInput.addEventListener("input", () => {
-            const parsed = Number(endInput.value);
-            const endVal = Number.isFinite(parsed) ? parsed : 0;
-            item.baseElevation = snapViewElevationMeters(endVal - (Number(item.height) || 0));
-            baseInput.value = String(item.baseElevation);
-          });
-          const normalizeEndValue = () => {
-            const endVal = snapViewElevationMeters(Number(endInput.value));
-            item.baseElevation = snapViewElevationMeters(endVal - (Number(item.height) || 0));
-            endInput.value = String(endVal);
-            baseInput.value = String(item.baseElevation);
-          };
-          endInput.addEventListener("change", normalizeEndValue);
-          endInput.addEventListener("blur", normalizeEndValue);
-          syncEndFromBase();
-          endingField.appendChild(endInput);
-          row.appendChild(endingField);
-
-          ui.viewEditLayerList.appendChild(row);
+          ui.viewEditLayerList.appendChild(groupEl);
         });
       }
 
@@ -15428,11 +15649,16 @@
             drag.preview.style.left = event.clientX - drag.offsetX + "px";
             drag.preview.style.top = event.clientY - drag.offsetY + "px";
           }
-          const viewDrop = viewEditDropPositionFromClientY(event.clientY, drag.layerId);
+          let viewDrop;
+          if (drag.type === "drawing") {
+            viewDrop = viewEditDrawingDropPosition(event.clientY, drag.drawingId);
+          } else {
+            viewDrop = viewEditLayerDropPosition(event.clientY, drag.layerId, drag.drawingId);
+          }
           drag.dropIndex = viewDrop.toIndex;
           drag.rawIndex = viewDrop.rawIndex;
           drag.fromIndex = viewDrop.fromIndex;
-          updateViewEditDropIndicator(drag.layerId, viewDrop.rawIndex, viewDrop.toIndex, viewDrop.fromIndex);
+          updateViewEditDropIndicator();
         },
         true
       );
