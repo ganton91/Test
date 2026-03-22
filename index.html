@@ -9544,7 +9544,7 @@
         ui.selectionPicker.style.top = top + "px";
       }
 
-      function buildViewEditLayerRow(item, group) {
+      function buildViewEditLayerRow(item, group, onchange) {
         const row = document.createElement("div");
         row.className = "view-edit-layer-row";
         const drag = state.viewEditPointerDrag;
@@ -9682,11 +9682,13 @@
           const parsed = Number(heightInput.value);
           item.height = Number.isFinite(parsed) ? parsed : 0;
           syncEndFromBase();
+          onchange?.();
         });
         const normalizeHeightValue = () => {
           item.height = snapViewElevationMeters(Number(heightInput.value), { allowNegative: false });
           heightInput.value = String(item.height);
           syncEndFromBase();
+          onchange?.();
         };
         heightInput.addEventListener("change", normalizeHeightValue);
         heightInput.addEventListener("blur", normalizeHeightValue);
@@ -9706,11 +9708,13 @@
           const parsed = Number(baseInput.value);
           item.baseElevation = Number.isFinite(parsed) ? parsed : 0;
           syncEndFromBase();
+          onchange?.();
         });
         const normalizeBaseValue = () => {
           item.baseElevation = snapViewElevationMeters(Number(baseInput.value));
           baseInput.value = String(item.baseElevation);
           syncEndFromBase();
+          onchange?.();
         };
         baseInput.addEventListener("change", normalizeBaseValue);
         baseInput.addEventListener("blur", normalizeBaseValue);
@@ -9722,12 +9726,14 @@
           const endVal = Number.isFinite(parsed) ? parsed : 0;
           item.baseElevation = snapViewElevationMeters(endVal - (Number(item.height) || 0));
           baseInput.value = String(item.baseElevation);
+          onchange?.();
         });
         const normalizeEndValue = () => {
           const endVal = snapViewElevationMeters(Number(endInput.value));
           item.baseElevation = snapViewElevationMeters(endVal - (Number(item.height) || 0));
           endInput.value = String(endVal);
           baseInput.value = String(item.baseElevation);
+          onchange?.();
         };
         endInput.addEventListener("change", normalizeEndValue);
         endInput.addEventListener("blur", normalizeEndValue);
@@ -9903,7 +9909,7 @@
           layersEl.appendChild(headings);
 
           group.items.forEach((item) => {
-            const rowData = buildViewEditLayerRow(item, group);
+            const rowData = buildViewEditLayerRow(item, group, syncDrawingFields);
             rowData.baseInput.dataset.layerId = item.layerId;
             rowDataList.push(rowData);
             layersEl.appendChild(rowData.row);
