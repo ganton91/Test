@@ -1900,6 +1900,17 @@
         white-space: nowrap;
       }
 
+      .drawing-elevation-input {
+        width: 88px;
+        flex-shrink: 0;
+        padding: 5px 8px;
+        font-size: 12px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--text);
+      }
+
       .view-edit-drawing-layers {
         display: flex;
         flex-direction: column;
@@ -9728,7 +9739,7 @@
         endingField.appendChild(endInput);
         row.appendChild(endingField);
 
-        return row;
+        return { row, baseInput, syncEndFromBase };
       }
 
       function renderViewEditModal() {
@@ -9785,7 +9796,77 @@
           const nameEl = document.createElement("div");
           nameEl.className = "view-edit-drawing-name";
           nameEl.textContent = group.name;
+
+          // Drawing-level Start / End inputs in the header
+          const computeDrawingStart = () => group.items.length ? Math.min(...group.items.map((it) => it.baseElevation)) : 0;
+          const computeDrawingEnd = () => group.items.length ? Math.max(...group.items.map((it) => it.baseElevation + it.height)) : 0;
+
+          let rowDataList = [];
+
+          const drawingStartInput = document.createElement("input");
+          drawingStartInput.type = "number";
+          drawingStartInput.step = "0.05";
+          drawingStartInput.className = "view-edit-field drawing-elevation-input";
+          drawingStartInput.setAttribute("aria-label", group.name + " drawing start elevation");
+          drawingStartInput.addEventListener("click", (e) => e.stopPropagation());
+          drawingStartInput.addEventListener("pointerdown", (e) => e.stopPropagation());
+
+          const drawingEndInput = document.createElement("input");
+          drawingEndInput.type = "number";
+          drawingEndInput.step = "0.05";
+          drawingEndInput.className = "view-edit-field drawing-elevation-input";
+          drawingEndInput.setAttribute("aria-label", group.name + " drawing end elevation");
+          drawingEndInput.addEventListener("click", (e) => e.stopPropagation());
+          drawingEndInput.addEventListener("pointerdown", (e) => e.stopPropagation());
+
+          const syncDrawingFields = () => {
+            drawingStartInput.value = String(snapViewElevationMeters(computeDrawingStart()));
+            drawingEndInput.value = String(snapViewElevationMeters(computeDrawingEnd()));
+          };
+
+          const shiftAllLayers = (delta) => {
+            group.items.forEach((it) => { it.baseElevation = snapViewElevationMeters(it.baseElevation + delta); });
+            rowDataList.forEach(({ baseInput, syncEndFromBase }) => {
+              baseInput.value = String(group.items.find((it) => it.layerId === baseInput.dataset.layerId)?.baseElevation ?? 0);
+              syncEndFromBase();
+            });
+          };
+
+          drawingStartInput.addEventListener("input", () => {
+            const parsed = Number(drawingStartInput.value);
+            if (!Number.isFinite(parsed)) return;
+            const delta = parsed - computeDrawingStart();
+            shiftAllLayers(delta);
+            drawingEndInput.value = String(snapViewElevationMeters(computeDrawingEnd()));
+          });
+          const normalizeDrawingStart = () => {
+            const snapped = snapViewElevationMeters(Number(drawingStartInput.value));
+            const delta = snapped - computeDrawingStart();
+            shiftAllLayers(delta);
+            syncDrawingFields();
+          };
+          drawingStartInput.addEventListener("change", normalizeDrawingStart);
+          drawingStartInput.addEventListener("blur", normalizeDrawingStart);
+
+          drawingEndInput.addEventListener("input", () => {
+            const parsed = Number(drawingEndInput.value);
+            if (!Number.isFinite(parsed)) return;
+            const delta = parsed - computeDrawingEnd();
+            shiftAllLayers(delta);
+            drawingStartInput.value = String(snapViewElevationMeters(computeDrawingStart()));
+          });
+          const normalizeDrawingEnd = () => {
+            const snapped = snapViewElevationMeters(Number(drawingEndInput.value));
+            const delta = snapped - computeDrawingEnd();
+            shiftAllLayers(delta);
+            syncDrawingFields();
+          };
+          drawingEndInput.addEventListener("change", normalizeDrawingEnd);
+          drawingEndInput.addEventListener("blur", normalizeDrawingEnd);
+
           header.appendChild(nameEl);
+          header.appendChild(drawingStartInput);
+          header.appendChild(drawingEndInput);
 
           groupEl.appendChild(header);
 
@@ -9804,8 +9885,13 @@
           layersEl.appendChild(headings);
 
           group.items.forEach((item) => {
-            layersEl.appendChild(buildViewEditLayerRow(item, group));
+            const rowData = buildViewEditLayerRow(item, group);
+            rowData.baseInput.dataset.layerId = item.layerId;
+            rowDataList.push(rowData);
+            layersEl.appendChild(rowData.row);
           });
+
+          syncDrawingFields();
           groupEl.appendChild(layersEl);
 
           ui.viewEditLayerList.appendChild(groupEl);
