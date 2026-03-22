@@ -1821,11 +1821,16 @@
       .view-edit-drawing-group {
         display: flex;
         flex-direction: column;
-        border: 1px solid var(--line-strong);
+        border: 1px solid var(--line);
         border-radius: 12px;
-        background: var(--accent-soft);
+        background: var(--surface);
         overflow: hidden;
         position: relative;
+      }
+
+      .view-edit-drawing-group:not(.collapsed) {
+        background: var(--accent-soft);
+        border-color: var(--line-strong);
       }
 
       .view-edit-drawing-group.dragging {
@@ -1920,6 +1925,19 @@
         opacity: 0.96;
         transform: none;
         box-shadow: var(--shadow);
+      }
+
+      .view-edit-drawing-drag-preview {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+        padding: 8px 10px;
+      }
+
+      .view-edit-drag-preview.view-edit-layer-row {
+        border: 1px solid var(--line);
+        background: var(--surface);
+        border-radius: 12px;
       }
 
       .view-edit-modal.drag-reordering,
@@ -9749,7 +9767,7 @@
           headerGrip.textContent = "⋮⋮";
           headerGrip.draggable = false;
           headerGrip.addEventListener("pointerdown", (event) => {
-            beginViewEditPointerDrag(event, header, { type: "drawing", drawingId: group.drawingId });
+            beginViewEditPointerDrag(event, groupEl, { type: "drawing", drawingId: group.drawingId });
           });
           header.appendChild(headerGrip);
 
