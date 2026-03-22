@@ -1824,7 +1824,6 @@
         border: 1px solid var(--line);
         border-radius: 12px;
         background: var(--surface);
-        overflow: hidden;
         position: relative;
       }
 
@@ -1862,6 +1861,7 @@
         align-items: center;
         gap: 8px;
         padding: 8px 10px;
+        border-radius: 11px 11px 0 0;
         user-select: none;
       }
 
@@ -6672,7 +6672,7 @@
             return {
               drawingId,
               name: drawing ? drawing.name : "Drawing",
-              collapsed: false,
+              collapsed: drawingIds.indexOf(drawingId) > 0,
               items: orderedLayerIds.map((layerId) => {
                 const layer = getAllLayers().find((l) => l.id === layerId);
                 const config = defaultViewLayerConfig(view.layerConfigs && view.layerConfigs[layerId]);
