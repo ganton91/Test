@@ -1857,12 +1857,21 @@
       }
 
       .view-edit-drawing-header {
-        display: flex;
+        display: grid;
+        grid-template-columns: 16px minmax(0, 1fr) 56px 132px 58px 56px 112px 58px 88px 88px 88px;
+        gap: 10px;
         align-items: center;
-        gap: 8px;
         padding: 8px 10px;
         border-radius: 11px 11px 0 0;
         user-select: none;
+      }
+
+      .view-edit-drawing-header-main {
+        grid-column: 2 / 9;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
       }
 
       .view-edit-drawing-group:not(.collapsed) .view-edit-drawing-header {
@@ -1900,21 +1909,12 @@
         white-space: nowrap;
       }
 
-      .drawing-elevation-input {
-        width: 88px;
-        flex-shrink: 0;
-        padding: 5px 8px;
-        font-size: 12px;
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        color: var(--text);
-      }
 
       .view-edit-drawing-layers {
         display: flex;
         flex-direction: column;
-        padding: 6px 8px;
+        padding: 6px 0;
+        gap: 8px;
       }
 
       .view-edit-drawing-group.collapsed .view-edit-drawing-layers {
@@ -1923,10 +1923,6 @@
 
       .view-edit-column-headings-inner {
         padding: 4px 10px 2px;
-      }
-
-      .view-edit-drawing-layers {
-        gap: 8px;
       }
 
       .view-edit-drag-preview {
@@ -9780,7 +9776,6 @@
           headerGrip.addEventListener("pointerdown", (event) => {
             beginViewEditPointerDrag(event, groupEl, { type: "drawing", drawingId: group.drawingId });
           });
-          header.appendChild(headerGrip);
 
           const toggleBtn = document.createElement("button");
           toggleBtn.className = "view-edit-drawing-toggle";
@@ -9791,35 +9786,58 @@
             group.collapsed = !group.collapsed;
             groupEl.classList.toggle("collapsed", group.collapsed);
           });
-          header.appendChild(toggleBtn);
 
-          const nameEl = document.createElement("div");
-          nameEl.className = "view-edit-drawing-name";
-          nameEl.textContent = group.name;
-
-          // Drawing-level Start / End inputs in the header
+          // Drawing-level computed fields
           const computeDrawingStart = () => group.items.length ? Math.min(...group.items.map((it) => it.baseElevation)) : 0;
           const computeDrawingEnd = () => group.items.length ? Math.max(...group.items.map((it) => it.baseElevation + it.height)) : 0;
+          const computeDrawingHeight = () => snapViewElevationMeters(computeDrawingEnd() - computeDrawingStart());
 
           let rowDataList = [];
 
+          // Name + toggle wrapped in headerMain cell (spans cols 2–8)
+          const headerMain = document.createElement("div");
+          headerMain.className = "view-edit-drawing-header-main";
+          headerMain.appendChild(toggleBtn);
+          const nameEl = document.createElement("div");
+          nameEl.className = "view-edit-drawing-name";
+          nameEl.textContent = group.name;
+          headerMain.appendChild(nameEl);
+
+          // Height — read-only input
+          const drawingHeightField = document.createElement("div");
+          drawingHeightField.className = "field view-edit-field";
+          const drawingHeightDisplay = document.createElement("input");
+          drawingHeightDisplay.type = "number";
+          drawingHeightDisplay.readOnly = true;
+          drawingHeightDisplay.setAttribute("aria-label", group.name + " drawing height");
+          drawingHeightDisplay.addEventListener("click", (e) => e.stopPropagation());
+          drawingHeightDisplay.addEventListener("pointerdown", (e) => e.stopPropagation());
+          drawingHeightField.appendChild(drawingHeightDisplay);
+
+          // Start input
+          const drawingStartField = document.createElement("div");
+          drawingStartField.className = "field view-edit-field";
           const drawingStartInput = document.createElement("input");
           drawingStartInput.type = "number";
           drawingStartInput.step = "0.05";
-          drawingStartInput.className = "view-edit-field drawing-elevation-input";
           drawingStartInput.setAttribute("aria-label", group.name + " drawing start elevation");
           drawingStartInput.addEventListener("click", (e) => e.stopPropagation());
           drawingStartInput.addEventListener("pointerdown", (e) => e.stopPropagation());
+          drawingStartField.appendChild(drawingStartInput);
 
+          // End input
+          const drawingEndField = document.createElement("div");
+          drawingEndField.className = "field view-edit-field";
           const drawingEndInput = document.createElement("input");
           drawingEndInput.type = "number";
           drawingEndInput.step = "0.05";
-          drawingEndInput.className = "view-edit-field drawing-elevation-input";
           drawingEndInput.setAttribute("aria-label", group.name + " drawing end elevation");
           drawingEndInput.addEventListener("click", (e) => e.stopPropagation());
           drawingEndInput.addEventListener("pointerdown", (e) => e.stopPropagation());
+          drawingEndField.appendChild(drawingEndInput);
 
           const syncDrawingFields = () => {
+            drawingHeightDisplay.value = String(computeDrawingHeight()).replace(/\.00$/, "");
             drawingStartInput.value = String(snapViewElevationMeters(computeDrawingStart()));
             drawingEndInput.value = String(snapViewElevationMeters(computeDrawingEnd()));
           };
@@ -9835,14 +9853,13 @@
           drawingStartInput.addEventListener("input", () => {
             const parsed = Number(drawingStartInput.value);
             if (!Number.isFinite(parsed)) return;
-            const delta = parsed - computeDrawingStart();
-            shiftAllLayers(delta);
+            shiftAllLayers(parsed - computeDrawingStart());
             drawingEndInput.value = String(snapViewElevationMeters(computeDrawingEnd()));
+            drawingHeightDisplay.value = String(computeDrawingHeight()).replace(/\.00$/, "");
           });
           const normalizeDrawingStart = () => {
             const snapped = snapViewElevationMeters(Number(drawingStartInput.value));
-            const delta = snapped - computeDrawingStart();
-            shiftAllLayers(delta);
+            shiftAllLayers(snapped - computeDrawingStart());
             syncDrawingFields();
           };
           drawingStartInput.addEventListener("change", normalizeDrawingStart);
@@ -9851,22 +9868,23 @@
           drawingEndInput.addEventListener("input", () => {
             const parsed = Number(drawingEndInput.value);
             if (!Number.isFinite(parsed)) return;
-            const delta = parsed - computeDrawingEnd();
-            shiftAllLayers(delta);
+            shiftAllLayers(parsed - computeDrawingEnd());
             drawingStartInput.value = String(snapViewElevationMeters(computeDrawingStart()));
+            drawingHeightDisplay.value = String(computeDrawingHeight()).replace(/\.00$/, "");
           });
           const normalizeDrawingEnd = () => {
             const snapped = snapViewElevationMeters(Number(drawingEndInput.value));
-            const delta = snapped - computeDrawingEnd();
-            shiftAllLayers(delta);
+            shiftAllLayers(snapped - computeDrawingEnd());
             syncDrawingFields();
           };
           drawingEndInput.addEventListener("change", normalizeDrawingEnd);
           drawingEndInput.addEventListener("blur", normalizeDrawingEnd);
 
-          header.appendChild(nameEl);
-          header.appendChild(drawingStartInput);
-          header.appendChild(drawingEndInput);
+          header.appendChild(headerGrip);
+          header.appendChild(headerMain);
+          header.appendChild(drawingHeightField);
+          header.appendChild(drawingStartField);
+          header.appendChild(drawingEndField);
 
           groupEl.appendChild(header);
 
